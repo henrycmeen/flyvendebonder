@@ -6,4 +6,5 @@
 node_modules/
 dist/
 build/
-Nettside/assets/dronevideo.mp4
+.staging/
+apps/shared-assets/dronevideo.mp4

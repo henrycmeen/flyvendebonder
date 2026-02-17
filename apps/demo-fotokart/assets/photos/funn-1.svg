@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="Tidlig sesong nordre skifte">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5d089"/>
+      <stop offset="100%" stop-color="#b66a31"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#g1)"/>
+  <circle cx="290" cy="255" r="120" fill="#fce7b4" opacity="0.35"/>
+  <circle cx="915" cy="570" r="160" fill="#5f3515" opacity="0.22"/>
+  <text x="72" y="690" font-size="72" font-family="Trebuchet MS, sans-serif" fill="#2d1b10">Skifte Nord – april</text>
+</svg>

@@ -1,0 +1,27 @@
+{
+  "title": "Flyvendebønder fotokart-demo",
+  "subtitle": "En kuratert historiefortelling med testdata fra pilotlogg.",
+  "chapters": [
+    {
+      "slug": "oppstart",
+      "title": "Kapittel 1: Oppstart i felt",
+      "description": "Tidlige observasjoner fra nordre og østre skifter.",
+      "focus": { "lat": 59.4126, "lng": 9.2119, "zoom": 13 },
+      "filter": { "chapter": "oppstart" }
+    },
+    {
+      "slug": "vekstsesong",
+      "title": "Kapittel 2: Vekstsesong og avvik",
+      "description": "Mønstre i åkeren, vannsig og utvikling gjennom sesongen.",
+      "focus": { "lat": 59.4068, "lng": 9.2335, "zoom": 13 },
+      "filter": { "chapter": "vekstsesong" }
+    },
+    {
+      "slug": "tiltak",
+      "title": "Kapittel 3: Tiltak og oppsummering",
+      "description": "Utvalgte tiltakssoner og før/etter-sammenligning.",
+      "focus": { "lat": 59.3991, "lng": 9.1968, "zoom": 13 },
+      "filter": { "chapter": "tiltak" }
+    }
+  ]
+}

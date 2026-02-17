@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flyvendebønder demo | Fotokart</title>
+    <meta
+      name="description"
+      content="Interaktiv fotokart-demo med kapittelbasert historiefortelling fra Flyvendebønder." 
+    />
+    <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="./vendor/markercluster/MarkerCluster.css" />
+    <link rel="stylesheet" href="./vendor/markercluster/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#story-panel">Hopp til innhold</a>
+
+    <header class="topbar" role="banner">
+      <a class="topbar__back" href="/">Til infosiden</a>
+      <p class="topbar__eyebrow">Prøv demo</p>
+      <h1 class="topbar__title">Flyvendebønder fotokart</h1>
+      <p class="topbar__subtitle">Historiefortelling med kuraterte testdata.</p>
+    </header>
+
+    <main class="layout" role="main">
+      <section id="story-panel" class="panel" aria-labelledby="kapittel-tittel">
+        <div class="panel__head">
+          <h2 id="kapittel-tittel">Kapitler</h2>
+          <p id="kapittel-beskrivelse" class="panel__description"></p>
+        </div>
+
+        <nav id="chapters" class="chapter-list" aria-label="Kapitler i demo"></nav>
+
+        <div class="panel__meta" aria-live="polite">
+          <p><strong id="count-visible">0</strong> markører i visning</p>
+          <p>Deep-link: <code>?chapter=...</code> og <code>?photo=...</code></p>
+        </div>
+
+        <section aria-labelledby="funn-label" class="photo-list-wrap">
+          <h3 id="funn-label">Funn i valgt kapittel</h3>
+          <ul id="photo-list" class="photo-list"></ul>
+        </section>
+      </section>
+
+      <section class="map-column" aria-label="Kartvisning">
+        <div id="map" class="map"></div>
+
+        <aside id="photo-card" class="photo-card" aria-live="polite">
+          <h3 class="photo-card__title">Velg et funn</h3>
+          <p class="photo-card__meta">Klikk markør eller velg i listen.</p>
+          <img class="photo-card__image" src="./assets/photos/funn-1.svg" alt="Forhåndsvisning" />
+          <p class="photo-card__caption">Bildevisning oppdateres når du velger et punkt.</p>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./vendor/leaflet/leaflet.js"></script>
+    <script src="./vendor/markercluster/leaflet.markercluster.js"></script>
+    <script src="./script.js" defer></script>
+  </body>
+</html>

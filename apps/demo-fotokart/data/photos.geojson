@@ -1,0 +1,89 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.2099, 59.4135] },
+      "properties": {
+        "id": "funn-1",
+        "title": "Tidlig sesong, nordre skifte",
+        "date": "2026-04-17",
+        "tags": ["oppstart", "jordfukt"],
+        "chapter": "oppstart",
+        "thumbnail": "./assets/photos/funn-1.svg",
+        "image": "./assets/photos/funn-1.svg",
+        "caption": "Første dokumenterte observasjon: ujevn etablering i nordre kant."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.2194, 59.4102] },
+      "properties": {
+        "id": "funn-2",
+        "title": "Mønster i åkerbelte",
+        "date": "2026-05-05",
+        "tags": ["oppstart", "vekst"],
+        "chapter": "oppstart",
+        "thumbnail": "./assets/photos/funn-2.svg",
+        "image": "./assets/photos/funn-2.svg",
+        "caption": "Bilde viser tydelig stripeeffekt i feltets østlige parti."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.2303, 59.4082] },
+      "properties": {
+        "id": "funn-3",
+        "title": "Kantsoner og drenering",
+        "date": "2026-06-20",
+        "tags": ["vekstsesong", "vannsig"],
+        "chapter": "vekstsesong",
+        "thumbnail": "./assets/photos/funn-3.svg",
+        "image": "./assets/photos/funn-3.svg",
+        "caption": "Etter regn ble kantsoner med svak drenering tydelig synlige."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.2376, 59.4045] },
+      "properties": {
+        "id": "funn-4",
+        "title": "Tiltakssoner i sørvest",
+        "date": "2026-07-12",
+        "tags": ["vekstsesong", "tiltak"],
+        "chapter": "vekstsesong",
+        "thumbnail": "./assets/photos/funn-4.svg",
+        "image": "./assets/photos/funn-4.svg",
+        "caption": "Markering av soner der tiltak skal prioriteres i juli."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.1984, 59.4008] },
+      "properties": {
+        "id": "funn-5",
+        "title": "Før/etter jordkant",
+        "date": "2026-08-26",
+        "tags": ["tiltak", "før-etter"],
+        "chapter": "tiltak",
+        "thumbnail": "./assets/photos/funn-5.svg",
+        "image": "./assets/photos/funn-5.svg",
+        "caption": "Sammenligning av tiltak på kantsone i sensommeren."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [9.1927, 59.3979] },
+      "properties": {
+        "id": "funn-6",
+        "title": "Sesongoppsummering",
+        "date": "2026-10-03",
+        "tags": ["tiltak", "oppsummering"],
+        "chapter": "tiltak",
+        "thumbnail": "./assets/photos/funn-6.svg",
+        "image": "./assets/photos/funn-6.svg",
+        "caption": "Oppsummering av læring fra sesongen, brukt i kvartalsnotat."
+      }
+    }
+  ]
+}
