@@ -1,27 +1,58 @@
 {
   "title": "Flyvendebønder fotokart-demo",
-  "subtitle": "En kuratert historiefortelling med testdata fra pilotlogg.",
+  "subtitle": "Kuratert utvalg fra /Users/henmee/Movies/Droneshots/Meen gård/Analysebilder.",
   "chapters": [
     {
-      "slug": "oppstart",
-      "title": "Kapittel 1: Oppstart i felt",
-      "description": "Tidlige observasjoner fra nordre og østre skifter.",
-      "focus": { "lat": 59.4126, "lng": 9.2119, "zoom": 13 },
-      "filter": { "chapter": "oppstart" }
+      "slug": "oppstart-2024",
+      "title": "Kapittel 1: Oppstart sommer 2024",
+      "description": "De første flygningene og grunnkartlegging på Meen gård.",
+      "focus": {
+        "lat": 59.171177,
+        "lng": 9.660946,
+        "zoom": 14
+      },
+      "filter": {
+        "chapter": "oppstart-2024"
+      }
     },
     {
-      "slug": "vekstsesong",
-      "title": "Kapittel 2: Vekstsesong og avvik",
-      "description": "Mønstre i åkeren, vannsig og utvikling gjennom sesongen.",
-      "focus": { "lat": 59.4068, "lng": 9.2335, "zoom": 13 },
-      "filter": { "chapter": "vekstsesong" }
+      "slug": "sensommer-2024",
+      "title": "Kapittel 2: Sensommer august 2024",
+      "description": "Mønstre og avvik dokumentert i august.",
+      "focus": {
+        "lat": 59.162707,
+        "lng": 9.61165,
+        "zoom": 14
+      },
+      "filter": {
+        "chapter": "sensommer-2024"
+      }
     },
     {
-      "slug": "tiltak",
-      "title": "Kapittel 3: Tiltak og oppsummering",
-      "description": "Utvalgte tiltakssoner og før/etter-sammenligning.",
-      "focus": { "lat": 59.3991, "lng": 9.1968, "zoom": 13 },
-      "filter": { "chapter": "tiltak" }
+      "slug": "host-2024",
+      "title": "Kapittel 3: Høst oktober 2024",
+      "description": "Høstflygning med oppdaterte observasjoner.",
+      "focus": {
+        "lat": 59.171259,
+        "lng": 9.664717,
+        "zoom": 14
+      },
+      "filter": {
+        "chapter": "host-2024"
+      }
+    },
+    {
+      "slug": "sommer-2025",
+      "title": "Kapittel 4: Oppfølging juli 2025",
+      "description": "Ny runde i 2025 for å sammenligne utvikling.",
+      "focus": {
+        "lat": 59.171674,
+        "lng": 9.666161,
+        "zoom": 14
+      },
+      "filter": {
+        "chapter": "sommer-2025"
+      }
     }
   ]
 }

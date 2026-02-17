@@ -3,86 +3,302 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.2099, 59.4135] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66075558333333,
+          59.1708306666667
+        ]
+      },
       "properties": {
-        "id": "funn-1",
-        "title": "Tidlig sesong, nordre skifte",
-        "date": "2026-04-17",
-        "tags": ["oppstart", "jordfukt"],
-        "chapter": "oppstart",
-        "thumbnail": "./assets/photos/funn-1.svg",
-        "image": "./assets/photos/funn-1.svg",
-        "caption": "Første dokumenterte observasjon: ujevn etablering i nordre kant."
+        "id": "meen-20240701184522_0021_d",
+        "title": "Meen gård 2024-07-01 – DJI_20240701184522_0021_D",
+        "date": "2024-07-01",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppstart",
+          "juli-2024"
+        ],
+        "chapter": "oppstart-2024",
+        "thumbnail": "./assets/photos/meen-20240701184522_0021_d.jpg",
+        "image": "./assets/photos/meen-20240701184522_0021_d.jpg",
+        "caption": "Dronefoto fra 010724. Kilde: DJI_20240701184522_0021_D.JPG."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.2194, 59.4102] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.65974219444444,
+          59.1708866111111
+        ]
+      },
       "properties": {
-        "id": "funn-2",
-        "title": "Mønster i åkerbelte",
-        "date": "2026-05-05",
-        "tags": ["oppstart", "vekst"],
-        "chapter": "oppstart",
-        "thumbnail": "./assets/photos/funn-2.svg",
-        "image": "./assets/photos/funn-2.svg",
-        "caption": "Bilde viser tydelig stripeeffekt i feltets østlige parti."
+        "id": "meen-20240701184540_0022_d",
+        "title": "Meen gård 2024-07-01 – DJI_20240701184540_0022_D",
+        "date": "2024-07-01",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppstart",
+          "juli-2024"
+        ],
+        "chapter": "oppstart-2024",
+        "thumbnail": "./assets/photos/meen-20240701184540_0022_d.jpg",
+        "image": "./assets/photos/meen-20240701184540_0022_d.jpg",
+        "caption": "Dronefoto fra 010724. Kilde: DJI_20240701184540_0022_D.JPG."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.2303, 59.4082] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66234063888889,
+          59.1718149166667
+        ]
+      },
       "properties": {
-        "id": "funn-3",
-        "title": "Kantsoner og drenering",
-        "date": "2026-06-20",
-        "tags": ["vekstsesong", "vannsig"],
-        "chapter": "vekstsesong",
-        "thumbnail": "./assets/photos/funn-3.svg",
-        "image": "./assets/photos/funn-3.svg",
-        "caption": "Etter regn ble kantsoner med svak drenering tydelig synlige."
+        "id": "meen-20240701184559_0023_d",
+        "title": "Meen gård 2024-07-01 – DJI_20240701184559_0023_D",
+        "date": "2024-07-01",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppstart",
+          "juli-2024"
+        ],
+        "chapter": "oppstart-2024",
+        "thumbnail": "./assets/photos/meen-20240701184559_0023_d.jpg",
+        "image": "./assets/photos/meen-20240701184559_0023_d.jpg",
+        "caption": "Dronefoto fra 010724. Kilde: DJI_20240701184559_0023_D.JPG."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.2376, 59.4045] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.61142133333333,
+          59.1626988888889
+        ]
+      },
       "properties": {
-        "id": "funn-4",
-        "title": "Tiltakssoner i sørvest",
-        "date": "2026-07-12",
-        "tags": ["vekstsesong", "tiltak"],
-        "chapter": "vekstsesong",
-        "thumbnail": "./assets/photos/funn-4.svg",
-        "image": "./assets/photos/funn-4.svg",
-        "caption": "Markering av soner der tiltak skal prioriteres i juli."
+        "id": "meen-20240803185908_0047_d",
+        "title": "Meen gård 2024-08-03 – DJI_20240803185908_0047_D",
+        "date": "2024-08-03",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "sensommer",
+          "august-2024"
+        ],
+        "chapter": "sensommer-2024",
+        "thumbnail": "./assets/photos/meen-20240803185908_0047_d.jpg",
+        "image": "./assets/photos/meen-20240803185908_0047_d.jpg",
+        "caption": "Dronefoto fra 030824. Kilde: DJI_20240803185908_0047_D.JPG."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.1984, 59.4008] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.61142127777778,
+          59.1627000833333
+        ]
+      },
       "properties": {
-        "id": "funn-5",
-        "title": "Før/etter jordkant",
-        "date": "2026-08-26",
-        "tags": ["tiltak", "før-etter"],
-        "chapter": "tiltak",
-        "thumbnail": "./assets/photos/funn-5.svg",
-        "image": "./assets/photos/funn-5.svg",
-        "caption": "Sammenligning av tiltak på kantsone i sensommeren."
+        "id": "meen-20240803185914_0048_d",
+        "title": "Meen gård 2024-08-03 – DJI_20240803185914_0048_D",
+        "date": "2024-08-03",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "sensommer",
+          "august-2024"
+        ],
+        "chapter": "sensommer-2024",
+        "thumbnail": "./assets/photos/meen-20240803185914_0048_d.jpg",
+        "image": "./assets/photos/meen-20240803185914_0048_d.jpg",
+        "caption": "Dronefoto fra 030824. Kilde: DJI_20240803185914_0048_D.JPG."
       }
     },
     {
       "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [9.1927, 59.3979] },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.61210705555555,
+          59.1627210555556
+        ]
+      },
       "properties": {
-        "id": "funn-6",
-        "title": "Sesongoppsummering",
-        "date": "2026-10-03",
-        "tags": ["tiltak", "oppsummering"],
-        "chapter": "tiltak",
-        "thumbnail": "./assets/photos/funn-6.svg",
-        "image": "./assets/photos/funn-6.svg",
-        "caption": "Oppsummering av læring fra sesongen, brukt i kvartalsnotat."
+        "id": "meen-20240803185934_0049_d",
+        "title": "Meen gård 2024-08-03 – DJI_20240803185934_0049_D",
+        "date": "2024-08-03",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "sensommer",
+          "august-2024"
+        ],
+        "chapter": "sensommer-2024",
+        "thumbnail": "./assets/photos/meen-20240803185934_0049_d.jpg",
+        "image": "./assets/photos/meen-20240803185934_0049_d.jpg",
+        "caption": "Dronefoto fra 030824. Kilde: DJI_20240803185934_0049_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66412066666667,
+          59.1699828055556
+        ]
+      },
+      "properties": {
+        "id": "meen-20241027132828_0069_d",
+        "title": "Meen gård 2024-10-27 – DJI_20241027132828_0069_D",
+        "date": "2024-10-27",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "host",
+          "oktober-2024"
+        ],
+        "chapter": "host-2024",
+        "thumbnail": "./assets/photos/meen-20241027132828_0069_d.jpg",
+        "image": "./assets/photos/meen-20241027132828_0069_d.jpg",
+        "caption": "Dronefoto fra 271024. Kilde: DJI_20241027132828_0069_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66221638888889,
+          59.1714251111111
+        ]
+      },
+      "properties": {
+        "id": "meen-20241027133525_0070_d",
+        "title": "Meen gård 2024-10-27 – DJI_20241027133525_0070_D",
+        "date": "2024-10-27",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "host",
+          "oktober-2024"
+        ],
+        "chapter": "host-2024",
+        "thumbnail": "./assets/photos/meen-20241027133525_0070_d.jpg",
+        "image": "./assets/photos/meen-20241027133525_0070_d.jpg",
+        "caption": "Dronefoto fra 271024. Kilde: DJI_20241027133525_0070_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66781261111111,
+          59.1723688888889
+        ]
+      },
+      "properties": {
+        "id": "meen-20241027133841_0072_d",
+        "title": "Meen gård 2024-10-27 – DJI_20241027133841_0072_D",
+        "date": "2024-10-27",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "host",
+          "oktober-2024"
+        ],
+        "chapter": "host-2024",
+        "thumbnail": "./assets/photos/meen-20241027133841_0072_d.jpg",
+        "image": "./assets/photos/meen-20241027133841_0072_d.jpg",
+        "caption": "Dronefoto fra 271024. Kilde: DJI_20241027133841_0072_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66597191666667,
+          59.1718651388889
+        ]
+      },
+      "properties": {
+        "id": "meen-20250708104754_0001_d",
+        "title": "Meen gård 2025-07-08 – DJI_20250708104754_0001_D",
+        "date": "2025-07-08",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppfolging",
+          "juli-2025"
+        ],
+        "chapter": "sommer-2025",
+        "thumbnail": "./assets/photos/meen-20250708104754_0001_d.jpg",
+        "image": "./assets/photos/meen-20250708104754_0001_d.jpg",
+        "caption": "Dronefoto fra juli2025. Kilde: DJI_20250708104754_0001_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66597744444444,
+          59.1718651111111
+        ]
+      },
+      "properties": {
+        "id": "meen-20250708104812_0002_d",
+        "title": "Meen gård 2025-07-08 – DJI_20250708104812_0002_D",
+        "date": "2025-07-08",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppfolging",
+          "juli-2025"
+        ],
+        "chapter": "sommer-2025",
+        "thumbnail": "./assets/photos/meen-20250708104812_0002_d.jpg",
+        "image": "./assets/photos/meen-20250708104812_0002_d.jpg",
+        "caption": "Dronefoto fra juli2025. Kilde: DJI_20250708104812_0002_D.JPG."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          9.66653422222222,
+          59.1712903333333
+        ]
+      },
+      "properties": {
+        "id": "meen-20250708104825_0003_d",
+        "title": "Meen gård 2025-07-08 – DJI_20250708104825_0003_D",
+        "date": "2025-07-08",
+        "tags": [
+          "meen-gard",
+          "dronefoto",
+          "oppfolging",
+          "juli-2025"
+        ],
+        "chapter": "sommer-2025",
+        "thumbnail": "./assets/photos/meen-20250708104825_0003_d.jpg",
+        "image": "./assets/photos/meen-20250708104825_0003_d.jpg",
+        "caption": "Dronefoto fra juli2025. Kilde: DJI_20250708104825_0003_D.JPG."
       }
     }
   ]

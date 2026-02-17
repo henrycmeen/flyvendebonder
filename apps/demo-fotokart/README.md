@@ -2,6 +2,13 @@
 
 Statisk frontend-demo med Leaflet + marker clustering.
 
+## Oppdatere med nye dronebilder
+```bash
+./scripts/import-analysebilder-to-demo.py \
+  --source "/Users/henmee/Movies/Droneshots/Meen gård/Analysebilder" \
+  --per-folder 3
+```
+
 ## Data-kontrakt
 
 `data/photos.geojson`

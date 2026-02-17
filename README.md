@@ -31,3 +31,16 @@
   ```bash
   ./scripts/deploy-flyvendebonder.sh
   ```
+
+## Bildedata og analyse
+- Regenerer demo-data fra dronebilder:
+  ```bash
+  ./scripts/import-analysebilder-to-demo.py \
+    --source "/Users/henmee/Movies/Droneshots/Meen gård/Analysebilder" \
+    --per-folder 3
+  ```
+- Kjør enkel metadata-analyse på bildemappen:
+  ```bash
+  ./scripts/analysebilder-report.sh \
+    "/Users/henmee/Movies/Droneshots/Meen gård/Analysebilder"
+  ```
