@@ -66,6 +66,8 @@ body {
   left: 14px;
   width: min(540px, calc(100vw - 28px));
   padding: 12px 14px;
+  max-height: min(72vh, 690px);
+  overflow: auto;
 }
 
 .topbar__back {
@@ -128,6 +130,37 @@ body {
   margin: 6px 0 0;
   font-size: 13px;
   color: var(--muted);
+}
+
+.debug-panel {
+  margin-top: 10px;
+  border-top: 1px solid rgba(73, 38, 16, 0.18);
+  padding-top: 8px;
+}
+
+.debug-panel summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.debug-panel__controls {
+  margin-top: 8px;
+}
+
+.debug-panel__output {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-wrap;
 }
 
 .photo-panel {
@@ -311,7 +344,8 @@ body {
 
 a:focus-visible,
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -320,6 +354,7 @@ input:focus-visible {
   .topbar {
     right: 14px;
     width: auto;
+    max-height: min(42vh, 420px);
   }
 
   .photo-panel {
@@ -352,6 +387,10 @@ input:focus-visible {
 
   .mode-toggle {
     font-size: 13px;
+  }
+
+  .debug-panel__output {
+    max-height: 140px;
   }
 }
 

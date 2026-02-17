@@ -6,6 +6,9 @@
     propertyStatus: document.getElementById("property-status"),
     toggleProperty: document.getElementById("toggle-property"),
     refreshJobId: document.getElementById("refresh-jobid"),
+    debugPanel: document.getElementById("debug-panel"),
+    clearLogs: document.getElementById("clear-logs"),
+    logOutput: document.getElementById("log-output"),
     photoPanel: document.getElementById("photo-panel"),
     timeSlider: document.getElementById("time-slider"),
     dateMin: document.getElementById("date-min"),
@@ -22,6 +25,18 @@
     return;
   }
 
+  const PROPERTY = {
+    owner: "Roar Meen",
+    komm: "3807",
+    gnr: 70,
+    bnr: 17,
+    fnr: 0,
+  };
+
+  const JOBID_STORAGE_KEY = `gardskart_jobid_${PROPERTY.komm}_${PROPERTY.gnr}_${PROPERTY.bnr}_${PROPERTY.fnr}`;
+  const JOBID_TTL_MS = 6 * 24 * 60 * 60 * 1000;
+  const LOG_LIMIT = 220;
+
   const state = {
     photos: [],
     dates: [],
@@ -35,19 +50,9 @@
     propertyOverlayEnabled: true,
     propertyJobId: null,
     propertyLayer: null,
-    propertyFetchWarning: null,
+    propertyFetchMeta: null,
+    logs: [],
   };
-
-  const PROPERTY = {
-    owner: "Roar Meen",
-    komm: "3807",
-    gnr: 70,
-    bnr: 17,
-    fnr: 0,
-  };
-
-  const JOBID_STORAGE_KEY = `gardskart_jobid_${PROPERTY.komm}_${PROPERTY.gnr}_${PROPERTY.bnr}_${PROPERTY.fnr}`;
-  const JOBID_TTL_MS = 6 * 24 * 60 * 60 * 1000;
 
   const safeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => {
     const chars = {
@@ -72,6 +77,57 @@
 
   const propertyIdString = () => `${PROPERTY.komm}-${PROPERTY.gnr}/${PROPERTY.bnr}/${PROPERTY.fnr}`;
 
+  const stringifyDetails = (details) => {
+    if (details == null) return "";
+    try {
+      return JSON.stringify(details);
+    } catch {
+      return String(details);
+    }
+  };
+
+  const renderLogs = () => {
+    if (!refs.logOutput) return;
+    if (state.logs.length === 0) {
+      refs.logOutput.textContent = "Ingen logger enda.";
+      return;
+    }
+
+    const lines = state.logs.slice(-70).map((entry) => {
+      const details = entry.details ? ` ${stringifyDetails(entry.details)}` : "";
+      return `${entry.time} [${entry.level}] ${entry.message}${details}`;
+    });
+    refs.logOutput.textContent = lines.join("\n");
+  };
+
+  const logEvent = (level, message, details = null) => {
+    const now = new Date();
+    const time = now.toLocaleTimeString("nb-NO", { hour12: false });
+    const entry = { level, message, details, time };
+    state.logs.push(entry);
+    if (state.logs.length > LOG_LIMIT) {
+      state.logs.splice(0, state.logs.length - LOG_LIMIT);
+    }
+
+    const args = [`[flyv-demo] ${message}`, details];
+    if (level === "error") console.error(...args);
+    else if (level === "warn") console.warn(...args);
+    else console.info(...args);
+
+    renderLogs();
+  };
+
+  const initDebugPanel = () => {
+    if (refs.clearLogs) {
+      refs.clearLogs.addEventListener("click", () => {
+        state.logs = [];
+        renderLogs();
+        logEvent("info", "Logg tømt manuelt");
+      });
+    }
+    renderLogs();
+  };
+
   const setPropertyStatus = (text) => {
     if (refs.propertyStatus) refs.propertyStatus.textContent = text;
   };
@@ -94,8 +150,10 @@
         JOBID_STORAGE_KEY,
         JSON.stringify({ jobId, fetchedAt: Date.now() }),
       );
-    } catch {
-      // ignore storage failures
+    } catch (error) {
+      logEvent("warn", "Klarte ikke lagre jobId i localStorage", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -305,7 +363,10 @@
   };
 
   const fetchPropertyJobId = async () => {
-    const response = await fetch(propertyServiceUrl());
+    const url = propertyServiceUrl();
+    logEvent("info", "Henter jobId fra Gårdskart", { url });
+
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Kunne ikke hente jobId (${response.status}).`);
     }
@@ -316,21 +377,62 @@
       throw new Error("Mangler jobId i svar fra Gårdskart.");
     }
 
-    const warning = payload?.nonfarmPropertyConfirmation?.dekWFSStatusDesc || null;
-    state.propertyFetchWarning = warning;
+    const statusCode = payload?.nonfarmPropertyConfirmation?.dekWFSStatusCode ?? null;
+    const statusDesc = payload?.nonfarmPropertyConfirmation?.dekWFSStatusDesc ?? null;
+
+    state.propertyFetchMeta = {
+      statusCode,
+      statusDesc,
+      fetchedAt: new Date().toISOString(),
+      source: "fresh",
+    };
+
     state.propertyJobId = jobId;
     writeStoredJobId(jobId);
+
+    logEvent("info", "Mottok jobId fra Gårdskart", {
+      jobId,
+      statusCode,
+      statusDesc,
+    });
+
+    if (statusCode && statusCode !== 0) {
+      logEvent("warn", "Gårdskart returnerte ikke-null statuskode ved jobId-henting", {
+        statusCode,
+        statusDesc,
+      });
+    }
+
     return jobId;
   };
 
   const ensurePropertyJobId = async (force = false) => {
     if (!force) {
       const cached = readStoredJobId();
-      if (cached && Date.now() - Number(cached.fetchedAt) < JOBID_TTL_MS) {
-        state.propertyJobId = cached.jobId;
-        return cached.jobId;
+      if (cached) {
+        const ageMs = Date.now() - Number(cached.fetchedAt);
+        if (ageMs < JOBID_TTL_MS) {
+          state.propertyJobId = cached.jobId;
+          state.propertyFetchMeta = {
+            statusCode: null,
+            statusDesc: null,
+            fetchedAt: new Date(Number(cached.fetchedAt)).toISOString(),
+            source: "cache",
+          };
+          logEvent("info", "Bruker cached jobId", {
+            jobId: cached.jobId,
+            ageHours: Number((ageMs / 3600000).toFixed(2)),
+          });
+          return cached.jobId;
+        }
+
+        logEvent("info", "Cached jobId utløpt, henter ny", {
+          jobId: cached.jobId,
+          ageHours: Number((ageMs / 3600000).toFixed(2)),
+        });
       }
     }
+
     return fetchPropertyJobId();
   };
 
@@ -345,6 +447,11 @@
     clearPropertyLayer();
     if (!state.propertyOverlayEnabled || !state.propertyJobId) return;
 
+    logEvent("info", "Tegner eiendomslag", {
+      property: propertyIdString(),
+      jobId: state.propertyJobId,
+    });
+
     const layer = L.tileLayer.wms("https://wms.nibio.no/cgi-bin/gardskart", {
       layers: "eiendomsgrenser",
       styles: "default",
@@ -357,12 +464,27 @@
     });
 
     layer.on("load", () => {
-      const warning = state.propertyFetchWarning ? ` (${state.propertyFetchWarning})` : "";
-      setPropertyStatus(`Eiendomslag aktivt: ${propertyIdString()}${warning}`);
+      const statusCode = state.propertyFetchMeta?.statusCode;
+      if (statusCode && statusCode !== 0) {
+        setPropertyStatus(`Eiendomslag aktivt: ${propertyIdString()} (jobId ${state.propertyJobId}). Se teknisk logg.`);
+      } else {
+        setPropertyStatus(`Eiendomslag aktivt: ${propertyIdString()} (jobId ${state.propertyJobId})`);
+      }
+
+      logEvent("info", "Eiendomslag lastet", {
+        property: propertyIdString(),
+        jobId: state.propertyJobId,
+        fetchMeta: state.propertyFetchMeta,
+      });
     });
 
-    layer.on("tileerror", () => {
-      setPropertyStatus("Eiendomslag feilet. Prøv «Forny jobId».");
+    layer.on("tileerror", (event) => {
+      setPropertyStatus("Eiendomslag feilet. Prøv «Forny jobId». Se teknisk logg.");
+      logEvent("error", "Tile-feil i eiendomslag", {
+        jobId: state.propertyJobId,
+        coords: event?.coords || null,
+        tileSrc: event?.tile?.src || null,
+      });
     });
 
     state.propertyLayer = layer;
@@ -373,17 +495,20 @@
     if (!state.propertyOverlayEnabled) {
       clearPropertyLayer();
       setPropertyStatus("Eiendomslag er skrudd av.");
+      logEvent("info", "Eiendomslag skrudd av av bruker");
       return;
     }
 
     setPropertyStatus("Henter eiendomslag fra Gårdskart ...");
+    logEvent("info", "Oppdaterer eiendomslag", { force });
+
     try {
       await ensurePropertyJobId(force);
       drawPropertyLayer();
     } catch (error) {
-      setPropertyStatus(
-        `Klarte ikke å hente eiendomslag: ${error instanceof Error ? error.message : "ukjent feil"}`,
-      );
+      const message = error instanceof Error ? error.message : "ukjent feil";
+      setPropertyStatus(`Klarte ikke å hente eiendomslag: ${message}`);
+      logEvent("error", "Feil ved oppdatering av eiendomslag", { message });
     }
   };
 
@@ -392,13 +517,16 @@
     if (!response.ok) throw new Error("Klarte ikke å laste photos.geojson.");
 
     const geojson = await response.json();
-    return (geojson.features || [])
+    const features = (geojson.features || [])
       .filter((feature) => feature?.properties?.date && feature?.geometry?.coordinates)
       .sort((a, b) => {
         const byDate = String(a.properties.date).localeCompare(String(b.properties.date));
         if (byDate !== 0) return byDate;
         return String(a.properties.id).localeCompare(String(b.properties.id));
       });
+
+    logEvent("info", "Lastet fotodata", { features: features.length });
+    return features;
   };
 
   const initMap = (features) => {
@@ -428,6 +556,8 @@
 
     state.map.addLayer(state.clusterLayer);
     window.setTimeout(() => state.map.invalidateSize(), 50);
+
+    logEvent("info", "Kart initialisert", { center: [lat, lng] });
   };
 
   const initTimeline = () => {
@@ -458,19 +588,26 @@
 
     refs.modeCumulative.addEventListener("change", () => {
       state.cumulative = refs.modeCumulative.checked;
+      logEvent("info", "Endret tidsmodus", {
+        mode: state.cumulative ? "cumulative" : "day",
+      });
       renderForDay({ keepView: true });
     });
 
     refs.playPause.addEventListener("click", () => {
       if (state.playTimer) {
         stopPlayback();
+        logEvent("info", "Stoppet avspilling");
         return;
       }
 
       refs.playPause.textContent = "Pause";
+      logEvent("info", "Startet avspilling av tidslinje");
+
       state.playTimer = window.setInterval(() => {
         if (state.dayIndex >= state.dates.length - 1) {
           stopPlayback();
+          logEvent("info", "Avspilling ferdig ved siste dato");
           return;
         }
         state.dayIndex += 1;
@@ -529,14 +666,23 @@
 
   const init = async () => {
     try {
+      initDebugPanel();
+      logEvent("info", "Starter demo-applikasjon", { property: propertyIdString() });
+
       state.photos = await loadData();
 
       if (state.photos.length === 0) {
         refs.status.textContent = "Fant ingen gyldige punkter i datasettet.";
+        logEvent("warn", "Ingen gyldige punkter i datasett");
         return;
       }
 
       state.dates = [...new Set(state.photos.map((feature) => feature.properties.date))].sort();
+      logEvent("info", "Datoperiode klar", {
+        count: state.dates.length,
+        from: state.dates[0],
+        to: state.dates[state.dates.length - 1],
+      });
 
       initMap(state.photos);
       initPropertyControls();
@@ -544,8 +690,12 @@
       applyInitialParams();
       initTimeline();
       renderForDay({ keepView: false, updateUrl: true });
+
+      logEvent("info", "Demo klar");
     } catch (error) {
-      refs.status.textContent = `Feil: ${error instanceof Error ? error.message : "ukjent feil"}`;
+      const message = error instanceof Error ? error.message : "ukjent feil";
+      refs.status.textContent = `Feil: ${message}`;
+      logEvent("error", "Kritisk init-feil", { message });
     }
   };
 
