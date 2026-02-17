@@ -1,0 +1,9 @@
+.DS_Store
+.DS_Store?
+*.swp
+*.swo
+.vscode/
+node_modules/
+dist/
+build/
+Nettside/assets/dronevideo.mp4

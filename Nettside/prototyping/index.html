@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flyvendebønder – prototyping</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <style>
+      :root {
+        --bg: #f4e8d6;
+        --ink: #2b1c12;
+        --muted: #6a4b3a;
+        --card: rgba(255, 255, 255, 0.55);
+        --border: rgba(43, 28, 18, 0.14);
+        --shadow: 0 16px 60px rgba(43, 28, 18, 0.18);
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 40px 22px 56px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: -0.02em;
+      }
+      p {
+        margin: 0 0 18px;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+        margin-top: 22px;
+      }
+      a.card {
+        display: block;
+        padding: 18px 18px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        text-decoration: none;
+        color: inherit;
+        transition: transform 120ms ease, border-color 120ms ease;
+      }
+      a.card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(43, 28, 18, 0.22);
+      }
+      .kicker {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .title {
+        margin-top: 6px;
+        font-size: 18px;
+        font-weight: 650;
+      }
+      .desc {
+        margin-top: 8px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+      .note {
+        margin-top: 18px;
+        padding: 14px 14px;
+        border: 1px dashed rgba(43, 28, 18, 0.22);
+        border-radius: 14px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Prototyping</h1>
+      <p>Lokale prototyper ved siden av eksisterende nettside. Ingenting her publiseres automatisk.</p>
+
+      <div class="grid" role="list">
+        <a class="card" href="./v1/" role="listitem">
+          <div class="kicker">v1</div>
+          <div class="title">Kopi av dagens nettside</div>
+          <div class="desc">Samme innhold/struktur, bare lagt i egen mappe for trygg testing.</div>
+        </a>
+
+        <a class="card" href="./v2-pola/" role="listitem">
+          <div class="kicker">v2</div>
+          <div class="title">Pola-inspirert scroll-prototype</div>
+          <div class="desc">Scroll-snap + “mekanisk” stepping, med dronevideo som skalerer når du scroller.</div>
+        </a>
+      </div>
+
+      <div class="note">
+        Tips: Start en lokal server fra <code>Nettside/</code> for å teste video og relative stier.
+      </div>
+    </main>
+  </body>
+</html>
+
