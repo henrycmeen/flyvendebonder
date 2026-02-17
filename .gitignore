@@ -8,3 +8,6 @@ dist/
 build/
 .staging/
 apps/shared-assets/dronevideo.mp4
+apps/backend-api/data/*.db
+__pycache__/
+*.pyc

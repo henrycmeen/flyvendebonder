@@ -3,6 +3,7 @@
 ## Struktur
 - `apps/info-site/`: produksjonskilde for infosiden (`/`)
 - `apps/demo-fotokart/`: statisk demo-app (`/demo/`)
+- `apps/backend-api/`: liten backend (SQLite + HTTP API for brukere)
 - `apps/shared-assets/`: felles assets (logo/video)
 - `docs/`: innsikt, brand og driftsdokumentasjon
 - `archive/`: historiske versjoner av tidligere sideoppsett
@@ -31,6 +32,14 @@
   ```bash
   ./scripts/deploy-flyvendebonder.sh
   ```
+
+## Backend (lokalt)
+```bash
+cd apps/backend-api
+python3 server.py
+```
+
+API på `http://127.0.0.1:8787` med seed-bruker for `Roar Meen (3807-70/17/0)`.
 
 ## Bildedata og analyse
 - Regenerer demo-data fra dronebilder:
