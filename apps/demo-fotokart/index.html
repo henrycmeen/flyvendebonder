@@ -23,6 +23,15 @@
       <h1 class="topbar__title">Flyvendebønder tidskart</h1>
       <p class="topbar__subtitle">Bla dag for dag i geotaggede dronebilder fra Meen gård.</p>
       <p id="status" class="topbar__status">Laster data ...</p>
+      <p id="property-label" class="topbar__property">Eiendom: 3807-70/17/0 (Roar Meen)</p>
+      <div class="topbar__property-controls">
+        <label class="property-toggle" for="toggle-property">
+          <input id="toggle-property" type="checkbox" checked />
+          Vis eiendomsgrenser
+        </label>
+        <button id="refresh-jobid" type="button" class="btn btn--small">Forny jobId</button>
+      </div>
+      <p id="property-status" class="topbar__property-status">Eiendomslag: laster ...</p>
     </header>
 
     <aside id="photo-panel" class="floating photo-panel" aria-live="polite">

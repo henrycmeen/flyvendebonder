@@ -102,6 +102,34 @@ body {
   font-weight: 650;
 }
 
+.topbar__property {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.topbar__property-controls {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.property-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.topbar__property-status {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .photo-panel {
   right: 14px;
   top: 14px;
@@ -167,6 +195,12 @@ body {
 
 .btn:hover {
   border-color: rgba(61, 27, 7, 0.48);
+}
+
+.btn--small {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .mode-toggle {
@@ -300,6 +334,10 @@ input:focus-visible {
 
 @media (max-width: 640px) {
   .topbar__subtitle {
+    display: none;
+  }
+
+  .topbar__property-status {
     display: none;
   }
 

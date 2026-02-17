@@ -2,6 +2,7 @@
 
 Statisk frontend-demo med Leaflet + marker clustering.
 UI er nå kart-først: full kartflate med tidslinje nederst.
+Inkluderer nå NIBIO Gårdskart-overlegg for eiendom (`3807-70/17/0`) med automatisk `jobId`-fornying.
 
 ## Oppdatere med nye dronebilder
 ```bash

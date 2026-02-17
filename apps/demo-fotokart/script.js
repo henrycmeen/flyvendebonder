@@ -2,6 +2,10 @@
   const refs = {
     map: document.getElementById("map"),
     status: document.getElementById("status"),
+    propertyLabel: document.getElementById("property-label"),
+    propertyStatus: document.getElementById("property-status"),
+    toggleProperty: document.getElementById("toggle-property"),
+    refreshJobId: document.getElementById("refresh-jobid"),
     photoPanel: document.getElementById("photo-panel"),
     timeSlider: document.getElementById("time-slider"),
     dateMin: document.getElementById("date-min"),
@@ -28,7 +32,22 @@
     clusterLayer: null,
     markersById: new Map(),
     playTimer: null,
+    propertyOverlayEnabled: true,
+    propertyJobId: null,
+    propertyLayer: null,
+    propertyFetchWarning: null,
   };
+
+  const PROPERTY = {
+    owner: "Roar Meen",
+    komm: "3807",
+    gnr: 70,
+    bnr: 17,
+    fnr: 0,
+  };
+
+  const JOBID_STORAGE_KEY = `gardskart_jobid_${PROPERTY.komm}_${PROPERTY.gnr}_${PROPERTY.bnr}_${PROPERTY.fnr}`;
+  const JOBID_TTL_MS = 6 * 24 * 60 * 60 * 1000;
 
   const safeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => {
     const chars = {
@@ -49,6 +68,35 @@
       month: "short",
       year: "numeric",
     });
+  };
+
+  const propertyIdString = () => `${PROPERTY.komm}-${PROPERTY.gnr}/${PROPERTY.bnr}/${PROPERTY.fnr}`;
+
+  const setPropertyStatus = (text) => {
+    if (refs.propertyStatus) refs.propertyStatus.textContent = text;
+  };
+
+  const readStoredJobId = () => {
+    try {
+      const raw = window.localStorage.getItem(JOBID_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.jobId || !parsed?.fetchedAt) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredJobId = (jobId) => {
+    try {
+      window.localStorage.setItem(
+        JOBID_STORAGE_KEY,
+        JSON.stringify({ jobId, fetchedAt: Date.now() }),
+      );
+    } catch {
+      // ignore storage failures
+    }
   };
 
   const getParams = () => new URLSearchParams(window.location.search);
@@ -246,6 +294,99 @@
     }
   };
 
+  const propertyServiceUrl = () => {
+    const params = new URLSearchParams({
+      komm: PROPERTY.komm,
+      gnr: String(PROPERTY.gnr),
+      bnr: String(PROPERTY.bnr),
+      fnr: String(PROPERTY.fnr),
+    });
+    return `https://kart17.nibio.no/gardskart_ws_04/gpiareastat?${params.toString()}`;
+  };
+
+  const fetchPropertyJobId = async () => {
+    const response = await fetch(propertyServiceUrl());
+    if (!response.ok) {
+      throw new Error(`Kunne ikke hente jobId (${response.status}).`);
+    }
+
+    const payload = await response.json();
+    const jobId = payload?.jobId;
+    if (!jobId) {
+      throw new Error("Mangler jobId i svar fra Gårdskart.");
+    }
+
+    const warning = payload?.nonfarmPropertyConfirmation?.dekWFSStatusDesc || null;
+    state.propertyFetchWarning = warning;
+    state.propertyJobId = jobId;
+    writeStoredJobId(jobId);
+    return jobId;
+  };
+
+  const ensurePropertyJobId = async (force = false) => {
+    if (!force) {
+      const cached = readStoredJobId();
+      if (cached && Date.now() - Number(cached.fetchedAt) < JOBID_TTL_MS) {
+        state.propertyJobId = cached.jobId;
+        return cached.jobId;
+      }
+    }
+    return fetchPropertyJobId();
+  };
+
+  const clearPropertyLayer = () => {
+    if (state.propertyLayer && state.map.hasLayer(state.propertyLayer)) {
+      state.map.removeLayer(state.propertyLayer);
+    }
+    state.propertyLayer = null;
+  };
+
+  const drawPropertyLayer = () => {
+    clearPropertyLayer();
+    if (!state.propertyOverlayEnabled || !state.propertyJobId) return;
+
+    const layer = L.tileLayer.wms("https://wms.nibio.no/cgi-bin/gardskart", {
+      layers: "eiendomsgrenser",
+      styles: "default",
+      format: "image/png",
+      transparent: true,
+      version: "1.3.0",
+      jobid: state.propertyJobId,
+      pane: "propertyPane",
+      attribution: "NIBIO Gårdskart",
+    });
+
+    layer.on("load", () => {
+      const warning = state.propertyFetchWarning ? ` (${state.propertyFetchWarning})` : "";
+      setPropertyStatus(`Eiendomslag aktivt: ${propertyIdString()}${warning}`);
+    });
+
+    layer.on("tileerror", () => {
+      setPropertyStatus("Eiendomslag feilet. Prøv «Forny jobId».");
+    });
+
+    state.propertyLayer = layer;
+    layer.addTo(state.map);
+  };
+
+  const refreshPropertyLayer = async (force = false) => {
+    if (!state.propertyOverlayEnabled) {
+      clearPropertyLayer();
+      setPropertyStatus("Eiendomslag er skrudd av.");
+      return;
+    }
+
+    setPropertyStatus("Henter eiendomslag fra Gårdskart ...");
+    try {
+      await ensurePropertyJobId(force);
+      drawPropertyLayer();
+    } catch (error) {
+      setPropertyStatus(
+        `Klarte ikke å hente eiendomslag: ${error instanceof Error ? error.message : "ukjent feil"}`,
+      );
+    }
+  };
+
   const loadData = async () => {
     const response = await fetch("./data/photos.geojson");
     if (!response.ok) throw new Error("Klarte ikke å laste photos.geojson.");
@@ -269,6 +410,9 @@
       zoomControl: true,
       attributionControl: true,
     }).setView([lat, lng], 13);
+
+    state.map.createPane("propertyPane");
+    state.map.getPane("propertyPane").style.zIndex = "420";
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 20,
@@ -335,6 +479,31 @@
     });
   };
 
+  const initPropertyControls = () => {
+    if (refs.propertyLabel) {
+      refs.propertyLabel.textContent = `Eiendom: ${propertyIdString()} (${PROPERTY.owner})`;
+    }
+
+    if (refs.toggleProperty) {
+      refs.toggleProperty.checked = true;
+      refs.toggleProperty.addEventListener("change", () => {
+        state.propertyOverlayEnabled = refs.toggleProperty.checked;
+        refreshPropertyLayer(false);
+      });
+    }
+
+    if (refs.refreshJobId) {
+      refs.refreshJobId.addEventListener("click", async () => {
+        refs.refreshJobId.disabled = true;
+        try {
+          await refreshPropertyLayer(true);
+        } finally {
+          refs.refreshJobId.disabled = false;
+        }
+      });
+    }
+  };
+
   const applyInitialParams = () => {
     const params = getParams();
     const mode = params.get("mode");
@@ -370,6 +539,8 @@
       state.dates = [...new Set(state.photos.map((feature) => feature.properties.date))].sort();
 
       initMap(state.photos);
+      initPropertyControls();
+      await refreshPropertyLayer(false);
       applyInitialParams();
       initTimeline();
       renderForDay({ keepView: false, updateUrl: true });
