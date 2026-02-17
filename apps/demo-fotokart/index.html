@@ -3,61 +3,61 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flyvendebønder demo | Fotokart</title>
+    <title>Flyvendebønder demo | Tidskart</title>
     <meta
       name="description"
-      content="Interaktiv fotokart-demo med kapittelbasert historiefortelling fra Flyvendebønder." 
+      content="Kartdemo med tidslinje som viser dronebilder på GPS-posisjon dag for dag."
     />
     <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
     <link rel="stylesheet" href="./vendor/markercluster/MarkerCluster.css" />
     <link rel="stylesheet" href="./vendor/markercluster/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <a class="skip-link" href="#story-panel">Hopp til innhold</a>
+  <body class="map-page">
+    <a class="skip-link" href="#timeline">Hopp til tidslinje</a>
 
-    <header class="topbar" role="banner">
+    <div id="map" class="map" aria-label="Kart med geotaggede bilder"></div>
+
+    <header class="floating topbar" role="banner">
       <a class="topbar__back" href="/">Til infosiden</a>
-      <p class="topbar__eyebrow">Prøv demo</p>
-      <h1 class="topbar__title">Flyvendebønder fotokart</h1>
-      <p class="topbar__subtitle">Historiefortelling med kuraterte bilder fra Meen gård.</p>
+      <h1 class="topbar__title">Flyvendebønder tidskart</h1>
+      <p class="topbar__subtitle">Bla dag for dag i geotaggede dronebilder fra Meen gård.</p>
+      <p id="status" class="topbar__status">Laster data ...</p>
     </header>
 
-    <main class="layout" role="main">
-      <section id="story-panel" class="panel" aria-labelledby="kapittel-tittel">
-        <div class="panel__head">
-          <h2 id="kapittel-tittel">Kapitler</h2>
-          <p id="kapittel-beskrivelse" class="panel__description"></p>
-        </div>
+    <aside id="photo-panel" class="floating photo-panel" aria-live="polite">
+      <h2 class="photo-panel__title">Velg et punkt</h2>
+      <p class="photo-panel__meta">Klikk markør eller bilde i stripen nederst.</p>
+      <img
+        class="photo-panel__image"
+        src="./assets/photos/meen-20240701184522_0021_d.jpg"
+        alt="Forhåndsvisning"
+      />
+      <p class="photo-panel__caption">Detaljer om valgt bilde vises her.</p>
+    </aside>
 
-        <nav id="chapters" class="chapter-list" aria-label="Kapitler i demo"></nav>
+    <section id="timeline" class="floating timeline" aria-label="Tidslinje">
+      <div class="timeline__controls">
+        <button id="prev-day" type="button" class="btn">Forrige</button>
+        <button id="play-pause" type="button" class="btn">Spill av</button>
+        <button id="next-day" type="button" class="btn">Neste</button>
 
-        <div class="panel__meta" aria-live="polite">
-          <p><strong id="count-visible">0</strong> markører i visning</p>
-          <p>Deep-link: <code>?chapter=...</code> og <code>?photo=...</code></p>
-        </div>
+        <label class="mode-toggle" for="mode-cumulative">
+          <input id="mode-cumulative" type="checkbox" checked />
+          Vis alt t.o.m. valgt dag
+        </label>
+      </div>
 
-        <section aria-labelledby="funn-label" class="photo-list-wrap">
-          <h3 id="funn-label">Funn i valgt kapittel</h3>
-          <ul id="photo-list" class="photo-list"></ul>
-        </section>
-      </section>
+      <input id="time-slider" class="timeline__slider" type="range" min="0" max="0" step="1" value="0" />
 
-      <section class="map-column" aria-label="Kartvisning">
-        <div id="map" class="map"></div>
+      <div class="timeline__dates">
+        <span id="date-min">-</span>
+        <strong id="date-current">-</strong>
+        <span id="date-max">-</span>
+      </div>
 
-        <aside id="photo-card" class="photo-card" aria-live="polite">
-          <h3 class="photo-card__title">Velg et funn</h3>
-          <p class="photo-card__meta">Klikk markør eller velg i listen.</p>
-          <img
-            class="photo-card__image"
-            src="./assets/photos/meen-20240701184522_0021_d.jpg"
-            alt="Forhåndsvisning"
-          />
-          <p class="photo-card__caption">Bildevisning oppdateres når du velger et punkt.</p>
-        </aside>
-      </section>
-    </main>
+      <ul id="photo-strip" class="photo-strip" aria-label="Bilder for valgt tidsvisning"></ul>
+    </section>
 
     <script src="./vendor/leaflet/leaflet.js"></script>
     <script src="./vendor/markercluster/leaflet.markercluster.js"></script>

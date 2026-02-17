@@ -1,6 +1,7 @@
 # Demo-fotokart (`/demo/`)
 
 Statisk frontend-demo med Leaflet + marker clustering.
+UI er nå kart-først: full kartflate med tidslinje nederst.
 
 ## Oppdatere med nye dronebilder
 ```bash
@@ -25,17 +26,9 @@ Statisk frontend-demo med Leaflet + marker clustering.
   - `caption` (string)
 
 `data/story.json`
-- `title` (string)
-- `subtitle` (string)
-- `chapters[]`:
-  - `slug` (string)
-  - `title` (string)
-  - `description` (string)
-  - `focus.lat` (number)
-  - `focus.lng` (number)
-  - `focus.zoom` (number)
-  - `filter.chapter` (string)
+- Beholdes for videre arbeid, men brukes ikke aktivt i tidslinje-UI akkurat nå.
 
 ## Deep-links
-- `?chapter=<slug>`
+- `?date=<YYYY-MM-DD>`
 - `?photo=<id>`
+- `?mode=cumulative` eller `?mode=day`

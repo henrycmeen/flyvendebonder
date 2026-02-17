@@ -1,25 +1,33 @@
 (() => {
   const refs = {
-    chapters: document.getElementById("chapters"),
-    chapterDescription: document.getElementById("kapittel-beskrivelse"),
-    photoList: document.getElementById("photo-list"),
-    countVisible: document.getElementById("count-visible"),
-    photoCard: document.getElementById("photo-card"),
     map: document.getElementById("map"),
+    status: document.getElementById("status"),
+    photoPanel: document.getElementById("photo-panel"),
+    timeSlider: document.getElementById("time-slider"),
+    dateMin: document.getElementById("date-min"),
+    dateCurrent: document.getElementById("date-current"),
+    dateMax: document.getElementById("date-max"),
+    prevDay: document.getElementById("prev-day"),
+    nextDay: document.getElementById("next-day"),
+    playPause: document.getElementById("play-pause"),
+    modeCumulative: document.getElementById("mode-cumulative"),
+    photoStrip: document.getElementById("photo-strip"),
   };
 
-  if (!refs.chapters || !refs.photoList || !refs.map) {
+  if (!refs.map || !refs.timeSlider || !refs.photoStrip) {
     return;
   }
 
   const state = {
-    story: null,
     photos: [],
-    activeChapter: null,
+    dates: [],
+    dayIndex: 0,
     activePhotoId: null,
+    cumulative: true,
     map: null,
     clusterLayer: null,
     markersById: new Map(),
+    playTimer: null,
   };
 
   const safeText = (value) => String(value || "").replace(/[&<>"']/g, (char) => {
@@ -33,24 +41,7 @@
     return chars[char] || char;
   });
 
-  const getParams = () => new URLSearchParams(window.location.search);
-
-  const setParams = (updates) => {
-    const params = getParams();
-    Object.entries(updates).forEach(([key, value]) => {
-      if (!value) {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-    });
-    const query = params.toString();
-    const next = query ? `${window.location.pathname}?${query}` : window.location.pathname;
-    window.history.replaceState({}, "", next);
-  };
-
   const formatDate = (value) => {
-    if (!value) return "Ukjent dato";
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.toLocaleDateString("nb-NO", {
@@ -60,11 +51,17 @@
     });
   };
 
-  const chapterBySlug = (slug) => state.story.chapters.find((chapter) => chapter.slug === slug);
+  const getParams = () => new URLSearchParams(window.location.search);
 
-  const filterPhotos = (chapterSlug) => {
-    if (!chapterSlug) return state.photos;
-    return state.photos.filter((feature) => feature.properties.chapter === chapterSlug);
+  const setParams = (updates) => {
+    const params = getParams();
+    Object.entries(updates).forEach(([key, value]) => {
+      if (!value) params.delete(key);
+      else params.set(key, value);
+    });
+    const query = params.toString();
+    const next = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState({}, "", next);
   };
 
   const popupHtml = (feature) => {
@@ -78,230 +75,203 @@
     `;
   };
 
-  const setPhotoCard = (feature) => {
-    const props = feature.properties;
-    refs.photoCard.innerHTML = `
-      <h3 class="photo-card__title">${safeText(props.title)}</h3>
-      <p class="photo-card__meta">${safeText(formatDate(props.date))} · ${safeText(props.tags.join(", "))}</p>
-      <img class="photo-card__image" src="${safeText(props.image)}" alt="${safeText(props.title)}" loading="lazy" />
-      <p class="photo-card__caption">${safeText(props.caption)}</p>
-    `;
-  };
-
-  const setActivePhotoInList = () => {
-    const items = refs.photoList.querySelectorAll(".photo-item");
-    items.forEach((item) => {
-      if (item.dataset.photoId === state.activePhotoId) {
-        item.classList.add("is-active");
-      } else {
-        item.classList.remove("is-active");
-      }
-    });
-  };
-
-  const focusPhoto = (photoId, options = {}) => {
-    const { panMap = true, updateUrl = true } = options;
-    if (!photoId) return;
-
-    const feature = state.photos.find((candidate) => candidate.properties.id === photoId);
-    const marker = state.markersById.get(photoId);
-    if (!feature || !marker) return;
-
-    state.activePhotoId = photoId;
-    setPhotoCard(feature);
-    setActivePhotoInList();
-
-    if (panMap) {
-      state.map.setView(marker.getLatLng(), Math.max(state.map.getZoom(), 14), {
-        animate: true,
-      });
-      marker.openPopup();
-    }
-
-    if (updateUrl) {
-      setParams({ chapter: state.activeChapter, photo: state.activePhotoId });
-    }
-  };
-
-  const buildPhotoList = (features) => {
-    refs.photoList.innerHTML = "";
-
-    if (features.length === 0) {
-      refs.photoList.innerHTML = "<li>Ingen funn i dette kapittelet.</li>";
+  const setPanel = (feature) => {
+    if (!feature) {
+      refs.photoPanel.innerHTML = `
+        <h2 class="photo-panel__title">Ingen treff</h2>
+        <p class="photo-panel__meta">Ingen bilder i valgt tidsvisning.</p>
+      `;
       return;
     }
 
-    const sorted = [...features].sort((a, b) => {
-      return String(a.properties.date).localeCompare(String(b.properties.date));
+    const props = feature.properties;
+    refs.photoPanel.innerHTML = `
+      <h2 class="photo-panel__title">${safeText(props.title)}</h2>
+      <p class="photo-panel__meta">${safeText(formatDate(props.date))} · ${safeText(props.tags.join(", "))}</p>
+      <img class="photo-panel__image" src="${safeText(props.image)}" alt="${safeText(props.title)}" loading="lazy" />
+      <p class="photo-panel__caption">${safeText(props.caption)}</p>
+    `;
+  };
+
+  const stopPlayback = () => {
+    if (state.playTimer) {
+      window.clearInterval(state.playTimer);
+      state.playTimer = null;
+    }
+    refs.playPause.textContent = "Spill av";
+  };
+
+  const buildMarkers = (features) => {
+    state.markersById.clear();
+    state.clusterLayer.clearLayers();
+
+    features.forEach((feature) => {
+      const [lng, lat] = feature.geometry.coordinates;
+      const marker = L.marker([lat, lng]);
+      marker.bindPopup(popupHtml(feature), {
+        closeButton: false,
+        autoPanPadding: [24, 24],
+      });
+      marker.on("click", () => {
+        focusPhoto(feature.properties.id, { panMap: false, updateUrl: true });
+      });
+      state.clusterLayer.addLayer(marker);
+      state.markersById.set(feature.properties.id, marker);
     });
+  };
+
+  const currentDate = () => state.dates[state.dayIndex] || null;
+
+  const visiblePhotos = () => {
+    const selected = currentDate();
+    if (!selected) return [];
+
+    if (state.cumulative) {
+      return state.photos.filter((feature) => feature.properties.date <= selected);
+    }
+    return state.photos.filter((feature) => feature.properties.date === selected);
+  };
+
+  const updateStrip = (features) => {
+    refs.photoStrip.innerHTML = "";
+
+    if (features.length === 0) {
+      refs.photoStrip.innerHTML = '<li class="photo-strip__item"><button type="button">Ingen bilder</button></li>';
+      return;
+    }
+
+    const sorted = [...features].sort((a, b) => String(a.properties.date).localeCompare(String(b.properties.date)));
 
     sorted.forEach((feature) => {
       const props = feature.properties;
       const item = document.createElement("li");
-      item.className = "photo-item";
+      item.className = "photo-strip__item";
       item.dataset.photoId = props.id;
 
       const button = document.createElement("button");
       button.type = "button";
-      button.setAttribute("aria-label", `Vis ${props.title} i kartet`);
-      button.innerHTML = `
-        <img class="photo-thumb" src="${safeText(props.thumbnail)}" alt="" loading="lazy" />
-        <span>
-          <p class="photo-title">${safeText(props.title)}</p>
-          <p class="photo-meta">${safeText(formatDate(props.date))}</p>
-          <p class="photo-caption">${safeText(props.caption)}</p>
-        </span>
-      `;
-
+      button.setAttribute("aria-label", `Vis ${props.title}`);
+      button.innerHTML = `<img src="${safeText(props.thumbnail)}" alt="${safeText(props.title)}" loading="lazy" />`;
       button.addEventListener("click", () => {
         focusPhoto(props.id, { panMap: true, updateUrl: true });
       });
 
       item.appendChild(button);
-      refs.photoList.appendChild(item);
-    });
-
-    setActivePhotoInList();
-  };
-
-  const clearMarkers = () => {
-    state.markersById.clear();
-    if (!state.clusterLayer) return;
-    state.clusterLayer.clearLayers();
-  };
-
-  const buildMarkers = (features) => {
-    clearMarkers();
-
-    features.forEach((feature) => {
-      const [lng, lat] = feature.geometry.coordinates;
-      const marker = L.marker([lat, lng]);
-      marker.bindPopup(popupHtml(feature), { closeButton: false, autoPanPadding: [30, 30] });
-      marker.on("click", () => {
-        focusPhoto(feature.properties.id, { panMap: false, updateUrl: true });
-      });
-
-      state.clusterLayer.addLayer(marker);
-      state.markersById.set(feature.properties.id, marker);
-    });
-
-    refs.countVisible.textContent = String(features.length);
-  };
-
-  const setChapterDescription = (chapter) => {
-    if (!chapter) {
-      refs.chapterDescription.textContent = "Viser alle kapitler samlet.";
-      return;
-    }
-    refs.chapterDescription.textContent = chapter.description;
-  };
-
-  const setActiveChapterButton = () => {
-    const buttons = refs.chapters.querySelectorAll(".chapter-btn");
-    buttons.forEach((button) => {
-      const isAll = !state.activeChapter && button.dataset.slug === "";
-      const isChapter = button.dataset.slug === state.activeChapter;
-      if (isAll || isChapter) {
-        button.classList.add("is-active");
-        button.setAttribute("aria-current", "true");
-      } else {
-        button.classList.remove("is-active");
-        button.removeAttribute("aria-current");
-      }
+      refs.photoStrip.appendChild(item);
     });
   };
 
-  const drawChapter = (slug, options = {}) => {
-    const { updateUrl = true } = options;
+  const markStripActive = () => {
+    refs.photoStrip.querySelectorAll(".photo-strip__item").forEach((item) => {
+      if (item.dataset.photoId === state.activePhotoId) item.classList.add("is-active");
+      else item.classList.remove("is-active");
+    });
+  };
 
-    const chapter = chapterBySlug(slug);
-    state.activeChapter = chapter ? chapter.slug : null;
+  const focusPhoto = (photoId, options = {}) => {
+    const { panMap = true, updateUrl = true } = options;
+    const feature = state.photos.find((candidate) => candidate.properties.id === photoId);
+    const marker = state.markersById.get(photoId);
+    if (!feature || !marker) return;
 
-    const filtered = filterPhotos(state.activeChapter);
-    buildMarkers(filtered);
-    buildPhotoList(filtered);
-    setChapterDescription(chapter);
-    setActiveChapterButton();
+    state.activePhotoId = photoId;
+    setPanel(feature);
+    markStripActive();
 
-    if (chapter && chapter.focus) {
-      state.map.setView([chapter.focus.lat, chapter.focus.lng], chapter.focus.zoom || 13, {
-        animate: true,
-      });
-    } else if (filtered.length > 0) {
-      const bounds = L.latLngBounds(
-        filtered.map((feature) => [feature.geometry.coordinates[1], feature.geometry.coordinates[0]]),
-      );
-      state.map.fitBounds(bounds.pad(0.2));
-    }
-
-    const firstId = filtered[0]?.properties.id || null;
-    if (!filtered.find((item) => item.properties.id === state.activePhotoId)) {
-      state.activePhotoId = firstId;
-    }
-    if (state.activePhotoId) {
-      focusPhoto(state.activePhotoId, { panMap: false, updateUrl: false });
+    if (panMap) {
+      state.map.setView(marker.getLatLng(), Math.max(14, state.map.getZoom()), { animate: true });
+      marker.openPopup();
     }
 
     if (updateUrl) {
-      setParams({ chapter: state.activeChapter, photo: state.activePhotoId });
+      setParams({
+        date: currentDate(),
+        photo: state.activePhotoId,
+        mode: state.cumulative ? "cumulative" : "day",
+      });
     }
   };
 
-  const renderChapters = () => {
-    refs.chapters.innerHTML = "";
+  const updateStatus = (count, selectedDate) => {
+    const modeText = state.cumulative ? "t.o.m." : "kun";
+    refs.status.textContent = `${count} bilder vist (${modeText} ${formatDate(selectedDate)})`;
+  };
 
-    const allButton = document.createElement("button");
-    allButton.type = "button";
-    allButton.className = "chapter-btn";
-    allButton.dataset.slug = "";
-    allButton.innerHTML = `
-      <span class="chapter-btn__title">Alle kapitler</span>
-      <span class="chapter-btn__desc">Vis hele datasettet i ett kartbilde.</span>
-    `;
-    allButton.addEventListener("click", () => drawChapter(null));
-    refs.chapters.appendChild(allButton);
+  const fitToFeatures = (features) => {
+    if (features.length === 0) return;
+    const bounds = L.latLngBounds(
+      features.map((feature) => [feature.geometry.coordinates[1], feature.geometry.coordinates[0]]),
+    );
+    state.map.fitBounds(bounds.pad(0.2), { animate: true });
+  };
 
-    state.story.chapters.forEach((chapter) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "chapter-btn";
-      button.dataset.slug = chapter.slug;
-      button.innerHTML = `
-        <span class="chapter-btn__title">${safeText(chapter.title)}</span>
-        <span class="chapter-btn__desc">${safeText(chapter.description)}</span>
-      `;
-      button.addEventListener("click", () => drawChapter(chapter.slug));
-      refs.chapters.appendChild(button);
-    });
+  const renderForDay = (options = {}) => {
+    const { keepView = false, updateUrl = true } = options;
+
+    const selectedDate = currentDate();
+    if (!selectedDate) {
+      setPanel(null);
+      refs.status.textContent = "Ingen datoer i datasettet.";
+      return;
+    }
+
+    refs.timeSlider.value = String(state.dayIndex);
+    refs.dateCurrent.textContent = formatDate(selectedDate);
+
+    const visible = visiblePhotos();
+    buildMarkers(visible);
+    updateStrip(visible);
+    updateStatus(visible.length, selectedDate);
+
+    if (!keepView) {
+      fitToFeatures(visible);
+    }
+
+    if (!visible.find((feature) => feature.properties.id === state.activePhotoId)) {
+      state.activePhotoId = visible[visible.length - 1]?.properties.id || null;
+    }
+
+    if (state.activePhotoId) {
+      focusPhoto(state.activePhotoId, { panMap: false, updateUrl: false });
+    } else {
+      setPanel(null);
+    }
+
+    if (updateUrl) {
+      setParams({
+        date: selectedDate,
+        photo: state.activePhotoId,
+        mode: state.cumulative ? "cumulative" : "day",
+      });
+    }
   };
 
   const loadData = async () => {
-    const [storyResponse, photosResponse] = await Promise.all([
-      fetch("./data/story.json"),
-      fetch("./data/photos.geojson"),
-    ]);
+    const response = await fetch("./data/photos.geojson");
+    if (!response.ok) throw new Error("Klarte ikke å laste photos.geojson.");
 
-    if (!storyResponse.ok || !photosResponse.ok) {
-      throw new Error("Kunne ikke laste datafiler for demoen.");
-    }
-
-    const [story, photosGeoJson] = await Promise.all([storyResponse.json(), photosResponse.json()]);
-    return {
-      story,
-      photos: photosGeoJson.features || [],
-    };
+    const geojson = await response.json();
+    return (geojson.features || [])
+      .filter((feature) => feature?.properties?.date && feature?.geometry?.coordinates)
+      .sort((a, b) => {
+        const byDate = String(a.properties.date).localeCompare(String(b.properties.date));
+        if (byDate !== 0) return byDate;
+        return String(a.properties.id).localeCompare(String(b.properties.id));
+      });
   };
 
-  const initMap = (story) => {
-    const start = story.chapters[0]?.focus || { lat: 59.41, lng: 9.22, zoom: 12 };
+  const initMap = (features) => {
+    const first = features[0];
+    const lat = first?.geometry?.coordinates?.[1] ?? 59.17;
+    const lng = first?.geometry?.coordinates?.[0] ?? 9.66;
 
     state.map = L.map("map", {
       zoomControl: true,
       attributionControl: true,
-    }).setView([start.lat, start.lng], start.zoom || 12);
+    }).setView([lat, lng], 13);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
+      maxZoom: 20,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(state.map);
 
@@ -309,45 +279,102 @@
       showCoverageOnHover: false,
       spiderfyOnMaxZoom: true,
       disableClusteringAtZoom: 16,
+      maxClusterRadius: 48,
     });
 
     state.map.addLayer(state.clusterLayer);
-    window.setTimeout(() => state.map.invalidateSize(), 0);
+    window.setTimeout(() => state.map.invalidateSize(), 50);
+  };
+
+  const initTimeline = () => {
+    refs.timeSlider.min = "0";
+    refs.timeSlider.max = String(Math.max(0, state.dates.length - 1));
+    refs.timeSlider.value = String(state.dayIndex);
+
+    refs.dateMin.textContent = formatDate(state.dates[0]);
+    refs.dateMax.textContent = formatDate(state.dates[state.dates.length - 1]);
+
+    refs.timeSlider.addEventListener("input", () => {
+      stopPlayback();
+      state.dayIndex = Number.parseInt(refs.timeSlider.value, 10) || 0;
+      renderForDay();
+    });
+
+    refs.prevDay.addEventListener("click", () => {
+      stopPlayback();
+      state.dayIndex = Math.max(0, state.dayIndex - 1);
+      renderForDay();
+    });
+
+    refs.nextDay.addEventListener("click", () => {
+      stopPlayback();
+      state.dayIndex = Math.min(state.dates.length - 1, state.dayIndex + 1);
+      renderForDay();
+    });
+
+    refs.modeCumulative.addEventListener("change", () => {
+      state.cumulative = refs.modeCumulative.checked;
+      renderForDay({ keepView: true });
+    });
+
+    refs.playPause.addEventListener("click", () => {
+      if (state.playTimer) {
+        stopPlayback();
+        return;
+      }
+
+      refs.playPause.textContent = "Pause";
+      state.playTimer = window.setInterval(() => {
+        if (state.dayIndex >= state.dates.length - 1) {
+          stopPlayback();
+          return;
+        }
+        state.dayIndex += 1;
+        renderForDay();
+      }, 1300);
+    });
+  };
+
+  const applyInitialParams = () => {
+    const params = getParams();
+    const mode = params.get("mode");
+    if (mode === "day") {
+      state.cumulative = false;
+      refs.modeCumulative.checked = false;
+    }
+
+    const date = params.get("date");
+    const photo = params.get("photo");
+
+    if (date) {
+      const index = state.dates.indexOf(date);
+      if (index >= 0) state.dayIndex = index;
+    } else {
+      state.dayIndex = state.dates.length - 1;
+    }
+
+    if (photo) {
+      state.activePhotoId = photo;
+    }
   };
 
   const init = async () => {
     try {
-      const { story, photos } = await loadData();
-      state.story = story;
-      state.photos = photos;
+      state.photos = await loadData();
 
-      initMap(story);
-      renderChapters();
-
-      const params = getParams();
-      const chapterParam = params.get("chapter");
-      const photoParam = params.get("photo");
-
-      const chapterExists = chapterParam && chapterBySlug(chapterParam);
-      const selectedChapter = chapterExists ? chapterParam : story.chapters[0]?.slug || null;
-
-      drawChapter(selectedChapter, { updateUrl: false });
-
-      if (photoParam) {
-        const existsInDataset = state.photos.find((feature) => feature.properties.id === photoParam);
-        if (existsInDataset) {
-          if (existsInDataset.properties.chapter !== state.activeChapter) {
-            drawChapter(existsInDataset.properties.chapter, { updateUrl: false });
-          }
-          focusPhoto(photoParam, { panMap: true, updateUrl: false });
-        }
+      if (state.photos.length === 0) {
+        refs.status.textContent = "Fant ingen gyldige punkter i datasettet.";
+        return;
       }
 
-      setParams({ chapter: state.activeChapter, photo: state.activePhotoId });
+      state.dates = [...new Set(state.photos.map((feature) => feature.properties.date))].sort();
+
+      initMap(state.photos);
+      applyInitialParams();
+      initTimeline();
+      renderForDay({ keepView: false, updateUrl: true });
     } catch (error) {
-      refs.chapters.innerHTML = `<p>Feil ved lasting av demo-data: ${safeText(error.message)}</p>`;
-      refs.photoList.innerHTML = "";
-      refs.countVisible.textContent = "0";
+      refs.status.textContent = `Feil: ${error instanceof Error ? error.message : "ukjent feil"}`;
     }
   };
 
