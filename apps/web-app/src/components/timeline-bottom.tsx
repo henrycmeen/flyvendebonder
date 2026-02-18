@@ -323,25 +323,7 @@ export function TimelineBottom({
                   </ul>
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-2 py-1">
-                  <p className="text-xs text-earth-700">Ingen bilder for valgt år/sesong.</p>
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex h-7 items-center rounded-full border px-3 text-xs font-semibold transition-colors",
-                      uiTheme === "satellite"
-                        ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                        : "border-earth-500/35 bg-paper/80 text-earth-900 hover:bg-paper",
-                    )}
-                    onClick={() => {
-                      onYearChange("all");
-                      onSeasonChange("all");
-                      onDayScopeChange("all");
-                    }}
-                  >
-                    Vis alle bilder
-                  </button>
-                </div>
+                <p className="py-1 text-xs text-earth-700">Ingen bilder for valgt år/sesong.</p>
               )}
             </div>
           </>
