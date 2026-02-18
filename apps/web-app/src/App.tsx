@@ -357,6 +357,7 @@ export default function App() {
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
+  const [photoLoadRetryToken, setPhotoLoadRetryToken] = useState(0);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
@@ -1248,6 +1249,7 @@ export default function App() {
   }, [
     addLog,
     latestFilteredDate,
+    photoLoadRetryToken,
     selectedSeason,
     selectedYear,
     showOnlyManualQc,
@@ -1583,6 +1585,13 @@ export default function App() {
     latestTimelineDate,
     loadAlbumPage,
   ]);
+
+  const handleRetryPhotoLoad = useCallback(() => {
+    setPhotosLoadFailed(false);
+    setStatusText("Prøver å laste bilder på nytt ...");
+    addLog("warn", "Manuell retry av bildelasting");
+    setPhotoLoadRetryToken((value) => value + 1);
+  }, [addLog]);
 
   const handleToggleManualQcFilter = useCallback((next: boolean) => {
     setShowOnlyManualQc(next);
@@ -2302,6 +2311,18 @@ export default function App() {
           onScrollActivity={handleAlbumScrollActivity}
         />
       )}
+
+      {activeView === "map" && photosLoadFailed ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-[660] -translate-x-1/2 px-3">
+          <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-red-300/75 bg-white/95 px-3 py-2 text-sm text-red-900 shadow-lg">
+            <span>Kunne ikke laste bilder for valgt filter.</span>
+            <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Prøv igjen
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen ? (
         <div className="pointer-events-none absolute left-1/2 top-4 z-[640] hidden -translate-x-1/2 md:block">
