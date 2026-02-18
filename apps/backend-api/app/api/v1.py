@@ -325,6 +325,13 @@ def patch_photo_metadata(
         tags = _set_quality_flag(tags, payload.needs_manual_qc)
         photo.tags_json = json.dumps(tags, ensure_ascii=False)
 
+    if "altitude_m" in payload.model_fields_set:
+        photo.altitude_m = payload.altitude_m
+    if "heading_deg" in payload.model_fields_set:
+        photo.heading_deg = payload.heading_deg
+    if "pitch_deg" in payload.model_fields_set:
+        photo.pitch_deg = payload.pitch_deg
+
     needs_manual_qc = "qc:needs_manual_qc" in tags
 
     db.commit()
@@ -336,6 +343,9 @@ def patch_photo_metadata(
         tags=tags,
         caption=photo.notes,
         needs_manual_qc=needs_manual_qc,
+        altitude_m=photo.altitude_m,
+        heading_deg=photo.heading_deg,
+        pitch_deg=photo.pitch_deg,
     )
 
 

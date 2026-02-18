@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import type { BaseMapStyle } from "@/lib/map-styles";
@@ -129,6 +129,25 @@ function formatConfidence(value: number | null): string {
 function formatQCRating(source: string | null): string {
   if (source == null || source.trim() === "") return "ukjent";
   return source;
+}
+
+function toDraftNumber(value: number | null, decimals = 1): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  return value.toFixed(decimals);
+}
+
+function parseDraftNumber(value: string): { valid: boolean; value: number | null } {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return { valid: true, value: null };
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return { valid: false, value: null };
+  return { valid: true, value: parsed };
+}
+
+function numbersEqual(a: number | null, b: number | null): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return Math.abs(a - b) < 0.000001;
 }
 
 function formatGeometryMethod(value: string | null): string {
@@ -300,10 +319,15 @@ export default function App() {
   const [pendingRequests, setPendingRequests] = useState(0);
   const [analysisBusyPhotoId, setAnalysisBusyPhotoId] = useState<string | null>(null);
   const [metadataBusyPhotoId, setMetadataBusyPhotoId] = useState<string | null>(null);
+  const [metadataEditMode, setMetadataEditMode] = useState(false);
+  const [showTechnicalMetadata, setShowTechnicalMetadata] = useState(false);
   const [metadataTagDraft, setMetadataTagDraft] = useState("");
   const [metadataTagsDraft, setMetadataTagsDraft] = useState<string[]>([]);
   const [metadataCaptionDraft, setMetadataCaptionDraft] = useState("");
   const [metadataNeedsManualQcDraft, setMetadataNeedsManualQcDraft] = useState(false);
+  const [metadataAltitudeDraft, setMetadataAltitudeDraft] = useState("");
+  const [metadataHeadingDraft, setMetadataHeadingDraft] = useState("");
+  const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
@@ -372,12 +396,29 @@ export default function App() {
     const draftTags = normalizeTagsInput(metadataTagsDraft);
     const currentCaption = (selectedPhoto.caption ?? "").trim();
     const draftCaption = metadataCaptionDraft.trim();
+    const draftAltitude = parseDraftNumber(metadataAltitudeDraft);
+    const draftHeading = parseDraftNumber(metadataHeadingDraft);
+    const draftPitch = parseDraftNumber(metadataPitchDraft);
     return (
       JSON.stringify(currentTags) !== JSON.stringify(draftTags) ||
       currentCaption !== draftCaption ||
-      Boolean(selectedPhoto.needs_manual_qc) !== metadataNeedsManualQcDraft
+      Boolean(selectedPhoto.needs_manual_qc) !== metadataNeedsManualQcDraft ||
+      !draftAltitude.valid ||
+      !draftHeading.valid ||
+      !draftPitch.valid ||
+      !numbersEqual(selectedPhoto.altitude_m, draftAltitude.value) ||
+      !numbersEqual(selectedPhoto.heading_deg, draftHeading.value) ||
+      !numbersEqual(selectedPhoto.pitch_deg, draftPitch.value)
     );
-  }, [metadataCaptionDraft, metadataNeedsManualQcDraft, metadataTagsDraft, selectedPhoto]);
+  }, [
+    metadataAltitudeDraft,
+    metadataCaptionDraft,
+    metadataHeadingDraft,
+    metadataNeedsManualQcDraft,
+    metadataPitchDraft,
+    metadataTagsDraft,
+    selectedPhoto,
+  ]);
 
   const timelineIndexed = useMemo<TimelineEntryIndexed[]>(
     () =>
@@ -503,18 +544,49 @@ export default function App() {
     );
   }, []);
 
-  const updatePhotoMetadataState = useCallback((photoId: string, tags: string[], caption: string | null, needsManualQc: boolean) => {
-    setPhotoPool((previous) =>
-      previous.map((photo) =>
-        photo.id === photoId ? { ...photo, tags, caption, needs_manual_qc: needsManualQc } : photo,
-      ),
-    );
-    setAlbumPhotos((previous) =>
-      previous.map((photo) =>
-        photo.id === photoId ? { ...photo, tags, caption, needs_manual_qc: needsManualQc } : photo,
-      ),
-    );
-  }, []);
+  const updatePhotoMetadataState = useCallback(
+    (
+      photoId: string,
+      tags: string[],
+      caption: string | null,
+      needsManualQc: boolean,
+      altitudeM: number | null,
+      headingDeg: number | null,
+      pitchDeg: number | null,
+    ) => {
+      setPhotoPool((previous) =>
+        previous.map((photo) =>
+          photo.id === photoId
+            ? {
+                ...photo,
+                tags,
+                caption,
+                needs_manual_qc: needsManualQc,
+                altitude_m: altitudeM,
+                heading_deg: headingDeg,
+                pitch_deg: pitchDeg,
+              }
+            : photo,
+        ),
+      );
+      setAlbumPhotos((previous) =>
+        previous.map((photo) =>
+          photo.id === photoId
+            ? {
+                ...photo,
+                tags,
+                caption,
+                needs_manual_qc: needsManualQc,
+                altitude_m: altitudeM,
+                heading_deg: headingDeg,
+                pitch_deg: pitchDeg,
+              }
+            : photo,
+        ),
+      );
+    },
+    [],
+  );
 
   const loadGardskartJob = useCallback(
     async (forceRefresh: boolean) => {
@@ -612,6 +684,14 @@ export default function App() {
     const nextTags = normalizeTagsInput(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
     const nextNeedsManualQc = metadataNeedsManualQcDraft;
+    const altitudeInput = parseDraftNumber(metadataAltitudeDraft);
+    const headingInput = parseDraftNumber(metadataHeadingDraft);
+    const pitchInput = parseDraftNumber(metadataPitchDraft);
+    if (!altitudeInput.valid || !headingInput.valid || !pitchInput.valid) {
+      setStatusText("Ugyldig tallformat i metadata. Bruk for eksempel 123.4");
+      addLog("warn", "Ugyldig tallformat i metadata-redigering");
+      return;
+    }
 
     setMetadataBusyPhotoId(selectedPhoto.id);
     try {
@@ -620,13 +700,27 @@ export default function App() {
           tags: nextTags,
           caption: nextCaption,
           needs_manual_qc: nextNeedsManualQc,
+          altitude_m: altitudeInput.value,
+          heading_deg: headingInput.value,
+          pitch_deg: pitchInput.value,
         }),
       );
 
-      updatePhotoMetadataState(data.photo_id, data.tags, data.caption, data.needs_manual_qc);
+      updatePhotoMetadataState(
+        data.photo_id,
+        data.tags,
+        data.caption,
+        data.needs_manual_qc,
+        data.altitude_m,
+        data.heading_deg,
+        data.pitch_deg,
+      );
       setMetadataTagsDraft(data.tags);
       setMetadataCaptionDraft(data.caption ?? "");
       setMetadataNeedsManualQcDraft(data.needs_manual_qc);
+      setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
+      setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
+      setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
       setMetadataTagDraft("");
       addLog("info", "Metadata lagret", requestId, {
         photoId: data.photo_id,
@@ -634,6 +728,7 @@ export default function App() {
         needs_manual_qc: data.needs_manual_qc,
       });
       setStatusText("Metadata oppdatert.");
+      setMetadataEditMode(false);
     } catch (error) {
       const apiError = error as ApiError;
       addLog("error", "Kunne ikke lagre metadata", apiError.requestId, apiError.detail);
@@ -645,13 +740,28 @@ export default function App() {
     addLog,
     apiPatch,
     metadataBusyPhotoId,
+    metadataAltitudeDraft,
     metadataCaptionDraft,
+    metadataHeadingDraft,
     metadataTagsDraft,
     selectedPhoto,
     trackRequest,
     updatePhotoMetadataState,
     metadataNeedsManualQcDraft,
+    metadataPitchDraft,
   ]);
+
+  const handleCancelMetadataEdit = useCallback(() => {
+    if (!selectedPhoto) return;
+    setMetadataTagDraft("");
+    setMetadataTagsDraft(selectedPhoto.tags ?? []);
+    setMetadataCaptionDraft(selectedPhoto.caption ?? "");
+    setMetadataNeedsManualQcDraft(selectedPhoto.needs_manual_qc);
+    setMetadataAltitudeDraft(toDraftNumber(selectedPhoto.altitude_m));
+    setMetadataHeadingDraft(toDraftNumber(selectedPhoto.heading_deg));
+    setMetadataPitchDraft(toDraftNumber(selectedPhoto.pitch_deg));
+    setMetadataEditMode(false);
+  }, [selectedPhoto]);
 
   const selectPhoto = useCallback(
     (photoId: string, options?: { anchorMap?: boolean; focusMap?: boolean }) => {
@@ -711,12 +821,22 @@ export default function App() {
       setMetadataTagsDraft([]);
       setMetadataCaptionDraft("");
       setMetadataNeedsManualQcDraft(false);
+      setMetadataAltitudeDraft("");
+      setMetadataHeadingDraft("");
+      setMetadataPitchDraft("");
+      setMetadataEditMode(false);
+      setShowTechnicalMetadata(false);
       return;
     }
     setMetadataTagDraft("");
     setMetadataTagsDraft(selectedPhoto.tags ?? []);
     setMetadataCaptionDraft(selectedPhoto.caption ?? "");
     setMetadataNeedsManualQcDraft(selectedPhoto.needs_manual_qc);
+    setMetadataAltitudeDraft(toDraftNumber(selectedPhoto.altitude_m));
+    setMetadataHeadingDraft(toDraftNumber(selectedPhoto.heading_deg));
+    setMetadataPitchDraft(toDraftNumber(selectedPhoto.pitch_deg));
+    setMetadataEditMode(false);
+    setShowTechnicalMetadata(false);
   }, [selectedPhoto?.id]);
 
   useEffect(() => {
@@ -1380,240 +1500,31 @@ export default function App() {
                           <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Foto</p>
                           <h2 className="text-base font-semibold text-earth-950">{selectedPhoto.title || "Foto"}</h2>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
-                          onClick={handleClosePhotoViewer}
-                          aria-label="Lukk bildevisning"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant={metadataEditMode ? "default" : "ghost"}
+                            size="icon"
+                            className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
+                            onClick={() => setMetadataEditMode((value) => !value)}
+                            aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
+                            aria-pressed={metadataEditMode}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
+                            onClick={handleClosePhotoViewer}
+                            aria-label="Lukk bildevisning"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
 
-                      <dl className="mt-3 grid gap-2.5 text-sm">
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Dato/tid</dt>
-                          <dd className="font-medium text-earth-950">{formatCapturedAt(selectedPhoto.captured_at)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Dato</dt>
-                          <dd className="font-medium text-earth-950">{selectedPhoto.captured_date}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Koordinater</dt>
-                          <dd className="font-medium text-earth-950">
-                            {formatCoordinate(selectedPhoto.lat)}, {formatCoordinate(selectedPhoto.lng)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Høyde</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.altitude_m == null ? "ukjent" : `${selectedPhoto.altitude_m} m`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Retning</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg}°`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Vinkel (pitch)</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg}°`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Heading-kilde</dt>
-                          <dd className="font-medium text-earth-950">{formatQCRating(selectedPhoto.heading_source)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Pitch-kilde</dt>
-                          <dd className="font-medium text-earth-950">{formatQCRating(selectedPhoto.pitch_source)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Estimat målpunkt</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.view_lat == null || selectedPhoto.view_lng == null
-                              ? "ikke estimert"
-                              : `${formatCoordinate(selectedPhoto.view_lat)}, ${formatCoordinate(selectedPhoto.view_lng)}`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">QC-score</dt>
-                          <dd className="font-medium text-earth-950">
-                            {formatConfidence(selectedPhoto.confidence_score)}
-                            {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">GSD</dt>
-                          <dd className="font-medium text-earth-950">{formatGsd(selectedPhoto.gsd_m)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Bildeavtrykk</dt>
-                          <dd className="font-medium text-earth-950">
-                            {formatMeters(selectedPhoto.image_footprint_w_m)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Track spacing</dt>
-                          <dd className="font-medium text-earth-950">
-                            {formatMeters(selectedPhoto.track_spacing_m)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Overlap</dt>
-                          <dd className="font-medium text-earth-950">
-                            Front {formatPercent(selectedPhoto.overlap_front)} / Side {formatPercent(selectedPhoto.overlap_side)}
-                          </dd>
-                        </div>
-                        {selectedPhoto.coverage_profile ? (
-                          <div>
-                            <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">
-                              Overlapp-kontroll
-                            </dt>
-                            <dd className="font-medium text-earth-950">
-                              {selectedPhoto.coverage_profile.actual_front == null && selectedPhoto.coverage_profile.actual_side == null
-                                ? "Måles fra kamerarekke"
-                                : `Front ${formatPercent(selectedPhoto.coverage_profile.actual_front)} / Side ${formatPercent(selectedPhoto.coverage_profile.actual_side)} (${selectedPhoto.coverage_profile.quality})`}
-                            </dd>
-                          </div>
-                        ) : null}
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Oblique-korreksjon</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.oblique_correction_applied == null
-                              ? "ukjent"
-                              : selectedPhoto.oblique_correction_applied
-                                ? "Ja"
-                                : "Nei"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Analyse-sone</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.analysis_zone?.sampling_strategy?.type ?? "ingen"}
-                            {selectedPhoto.analysis_zone?.sampling_strategy?.radius_m == null
-                              ? ""
-                              : ` · ${selectedPhoto.analysis_zone.sampling_strategy.radius_m} m`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">5-punkts målepunkter</dt>
-                          <dd className="font-medium text-earth-950">
-                            {selectedPhoto.analysis_zone?.sample_points?.length ?? 0}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Usikkerhets-radius</dt>
-                          <dd className="font-medium text-earth-950">
-                            {formatMeters(selectedPhoto.location_uncertainty_m)}
-                          </dd>
-                        </div>
-                        {selectedPhoto.confidence_reasons.length > 0 ? (
-                          <div>
-                            <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">QC-grunner</dt>
-                            <dd className="font-medium text-earth-950">
-                              <span className="text-xs">{selectedPhoto.confidence_reasons.join(", ")}</span>
-                            </dd>
-                          </div>
-                        ) : null}
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Manuell QC</dt>
-                          <dd className="mt-1">
-                            <label className="inline-flex items-center gap-2 text-xs text-earth-900">
-                              <input
-                                type="checkbox"
-                                checked={metadataNeedsManualQcDraft}
-                                onChange={(event) => {
-                                  setMetadataNeedsManualQcDraft(event.currentTarget.checked);
-                                }}
-                                disabled={metadataBusyPhotoId === selectedPhoto.id}
-                              />
-                              Må vurderes manuelt
-                            </label>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Kartutsnitt</dt>
-                          <dd className="mt-1">
-                            <PhotoMapInset photo={selectedPhoto} baseMapStyle={baseMapStyle} />
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Photo-ID</dt>
-                          <dd className="break-all font-medium text-earth-950">{selectedPhoto.id}</dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Tags</dt>
-                          <dd className="mt-1 space-y-2">
-                            <div className="flex flex-wrap gap-1.5">
-                              {metadataTagsDraft.length > 0 ? (
-                                metadataTagsDraft.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="inline-flex items-center gap-1 rounded-full border border-earth-500/28 bg-white/76 px-2.5 py-1 text-xs text-earth-900"
-                                  >
-                                    {tag}
-                                    <button
-                                      type="button"
-                                      className="rounded text-earth-700 hover:text-earth-950"
-                                      aria-label={`Fjern tag ${tag}`}
-                                      onClick={() =>
-                                        setMetadataTagsDraft((previous) =>
-                                          previous.filter((item) => item.toLocaleLowerCase("nb-NO") !== tag.toLocaleLowerCase("nb-NO")),
-                                        )
-                                      }
-                                      disabled={metadataBusyPhotoId === selectedPhoto.id}
-                                    >
-                                      ×
-                                    </button>
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-earth-700/85">Ingen tags ennå</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                className="h-8 flex-1 rounded-lg border border-earth-500/30 bg-white/78 px-2 text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
-                                placeholder="Ny tag"
-                                value={metadataTagDraft}
-                                onChange={(event) => setMetadataTagDraft(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key !== "Enter") return;
-                                  event.preventDefault();
-                                  const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
-                                  setMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
-                                  setMetadataTagDraft("");
-                                }}
-                                disabled={metadataBusyPhotoId === selectedPhoto.id}
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-8"
-                                onClick={() => {
-                                  const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
-                                  setMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
-                                  setMetadataTagDraft("");
-                                }}
-                                disabled={!metadataTagDraft.trim() || metadataBusyPhotoId === selectedPhoto.id}
-                              >
-                                Legg til
-                              </Button>
-                            </div>
-                          </dd>
-                        </div>
-
-                        <div className="mt-1 rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                      <div className="mt-3 space-y-2.5">
+                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
                           <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Analyse</p>
                           <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
                             <div className="flex items-start justify-between gap-2">
@@ -1648,7 +1559,7 @@ export default function App() {
                               variant={selectedPhoto.analysis?.approved ? "outline" : "default"}
                               onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "approve")}
                               disabled={
-                                (analysisBusyPhotoId === selectedPhoto.id) ||
+                                analysisBusyPhotoId === selectedPhoto.id ||
                                 !selectedPhoto.analysis ||
                                 Boolean(selectedPhoto.analysis?.approved)
                               }
@@ -1671,29 +1582,348 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div>
-                          <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Notat</dt>
-                          <dd className="mt-1 space-y-2">
-                            <textarea
-                              className="min-h-[72px] w-full rounded-xl border border-earth-500/20 bg-white/75 p-2 text-sm text-earth-900 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
-                              value={metadataCaptionDraft}
-                              placeholder="Skriv notat ..."
-                              onChange={(event) => setMetadataCaptionDraft(event.target.value)}
-                              disabled={metadataBusyPhotoId === selectedPhoto.id}
-                            />
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              onClick={() => void handleSavePhotoMetadata()}
-                              disabled={!hasMetadataChanges || metadataBusyPhotoId === selectedPhoto.id}
-                            >
-                              Lagre metadata
-                            </Button>
-                          </dd>
+                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Nøkkelinformasjon</p>
+                          <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>Dato/tid</dt>
+                              <dd className="text-right font-medium">{formatCapturedAt(selectedPhoto.captured_at)}</dd>
+                            </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>Koordinater</dt>
+                              <dd className="text-right font-medium">
+                                {formatCoordinate(selectedPhoto.lat)}, {formatCoordinate(selectedPhoto.lng)}
+                              </dd>
+                            </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>Målpunkt</dt>
+                              <dd className="text-right font-medium">
+                                {selectedPhoto.view_lat == null || selectedPhoto.view_lng == null
+                                  ? "ikke estimert"
+                                  : `${formatCoordinate(selectedPhoto.view_lat)}, ${formatCoordinate(selectedPhoto.view_lng)}`}
+                              </dd>
+                            </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>QC-score</dt>
+                              <dd className="text-right font-medium">
+                                {formatConfidence(selectedPhoto.confidence_score)}
+                                {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
+                              </dd>
+                            </div>
+                          </dl>
                         </div>
-                      </dl>
+
+                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Metadata</p>
+                            <span className="rounded-full border border-earth-500/25 bg-white/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-earth-800">
+                              {metadataEditMode ? "Redigering" : "Lesemodus"}
+                            </span>
+                          </div>
+
+                          <dl className="mt-2 grid gap-2 text-xs text-earth-950">
+                            <div className="flex items-center justify-between gap-2">
+                              <dt>Høyde (m)</dt>
+                              <dd className="w-28">
+                                {metadataEditMode ? (
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    value={metadataAltitudeDraft}
+                                    placeholder="ukjent"
+                                    onChange={(event) => setMetadataAltitudeDraft(event.target.value)}
+                                    disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                  />
+                                ) : (
+                                  <span className="block text-right font-medium">
+                                    {selectedPhoto.altitude_m == null ? "ukjent" : `${selectedPhoto.altitude_m} m`}
+                                  </span>
+                                )}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <dt>Retning (deg)</dt>
+                              <dd className="w-28">
+                                {metadataEditMode ? (
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    value={metadataHeadingDraft}
+                                    placeholder="ukjent"
+                                    onChange={(event) => setMetadataHeadingDraft(event.target.value)}
+                                    disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                  />
+                                ) : (
+                                  <span className="block text-right font-medium">
+                                    {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg}°`}
+                                  </span>
+                                )}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <dt>Pitch (deg)</dt>
+                              <dd className="w-28">
+                                {metadataEditMode ? (
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    value={metadataPitchDraft}
+                                    placeholder="ukjent"
+                                    onChange={(event) => setMetadataPitchDraft(event.target.value)}
+                                    disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                  />
+                                ) : (
+                                  <span className="block text-right font-medium">
+                                    {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg}°`}
+                                  </span>
+                                )}
+                              </dd>
+                            </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>Manuell QC</dt>
+                              <dd className="text-right">
+                                {metadataEditMode ? (
+                                  <label className="inline-flex items-center gap-2 text-xs text-earth-900">
+                                    <input
+                                      type="checkbox"
+                                      checked={metadataNeedsManualQcDraft}
+                                      onChange={(event) => {
+                                        setMetadataNeedsManualQcDraft(event.currentTarget.checked);
+                                      }}
+                                      disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                    />
+                                    Må vurderes manuelt
+                                  </label>
+                                ) : (
+                                  <span className="font-medium">
+                                    {selectedPhoto.needs_manual_qc ? "Må vurderes manuelt" : "OK"}
+                                  </span>
+                                )}
+                              </dd>
+                            </div>
+                          </dl>
+
+                          <div className="mt-2 space-y-2">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Tags</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {metadataTagsDraft.length > 0 ? (
+                                metadataTagsDraft.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="inline-flex items-center gap-1 rounded-full border border-earth-500/28 bg-white/76 px-2.5 py-1 text-xs text-earth-900"
+                                  >
+                                    {tag}
+                                    {metadataEditMode ? (
+                                      <button
+                                        type="button"
+                                        className="rounded text-earth-700 hover:text-earth-950"
+                                        aria-label={`Fjern tag ${tag}`}
+                                        onClick={() =>
+                                          setMetadataTagsDraft((previous) =>
+                                            previous.filter((item) => item.toLocaleLowerCase("nb-NO") !== tag.toLocaleLowerCase("nb-NO")),
+                                          )
+                                        }
+                                        disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                      >
+                                        ×
+                                      </button>
+                                    ) : null}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-earth-700/85">Ingen tags ennå</span>
+                              )}
+                            </div>
+                            {metadataEditMode ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  className="h-8 flex-1 rounded-lg border border-earth-500/30 bg-white/78 px-2 text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                  placeholder="Ny tag"
+                                  value={metadataTagDraft}
+                                  onChange={(event) => setMetadataTagDraft(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key !== "Enter") return;
+                                    event.preventDefault();
+                                    const nextTag = metadataTagDraft.trim();
+                                    if (!nextTag) return;
+                                    setMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
+                                    setMetadataTagDraft("");
+                                  }}
+                                  disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8"
+                                  onClick={() => {
+                                    const nextTag = metadataTagDraft.trim();
+                                    if (!nextTag) return;
+                                    setMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
+                                    setMetadataTagDraft("");
+                                  }}
+                                  disabled={!metadataTagDraft.trim() || metadataBusyPhotoId === selectedPhoto.id}
+                                >
+                                  Legg til
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-2 space-y-2">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Notat</p>
+                            {metadataEditMode ? (
+                              <textarea
+                                className="min-h-[72px] w-full rounded-xl border border-earth-500/20 bg-white/75 p-2 text-sm text-earth-900 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                value={metadataCaptionDraft}
+                                placeholder="Skriv notat ..."
+                                onChange={(event) => setMetadataCaptionDraft(event.target.value)}
+                                disabled={metadataBusyPhotoId === selectedPhoto.id}
+                              />
+                            ) : (
+                              <p className="rounded-lg border border-earth-500/20 bg-white/70 p-2 text-xs text-earth-900">
+                                {selectedPhoto.caption && selectedPhoto.caption.trim() ? selectedPhoto.caption : "Ingen notat."}
+                              </p>
+                            )}
+                          </div>
+
+                          {metadataEditMode ? (
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                onClick={handleCancelMetadataEdit}
+                                disabled={metadataBusyPhotoId === selectedPhoto.id}
+                              >
+                                Avbryt
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="default"
+                                className="h-8"
+                                onClick={() => void handleSavePhotoMetadata()}
+                                disabled={!hasMetadataChanges || metadataBusyPhotoId === selectedPhoto.id}
+                              >
+                                Lagre metadata
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Kartutsnitt</p>
+                          <div className="mt-1">
+                            <PhotoMapInset photo={selectedPhoto} baseMapStyle={baseMapStyle} />
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between text-left"
+                            onClick={() => setShowTechnicalMetadata((value) => !value)}
+                          >
+                            <span className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Teknisk metadata</span>
+                            <span className="text-[11px] text-earth-800">{showTechnicalMetadata ? "Skjul" : "Vis"}</span>
+                          </button>
+                          {showTechnicalMetadata ? (
+                            <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Dato</dt>
+                                <dd className="text-right font-medium">{selectedPhoto.captured_date}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Heading-kilde</dt>
+                                <dd className="text-right font-medium">{formatQCRating(selectedPhoto.heading_source)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Pitch-kilde</dt>
+                                <dd className="text-right font-medium">{formatQCRating(selectedPhoto.pitch_source)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>GSD</dt>
+                                <dd className="text-right font-medium">{formatGsd(selectedPhoto.gsd_m)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Bildeavtrykk</dt>
+                                <dd className="text-right font-medium">{formatMeters(selectedPhoto.image_footprint_w_m)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Track spacing</dt>
+                                <dd className="text-right font-medium">{formatMeters(selectedPhoto.track_spacing_m)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Planlagt overlap</dt>
+                                <dd className="text-right font-medium">
+                                  Front {formatPercent(selectedPhoto.overlap_front)} / Side {formatPercent(selectedPhoto.overlap_side)}
+                                </dd>
+                              </div>
+                              {selectedPhoto.coverage_profile ? (
+                                <div className="flex items-start justify-between gap-2">
+                                  <dt>Overlapp-kontroll</dt>
+                                  <dd className="text-right font-medium">
+                                    {selectedPhoto.coverage_profile.actual_front == null && selectedPhoto.coverage_profile.actual_side == null
+                                      ? "Måles fra kamerarekke"
+                                      : `Front ${formatPercent(selectedPhoto.coverage_profile.actual_front)} / Side ${formatPercent(selectedPhoto.coverage_profile.actual_side)}`}
+                                    {` (${selectedPhoto.coverage_profile.quality})`}
+                                    {selectedPhoto.coverage_profile.neighbor_count == null
+                                      ? ""
+                                      : ` · naboer ${selectedPhoto.coverage_profile.neighbor_count}`}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Oblique-korreksjon</dt>
+                                <dd className="text-right font-medium">
+                                  {selectedPhoto.oblique_correction_applied == null
+                                    ? "ukjent"
+                                    : selectedPhoto.oblique_correction_applied
+                                      ? "Ja"
+                                      : "Nei"}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Analyse-sone</dt>
+                                <dd className="text-right font-medium">
+                                  {selectedPhoto.analysis_zone?.sampling_strategy?.type ?? "ingen"}
+                                  {selectedPhoto.analysis_zone?.sampling_strategy?.radius_m == null
+                                    ? ""
+                                    : ` · ${selectedPhoto.analysis_zone.sampling_strategy.radius_m} m`}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>5-punkts målepunkter</dt>
+                                <dd className="text-right font-medium">
+                                  {selectedPhoto.analysis_zone?.sample_points?.length ?? 0}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Usikkerhets-radius</dt>
+                                <dd className="text-right font-medium">{formatMeters(selectedPhoto.location_uncertainty_m)}</dd>
+                              </div>
+                              {selectedPhoto.confidence_reasons.length > 0 ? (
+                                <div className="flex items-start justify-between gap-2">
+                                  <dt>QC-grunner</dt>
+                                  <dd className="max-w-[13rem] text-right font-medium">
+                                    <span className="text-xs">{selectedPhoto.confidence_reasons.join(", ")}</span>
+                                  </dd>
+                                </div>
+                              ) : null}
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Photo-ID</dt>
+                                <dd className="max-w-[13rem] break-all text-right font-medium">{selectedPhoto.id}</dd>
+                              </div>
+                            </dl>
+                          ) : null}
+                        </div>
+                      </div>
                     </aside>
                   </>
                 ) : (

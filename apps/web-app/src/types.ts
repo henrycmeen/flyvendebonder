@@ -94,6 +94,9 @@ export interface PhotoMetadataActionResponse {
   tags: string[];
   caption: string | null;
   needs_manual_qc: boolean;
+  altitude_m: number | null;
+  heading_deg: number | null;
+  pitch_deg: number | null;
 }
 
 export interface PhotoFeature {

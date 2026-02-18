@@ -99,6 +99,9 @@ class PhotoMetadataPatchRequest(BaseModel):
     tags: list[str] | None = None
     caption: str | None = None
     needs_manual_qc: bool | None = None
+    altitude_m: float | None = None
+    heading_deg: float | None = None
+    pitch_deg: float | None = None
 
 
 class PhotoMetadataActionResponse(BaseModel):
@@ -107,6 +110,9 @@ class PhotoMetadataActionResponse(BaseModel):
     tags: list[str]
     caption: str | None = None
     needs_manual_qc: bool = False
+    altitude_m: float | None = None
+    heading_deg: float | None = None
+    pitch_deg: float | None = None
 
 
 class GeoPoint(BaseModel):

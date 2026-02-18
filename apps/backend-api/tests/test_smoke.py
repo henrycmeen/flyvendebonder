@@ -130,13 +130,22 @@ def test_photo_metadata_patch(client):
 
     patch = client.patch(
         f"/api/v1/photos/{photo_id}/metadata",
-        json={"tags": ["meen-gard", "test-tag", "test-tag", "  "], "caption": "Oppdatert notat"},
+        json={
+            "tags": ["meen-gard", "test-tag", "test-tag", "  "],
+            "caption": "Oppdatert notat",
+            "altitude_m": 212.4,
+            "heading_deg": -132.6,
+            "pitch_deg": -57.0,
+        },
     )
     assert patch.status_code == 200
     patched = patch.json()
     assert patched["photo_id"] == photo_id
     assert patched["tags"] == ["meen-gard", "test-tag"]
     assert patched["caption"] == "Oppdatert notat"
+    assert patched["altitude_m"] == 212.4
+    assert patched["heading_deg"] == -132.6
+    assert patched["pitch_deg"] == -57.0
 
     after = client.get(
         "/api/v1/photos",
@@ -146,6 +155,9 @@ def test_photo_metadata_patch(client):
     updated_photo = next(item for item in after.json()["photos"] if item["id"] == photo_id)
     assert updated_photo["tags"] == ["meen-gard", "test-tag"]
     assert updated_photo["caption"] == "Oppdatert notat"
+    assert updated_photo["altitude_m"] == 212.4
+    assert updated_photo["heading_deg"] == -132.6
+    assert updated_photo["pitch_deg"] == -57.0
 
 
 def test_photos_page_smoke(client):
