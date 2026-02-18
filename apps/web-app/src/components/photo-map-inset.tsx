@@ -14,6 +14,7 @@ type LeafletContainer = HTMLDivElement & {
 };
 
 const EARTH_RADIUS_M = 6371000;
+const MIN_CONTEXT_RADIUS_M = 55;
 
 function normalizeHeading(headingDeg: number): number {
   return ((headingDeg % 360) + 360) % 360;
@@ -50,6 +51,15 @@ function projectByHeading(origin: L.LatLng, headingDeg: number, distanceM: numbe
   const deltaLng = (Math.sin(headingRad) * distanceM) / (EARTH_RADIUS_M * Math.cos(latRad));
 
   return L.latLng(origin.lat + (deltaLat * 180) / Math.PI, origin.lng + (deltaLng * 180) / Math.PI);
+}
+
+function expandBoundsWithContext(bounds: L.LatLngBounds, minRadiusM: number): L.LatLngBounds {
+  const center = bounds.getCenter();
+  return bounds
+    .extend(projectByHeading(center, 0, minRadiusM))
+    .extend(projectByHeading(center, 90, minRadiusM))
+    .extend(projectByHeading(center, 180, minRadiusM))
+    .extend(projectByHeading(center, 270, minRadiusM));
 }
 
 function resetLeafletContainer(container: LeafletContainer): void {
@@ -186,6 +196,7 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
       if (photo.analysis_zone?.footprint_polygon?.coordinates) {
         const footprint = toPolygonLatLngs(photo.analysis_zone.footprint_polygon.coordinates);
         if (footprint.length > 3) {
+          footprint.forEach((point) => points.push(L.latLng(point[0], point[1])));
           L.polygon(footprint, {
             color: "rgba(255, 172, 64, 0.55)",
             fillColor: "rgba(255, 196, 102, 0.14)",
@@ -202,6 +213,7 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
         photo.analysis_zone.sample_points.forEach((samplePoint) => {
           const sample = toLatLngFromPoint(samplePoint);
           if (!sample) return;
+          points.push(L.latLng(sample[0], sample[1]));
           L.circleMarker(L.latLng(sample[0], sample[1]), {
             radius: 2.2,
             color: "#f4e7c7",
@@ -228,11 +240,24 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
     }
 
     const bounds = L.latLngBounds(points);
-    mapRef.current.fitBounds(bounds.pad(0.95), {
+    const uncertaintyContextM =
+      photo.location_uncertainty_m != null && Number.isFinite(photo.location_uncertainty_m)
+        ? photo.location_uncertainty_m * 6
+        : 0;
+    const samplingContextM =
+      photo.analysis_zone?.sampling_strategy?.radius_m != null && Number.isFinite(photo.analysis_zone.sampling_strategy.radius_m)
+        ? photo.analysis_zone.sampling_strategy.radius_m * 8
+        : 0;
+    const contextRadiusM = Math.max(MIN_CONTEXT_RADIUS_M, uncertaintyContextM, samplingContextM);
+    const contextBounds = expandBoundsWithContext(bounds, contextRadiusM);
+
+    // Inset ligger i et layout som kan endres når fullskjerm åpnes/lukkes.
+    mapRef.current.invalidateSize(false);
+    mapRef.current.fitBounds(contextBounds.pad(0.35), {
       animate: false,
-      maxZoom: 19,
+      maxZoom: Math.min(BASE_MAP_STYLES[baseMapStyle].maxZoom, 17),
     });
-  }, [photo]);
+  }, [photo, baseMapStyle]);
 
   return (
     <div className="photo-viewer-map-inset" aria-hidden="true">
