@@ -1048,39 +1048,59 @@ export default function App() {
             return next;
           })();
       const signal = requestController?.signal ?? options?.signal;
+      const maxAttempts = 5;
+      let lastError: ApiError | null = null;
 
-      try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         setStatusText("Laster profil og tidslinje ...");
-        const [profileData, timelineData] = await Promise.all([
-          loadProfile({ signal }),
-          loadTimeline({ signal }),
-        ]);
+        try {
+          const [profileData, timelineData] = await Promise.all([
+            loadProfile({ signal }),
+            loadTimeline({ signal }),
+          ]);
 
-        if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
+          if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
 
-        if (timelineData.dates.length === 0) {
-          setSelectedYear("all");
+          if (timelineData.dates.length === 0) {
+            setSelectedYear("all");
+            setSelectedSeason("all");
+            setStatusText("Ingen bilder i databasen enda.");
+            return;
+          }
+
+          const initialIndex = initialDate
+            ? timelineData.dates.findIndex((entry) => entry.date === initialDate)
+            : timelineData.dates.length - 1;
+
+          const resolvedIndex = initialIndex >= 0 ? initialIndex : timelineData.dates.length - 1;
+          const resolvedDate = timelineData.dates[resolvedIndex]?.date ?? timelineData.dates[timelineData.dates.length - 1].date;
+
+          setSelectedIndex(resolvedIndex);
+          setSelectedYear(resolvedDate.slice(0, 4));
           setSelectedSeason("all");
-          setStatusText("Ingen bilder i databasen enda.");
+          setStatusText(`Klar for ${profileData.user.full_name}`);
           return;
+        } catch (error) {
+          const apiError = error as ApiError;
+          if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
+          if (isRequestAborted(apiError)) return;
+          lastError = apiError;
+          if (attempt < maxAttempts) {
+            setStatusText(`Venter på backend ... (${attempt}/${maxAttempts})`);
+            addLog("warn", "Oppstartsforsøk feilet, prøver igjen", apiError.requestId, {
+              attempt,
+              maxAttempts,
+              message: apiError.message,
+            });
+            await new Promise((resolve) => window.setTimeout(resolve, 500 + attempt * 400));
+            continue;
+          }
         }
+      }
 
-        const initialIndex = initialDate
-          ? timelineData.dates.findIndex((entry) => entry.date === initialDate)
-          : timelineData.dates.length - 1;
-
-        const resolvedIndex = initialIndex >= 0 ? initialIndex : timelineData.dates.length - 1;
-        const resolvedDate = timelineData.dates[resolvedIndex]?.date ?? timelineData.dates[timelineData.dates.length - 1].date;
-
-        setSelectedIndex(resolvedIndex);
-        setSelectedYear(resolvedDate.slice(0, 4));
-        setSelectedSeason("all");
-        setStatusText(`Klar for ${profileData.user.full_name}`);
-      } catch (error) {
-        const apiError = error as ApiError;
-        if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
-        setStatusText(`Oppstart feilet: ${apiError.message}`);
-        addLog("error", "Oppstart feilet", apiError.requestId, apiError.detail);
+      if (lastError && seq === bootstrapLoadSeqRef.current && !signal?.aborted) {
+        setStatusText(`Oppstart feilet: ${lastError.message}`);
+        addLog("error", "Oppstart feilet", lastError.requestId, lastError.detail);
       }
     };
 
