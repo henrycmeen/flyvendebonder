@@ -3,7 +3,7 @@
 Produksjonskilde for infosiden.
 
 ## Kjøring lokalt
-Info-site er laget for å kjøres via staging-webroot, slik at `/assets/` og `/demo/` matcher produksjon.
+Info-site er laget for å kjøres via staging-webroot, slik at `/assets/` og `/app/` matcher produksjon.
 
 ```bash
 ./scripts/prepare-webroot.sh

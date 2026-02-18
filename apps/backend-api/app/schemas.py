@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    full_name: str
+    phone: str | None = None
+    email: str | None = None
+    address_line1: str | None = None
+    postal_code: str | None = None
+    city: str | None = None
+    municipality_code: str | None = None
+    municipality_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PropertyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    komm: str
+    gnr: int
+    bnr: int
+    fnr: int
+    label: str | None = None
+    active_from: date | None = None
+    active_to: date | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProfileOut(BaseModel):
+    user: UserOut
+    property: PropertyOut | None = None
+
+
+class ProfilePatch(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address_line1: str | None = None
+    postal_code: str | None = None
+    city: str | None = None
+    municipality_code: str | None = None
+    municipality_name: str | None = None
+
+
+class PropertyPatch(BaseModel):
+    komm: str | None = None
+    gnr: int | None = None
+    bnr: int | None = None
+    fnr: int | None = None
+    label: str | None = None
+
+
+class ProfilePatchRequest(BaseModel):
+    user: ProfilePatch = Field(default_factory=ProfilePatch)
+    property: PropertyPatch = Field(default_factory=PropertyPatch)
+
+
+class TimelineDateEntry(BaseModel):
+    date: date
+    count: int
+    cumulative_count: int
+
+
+class TimelineResponse(BaseModel):
+    user_id: int
+    dates: list[TimelineDateEntry]
+
+
+class PhotoAnalysisOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ar5_class: str | None = None
+    soil_class: str | None = None
+    geometry_method: str | None = None
+    confidence: float | None = None
+    approved: bool | None = None
+    computed_at: datetime | None = None
+
+
+class PhotoAnalysisActionResponse(BaseModel):
+    status: str
+    photo_id: str
+    analysis: PhotoAnalysisOut
+
+
+class PhotoMetadataPatchRequest(BaseModel):
+    tags: list[str] | None = None
+    caption: str | None = None
+    needs_manual_qc: bool | None = None
+
+
+class PhotoMetadataActionResponse(BaseModel):
+    status: str
+    photo_id: str
+    tags: list[str]
+    caption: str | None = None
+    needs_manual_qc: bool = False
+
+
+class GeoPoint(BaseModel):
+    lat: float
+    lng: float
+
+
+class GeoJSONPoint(BaseModel):
+    type: str
+    coordinates: list[float]
+
+
+class GeoJSONPolygon(BaseModel):
+    type: str
+    coordinates: list[list[list[float]]]
+
+
+class SamplingStrategy(BaseModel):
+    type: str
+    radius_m: float
+
+
+class CoverageProfile(BaseModel):
+    planned_front: float | None = None
+    planned_side: float | None = None
+    actual_front: float | None = None
+    actual_side: float | None = None
+    front_gap: float | None = None
+    side_gap: float | None = None
+    quality: str = "ok"
+
+
+class AnalysisZone(BaseModel):
+    center_point: GeoPoint
+    sample_points: list[GeoPoint]
+    footprint_polygon: GeoJSONPolygon | None = None
+    sampling_strategy: SamplingStrategy
+    uncertainty_radius_m: float
+    analysis_area_m: float | None = None
+
+
+class PhotoFeature(BaseModel):
+    id: str
+    title: str
+    captured_at: datetime
+    captured_date: date
+    lat: float
+    lng: float
+    altitude_m: float | None = None
+    heading_deg: float | None = None
+    pitch_deg: float | None = None
+    gsd_m: float | None = None
+    image_footprint_w_m: float | None = None
+    track_spacing_m: float | None = None
+    overlap_front: float | None = None
+    overlap_side: float | None = None
+    oblique_correction_applied: bool | None = None
+    view_lat: float | None = None
+    view_lng: float | None = None
+    view_distance_m: float | None = None
+    view_confidence: float | None = None
+    view_mode: str | None = None
+    heading_source: str | None = None
+    pitch_source: str | None = None
+    confidence_score: float = 0.0
+    confidence_reasons: list[str] = Field(default_factory=list)
+    location_uncertainty_m: float | None = None
+    coverage_profile: CoverageProfile | None = None
+    analysis_zone: AnalysisZone | None = None
+    tags: list[str]
+    caption: str | None = None
+    thumbnail_url: str | None = None
+    image_url: str | None = None
+    needs_manual_qc: bool = False
+    quality_flags: list[str] = Field(default_factory=list)
+    analysis: PhotoAnalysisOut | None = None
+
+
+class PhotoResponse(BaseModel):
+    user_id: int
+    date: date
+    mode: Literal["day", "cumulative"]
+    count: int
+    photos: list[PhotoFeature]
+
+
+class PhotoPageResponse(BaseModel):
+    user_id: int
+    date: date
+    mode: Literal["day", "cumulative"]
+    count: int
+    next_cursor: str | None = None
+    photos: list[PhotoFeature]
+
+
+class GardskartJobResponse(BaseModel):
+    property_id: int
+    job_id: str
+    status_code: int | None = None
+    status_desc: str | None = None
+    fetched_at: datetime
+    expires_at: datetime
+    source: Literal["cache", "fresh", "stale-cache"]
+    is_expired: bool
+
+
+class ImportRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    started_at: datetime
+    finished_at: datetime | None = None
+    source_path: str
+    files_seen: int
+    files_imported: int
+    files_skipped: int
+    errors_json: str
+
+
+class ImportRequest(BaseModel):
+    source_path: str | None = None
+
+
+class BackendLogLine(BaseModel):
+    timestamp: str
+    level: str
+    logger: str
+    request_id: str | None = None
+    message: str
+    raw: str
+
+
+class BackendLogsResponse(BaseModel):
+    source: str
+    count: int
+    generated_at: datetime
+    lines: list[BackendLogLine]
+
+
+class PhotoAnalysisRefreshResponse(BaseModel):
+    requested: int
+    processed: int
+    failed: int

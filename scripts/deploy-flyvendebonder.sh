@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGING_DIR="${STAGING_DIR:-$ROOT_DIR/.staging/webroot}"
 HOST="${HOST:-macmini}"
-USER="${USER:-henrymeen}"
+REMOTE_USER="${REMOTE_USER:-henrymeen}"
 DEST="${DEST:-/Users/henrymeen/srv/www/flyvendebonder/}"
 DRY_RUN=0
 LOCAL=0
@@ -24,7 +24,7 @@ while (($#)); do
       shift 2
       ;;
     --user)
-      USER="$2"
+      REMOTE_USER="$2"
       shift 2
       ;;
     --dest)
@@ -55,8 +55,8 @@ if [[ "$LOCAL" -eq 1 ]]; then
   echo "Deploying locally: $STAGING_DIR -> $DEST"
   rsync "${RSYNC_OPTS[@]}" "$STAGING_DIR/" "$DEST"
 else
-  echo "Deploying remotely: $STAGING_DIR -> $USER@$HOST:$DEST"
-  rsync "${RSYNC_OPTS[@]}" "$STAGING_DIR/" "$USER@$HOST:$DEST"
+  echo "Deploying remotely: $STAGING_DIR -> $REMOTE_USER@$HOST:$DEST"
+  rsync "${RSYNC_OPTS[@]}" "$STAGING_DIR/" "$REMOTE_USER@$HOST:$DEST"
 fi
 
 echo "Deploy completed."

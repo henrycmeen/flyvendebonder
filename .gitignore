@@ -9,5 +9,9 @@ build/
 .staging/
 apps/shared-assets/dronevideo.mp4
 apps/backend-api/data/*.db
+apps/backend-api/storage/
+apps/backend-api/logs/
+apps/web-app/node_modules/
+apps/web-app/dist/
 __pycache__/
 *.pyc

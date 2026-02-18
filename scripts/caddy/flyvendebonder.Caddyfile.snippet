@@ -1,0 +1,29 @@
+# Drop-in for the existing `:2015` Caddy setup on Mac mini.
+# Add this inside the `:2015 { ... }` block.
+
+@flyvendebonder host flyvendebonder.no www.flyvendebonder.no xn--flyvendebnder-jnb.no www.xn--flyvendebnder-jnb.no
+handle @flyvendebonder {
+  root * /Users/henrymeen/srv/www/flyvendebonder
+  encode zstd gzip
+
+  @demo_root path /demo
+  redir @demo_root /app/?{query} 301
+
+  @demo_path path_regexp demo_path ^/demo/(.*)$
+  redir @demo_path /app/{re.demo_path.1}?{query} 301
+
+  @app_no_slash path /app
+  redir @app_no_slash /app/ 301
+
+  # Asset cache policy (same policy as backend for clear ops documentation).
+  @asset_immutable path /api/v1/assets/photos/thumb/* /api/v1/assets/photos/web/*
+  header @asset_immutable Cache-Control "public, max-age=31536000, immutable"
+
+  @asset_original path /api/v1/assets/photos/original/*
+  header @asset_original Cache-Control "public, max-age=3600"
+
+  @api path /api/*
+  reverse_proxy @api 127.0.0.1:8787
+
+  file_server
+}

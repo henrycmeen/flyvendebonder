@@ -8,14 +8,28 @@
   const brand = document.querySelector(".brand--floating");
   const brandLogo = document.querySelector(".brand--floating .brand__logo");
   const mediaFrame = document.querySelector("[data-media-frame]");
+  const mediaVideo = document.querySelector(".proto-media__video");
 
   if (!root || !snap || !mediaFrame) return;
 
   const rootStyle = document.documentElement.style;
 
   const ease = "cubic-bezier(0.16, 0.9, 0.22, 1)";
+  const isChromium = (() => {
+    const ua = navigator.userAgent || "";
+    return (
+      (ua.includes("Chrome") || ua.includes("CriOS")) &&
+      !ua.includes("Edg") &&
+      !ua.includes("OPR")
+    );
+  })();
   let hoverAnimation = null;
   let settleAnimation = null;
+  let lockedBanner = false;
+  let wasLockedBanner = false;
+  let lastMediaH = -1;
+  let lastRotate = -1;
+  let chromeVideoAutoPaused = false;
 
   const clamp01 = (value) => Math.max(0, Math.min(1, value));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -40,6 +54,18 @@
   const cancelAnimation = (anim) => {
     try {
       anim?.cancel();
+    } catch {
+      // ignore
+    }
+  };
+
+  const safePlayVideo = () => {
+    if (!mediaVideo || prefersReducedMotion) return;
+    try {
+      const maybePromise = mediaVideo.play();
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch(() => {});
+      }
     } catch {
       // ignore
     }
@@ -126,19 +152,44 @@
     // Hvor raskt den “låser”: mindre verdi = raskere.
     const shrinkV = readFloatVar("--shrink-v", 0.32);
     const shrinkDistance = Math.max(170, Math.min(Math.max(0.18, shrinkV) * h, 420));
-    const t = easeOutQuad(clamp01(y / shrinkDistance));
+    const lockEnter = shrinkDistance + (isChromium ? 20 : 10);
+    const lockExit = shrinkDistance - (isChromium ? 60 : 24);
+    if (!lockedBanner && y >= lockEnter) lockedBanner = true;
+    if (lockedBanner && y <= lockExit) lockedBanner = false;
+    const t = lockedBanner ? 1 : easeOutQuad(clamp01(y / shrinkDistance));
+
+    if (isChromium && mediaVideo && wasLockedBanner !== lockedBanner) {
+      if (lockedBanner) {
+        if (!mediaVideo.paused) {
+          mediaVideo.pause();
+          chromeVideoAutoPaused = true;
+        }
+      } else if (chromeVideoAutoPaused) {
+        safePlayVideo();
+        chromeVideoAutoPaused = false;
+      }
+      wasLockedBanner = lockedBanner;
+    }
 
     const startV = readFloatVar("--start-v", 0.8);
     const fullH = Math.max(220, Math.min(Math.max(0.55, startV) * h, 0.92 * h));
     const mediaH = lerp(fullH, lockH, t);
 
     rootStyle.setProperty("--media-w", "100vw");
-    rootStyle.setProperty("--media-h", `${mediaH.toFixed(1)}px`);
+    const roundedMediaH = Math.round(mediaH);
+    if (Math.abs(roundedMediaH - lastMediaH) >= 1) {
+      rootStyle.setProperty("--media-h", `${roundedMediaH}px`);
+      lastMediaH = roundedMediaH;
+    }
     rootStyle.setProperty("--media-radius", "0px");
     rootStyle.setProperty("--media-shadow-alpha", "0");
 
     // Logo spin basert på scroll.
-    rootStyle.setProperty("--scroll-rotate", (y * 1.1).toFixed(2));
+    const rotate = Math.round(y * 1.1 * 10) / 10;
+    if (Math.abs(rotate - lastRotate) >= 0.1) {
+      rootStyle.setProperty("--scroll-rotate", rotate.toFixed(1));
+      lastRotate = rotate;
+    }
   };
 
   let raf = 0;

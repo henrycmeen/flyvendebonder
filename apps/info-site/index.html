@@ -6,7 +6,7 @@
     <title>Flyvendebønder</title>
     <meta
       name="description"
-      content="Dronebilder gjort nyttige for drift med dokumenterte funn, tydelig leveranse og praktiske demoverktøy."
+      content="Dronebilder gjort nyttige i en egen Flyvendebønder-app, med tidslinje, kart og enkel prosessering i pilot."
     />
     <link rel="stylesheet" href="./base.css" />
     <link rel="stylesheet" href="./styles.css" />
@@ -46,7 +46,7 @@
         <div class="proto-media__frame" data-media-frame>
           <video
             class="proto-media__video"
-            src="./assets/dronevideo.mp4"
+            src="./assets/flyvendebonderintro-web-60s.mp4"
             autoplay
             muted
             loop
@@ -62,7 +62,8 @@
 
         <p class="copy" data-animate="in" style="--d: 1900ms">
           I 2026 kjører vi et pilotprosjekt på Meen gård og dokumenterer funn og erfaringer. Målet er en leveranse som funker i
-          hverdagen: lav terskel, tydelig dokumentasjon og filer som kan brukes videre.
+          hverdagen: lav terskel, tydelig dokumentasjon og filer som kan brukes videre. I denne fasen prioriterer vi enkel
+          prosessering direkte i appen.
         </p>
 
         <div class="case-grid" aria-label="Plan">
@@ -70,26 +71,25 @@
             <div class="case__kicker">Utgangspunkt</div>
             <div class="case__title">Hva vi skal finne ut</div>
             <p class="case__text">
-              Om droneflyging + Presis kan gi et praktisk beslutningsgrunnlag i drift, med lav friksjon for bonden. Vi vil også
-              forstå hva som faktisk tar tid, hva som skaper usikkerhet, og hvilke leveranser som gir mest verdi. Piloten skal også
-              vise hva som bør standardiseres vs. tilpasses per gård.
+              Om en relativt enkel Flyvendebønder-app kan dekke behovene i praktisk drift. Vi vil finne ut når og hvor ofte det
+              faktisk lønner seg å fly, og hva bonden i praksis får brukt dataene til i beslutninger gjennom sesongen.
             </p>
           </div>
           <div class="case" data-animate="in" style="--d: 2150ms">
             <div class="case__kicker">Gjennomføring</div>
             <div class="case__title">Slik planlegger vi 2026</div>
             <p class="case__text">
-              Vi gjennomfører 1–3 flyginger i sesong (etter behov), laster opp i Presis og bestiller relevante kartprodukter. Vi
-              lager en enkel, gjentakbar løype (plan → fly → opplasting → tolkning → leveranse) og standardiserer rapportmaler
-              underveis.
+              Vi ønsker å fly før, under og etter viktige perioder i sesongen, og finne optimale flytidspunkt i tett samarbeid
+              med bonden. Første fase kjøres med vanlig drone uten spesialsensorer; hvis nytten er tydelig vurderer vi sensorer
+              senere.
             </p>
           </div>
           <div class="case" data-animate="in" style="--d: 2250ms">
             <div class="case__kicker">Leveranse</div>
             <div class="case__title">Hva vi publiserer her</div>
             <p class="case__text">
-              Hvert kvartal legger vi ut korte notater: hva vi gjorde, hvilke produkter vi brukte, hva vi lærte, og et lite utvalg
-              kartutsnitt/eksempler. Målet er å bygge et konkret «før/etter»-grunnlag og en realistisk prismodell.
+              Vi ønsker å holde arbeidet åpent: kildekode publiseres, og vi skriver enkle rapporter om hva som fungerte, hva som
+              ikke fungerte, hvilke grep som ga best effekt, og hvordan kost/nytte utvikler seg over tid.
             </p>
           </div>
         </div>
@@ -98,51 +98,46 @@
       <section id="oppdateringer" class="section" aria-labelledby="oppdateringer-title">
         <h2 id="oppdateringer-title" class="section__title" data-animate="in" style="--d: 3300ms">Oppdateringer</h2>
         <p class="copy copy--secondary" data-animate="in" style="--d: 3450ms">
-          Korte notater om hva vi gjør og hva vi lærer. Dette bygger seg opp til en samlet pilotrapport.
+          Milepæler fra pilotløpet på Meen gård, fra oppstart til videre utvikling mot sesong.
         </p>
 
         <div class="timeline" role="list">
           <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3600ms">
             <div class="timeline__date">18. desember 2025</div>
-            <div class="timeline__text">Pilotavtale på plass – neste steg er å avklare flymønster, bestillinger i Presis og rapportmal.</div>
+            <div class="timeline__text">Vi gikk inn i et samarbeid med Meen gård og startet pilotløpet.</div>
           </article>
           <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3720ms">
-            <div class="timeline__date">18. desember 2025</div>
-            <div class="timeline__text">Plan for 2026 – Q1 oppstart, Q2 første leveranse, Q3 oppfølging og Q4 oppsummering.</div>
+            <div class="timeline__date">Januar–februar 2026</div>
+            <div class="timeline__text">Vi utforsket konsepter og avgrenset første versjon av løsningen.</div>
           </article>
           <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3840ms">
-            <div class="timeline__date">18. desember 2025</div>
-            <div class="timeline__text">Nettside v1 – enkel pilotlogg med plass til eksempler, læring og oppsummering.</div>
+            <div class="timeline__date">17. februar 2026</div>
+            <div class="timeline__text">Vi startet utvikling av en egen Flyvendebønder-applikasjon.</div>
           </article>
           <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3960ms">
-            <div class="timeline__date">TBD</div>
-            <div class="timeline__text">Første flyging planlegges når vi har avklart dato og værvindu.</div>
-          </article>
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 4080ms">
-            <div class="timeline__date">TBD</div>
-            <div class="timeline__text">Første leveranse og kort rapport i Q2.</div>
-          </article>
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 4200ms">
-            <div class="timeline__date">TBD</div>
-            <div class="timeline__text">Oppsummering av pilotåret og justert leveranse for 2027.</div>
+            <div class="timeline__date">17. februar 2026</div>
+            <div class="timeline__text">Appen gikk live med kart- og albumfunksjonalitet.</div>
           </article>
         </div>
       </section>
 
       <section id="demo" class="section section--demo" aria-labelledby="demo-title">
-        <h2 id="demo-title" class="section__title" data-animate="in" style="--d: 4350ms">Utforsk kartdemo</h2>
+        <h2 id="demo-title" class="section__title" data-animate="in" style="--d: 4350ms">Appstatus</h2>
         <p class="copy copy--secondary" data-animate="in" style="--d: 4480ms">
-          Vi bygger en enkel fotokart-demo for å vise hvordan funn kan dokumenteres i tid og sted.
+          Vi bygger nå videre på egen applikasjon i pilotfasen, med fokus på enkel import, visning og tolkning av dronebilder direkte
+          i Flyvendebønder.
         </p>
-        <p data-animate="in" style="--d: 4600ms">
-          <a class="demo-link" href="/demo/" aria-label="Åpne Flyvendebønder kartdemo">Prøv demo</a>
+        <p class="copy copy--secondary" data-animate="in" style="--d: 4540ms">
+          Vi utvikler underveis etter behov, og prioriterer først et solid fundament før vi bygger pipelines og starter med mer
+          avanserte analyser.
         </p>
       </section>
 
-      <footer id="kontakt" class="footer" data-animate="in" style="--d: 3650ms">
-        <p class="footer__label">Ta kontakt på</p>
-        <p class="footer__email"><a class="email" href="mailto:hei@flyvendebønder.no">hei@flyvendebønder.no</a></p>
-        <p class="footer__text">i samarbeid med Meen gård.</p>
+      <footer id="app-link" class="footer footer--app" data-animate="in" style="--d: 3650ms">
+        <p class="footer__label">Utforsk appen på</p>
+        <p data-animate="in" style="--d: 4600ms">
+          <a class="demo-link demo-link--liquid" href="/app/" aria-label="Åpne Flyvendebønder-appen">flyvendebønder.no/app</a>
+        </p>
       </footer>
       </main>
     </div>

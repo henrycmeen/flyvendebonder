@@ -1,33 +1,75 @@
-# Backend API (SQLite)
+# Backend API (FastAPI)
 
-Liten backend for kunde-/gårdsdata.
+Backend for Flyvendebønder med:
+- FastAPI
+- SQLAlchemy modeller
+- Alembic migreringer
+- SQLite (første steg)
+- Auto-seed av Roar Meen + Meen-gård bilder fra eksisterende demo-datasett
+- Gårdskart jobId-cache i backend
 
-## Kjør
+## Start lokalt
 ```bash
 cd apps/backend-api
+python3 -m pip install -r requirements.txt
 python3 server.py
 ```
 
-Server starter på `http://127.0.0.1:8787`.
+API: `http://127.0.0.1:8787/api/v1`
 
-## Endepunkter
-- `GET /health`
-- `GET /api/users`
-- `GET /api/users/<id>`
-- `POST /api/users`
-- `PUT /api/users/<id>`
-
-## Seed
-Ved første oppstart opprettes én bruker automatisk:
-- Navn: `Roar Meen`
-- Kommune: `3807` (Skien)
-- Gårdsnummer: `70`
-- Bruksnummer: `17`
-- Festenummer: `0`
-
-Adresse og telefon står tomt i starten og kan oppdateres med `PUT /api/users/<id>`.
-
-## Eksempel
+## Kjør smoke-test lokalt
 ```bash
-curl -s http://127.0.0.1:8787/api/users | jq
+cd apps/backend-api
+python3 -m pip install -r requirements.txt
+python3 -m pytest -q tests/test_smoke.py
+```
+
+## Viktige endepunkter
+- `GET /api/v1/health`
+- `GET /api/v1/profile/current`
+- `PATCH /api/v1/profile/current`
+- `GET /api/v1/timeline/dates`
+- `GET /api/v1/photos?date=YYYY-MM-DD&mode=day|cumulative`
+- `PATCH /api/v1/photos/{photo_id}/metadata`
+- `GET /api/v1/properties/current`
+- `GET /api/v1/properties/current/gardskart-job`
+- `POST /api/v1/imports/photos`
+- `GET /api/v1/imports/{id}`
+- `GET /api/v1/assets/{asset_path}`
+
+## Import av nye bilder
+CLI (manuell jobb):
+```bash
+cd apps/backend-api
+python3 import_photos.py "/Users/henmee/Movies/Droneshots/Meen gård/Analysebilder"
+```
+
+## Notes
+- Databasen ligger i `apps/backend-api/data/flyvendebonder.db`.
+- Ved funn av legacy/halv-migrert DB tar backend automatisk backup og migrerer på nytt.
+- `gardskart-job` endpoint fornyer jobId automatisk når cache er utløpt.
+
+## AR5 + jordsmonn (v0.1)
+- Analyse beriker bilder med `ar5_class` og `soil_class`.
+- Oppslagspunkt følger samme geometri som vises i appen (`view_lat/view_lng`-logikk), med fallback til dronepunkt.
+- Standardoppsett bruker NIBIO WMS `GetFeatureInfo`:
+  - AR5: `https://wms.nibio.no/cgi-bin/ar5` (`Arealtype`)
+  - Jordkvalitet: `https://wms.nibio.no/cgi-bin/jordkvalitet` (`Jordkvalitet`)
+- WFS brukes som fallback der det er konfigurert.
+
+Nyttige env-variabler:
+- `PHOTO_AR5_WMS_URL`
+- `PHOTO_AR5_WMS_LAYERS`
+- `PHOTO_AR5_WMS_LAYER_FIELDS`
+- `PHOTO_SOIL_WMS_URL`
+- `PHOTO_SOIL_WMS_LAYERS`
+- `PHOTO_SOIL_WMS_LAYER_FIELDS`
+- `PHOTO_AR5_WFS_URL`
+- `PHOTO_AR5_WFS_LAYERS`
+- `PHOTO_SOIL_WFS_URL`
+- `PHOTO_SOIL_WFS_LAYERS`
+
+Tving reanalyse av alle bilder:
+```bash
+curl -X POST "http://127.0.0.1:8787/api/v1/analysis/refresh?force=true"
 ```

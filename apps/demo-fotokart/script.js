@@ -27,7 +27,7 @@
 
   const PROPERTY = {
     owner: "Roar Meen",
-    komm: "3807",
+    komm: "4003",
     gnr: 70,
     bnr: 17,
     fnr: 0,
