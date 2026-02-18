@@ -7,6 +7,9 @@ import type { PhotoFeature } from "@/types";
 interface PhotoMapInsetProps {
   photo: PhotoFeature;
   baseMapStyle: BaseMapStyle;
+  editable?: boolean;
+  manualTarget?: { lat: number; lng: number } | null;
+  onManualTargetChange?: ((target: { lat: number; lng: number } | null) => void) | undefined;
 }
 
 type LeafletContainer = HTMLDivElement & {
@@ -25,7 +28,13 @@ function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefine
   return [point.lat, point.lng];
 }
 
-function getAnalysisTarget(photo: PhotoFeature): [number, number] | null {
+function getAnalysisTarget(
+  photo: PhotoFeature,
+  manualTarget: { lat: number; lng: number } | null | undefined,
+): [number, number] | null {
+  if (manualTarget && Number.isFinite(manualTarget.lat) && Number.isFinite(manualTarget.lng)) {
+    return [manualTarget.lat, manualTarget.lng];
+  }
   if (photo.analysis_zone?.center_point) {
     return toLatLngFromPoint(photo.analysis_zone.center_point);
   }
@@ -67,7 +76,22 @@ function resetLeafletContainer(container: LeafletContainer): void {
   container.innerHTML = "";
 }
 
-export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
+function manualTargetIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "photo-viewer-map-target-handle-shell",
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    html: '<span class="photo-viewer-map-target-handle"></span>',
+  });
+}
+
+export function PhotoMapInset({
+  photo,
+  baseMapStyle,
+  editable = false,
+  manualTarget,
+  onManualTargetChange,
+}: PhotoMapInsetProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
@@ -138,6 +162,21 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
   }, [baseMapStyle]);
 
   useEffect(() => {
+    if (!mapRef.current) return;
+    if (!editable || !onManualTargetChange) return;
+
+    const map = mapRef.current;
+    const clickHandler = (event: L.LeafletMouseEvent) => {
+      onManualTargetChange({ lat: event.latlng.lat, lng: event.latlng.lng });
+    };
+    map.on("click", clickHandler);
+
+    return () => {
+      map.off("click", clickHandler);
+    };
+  }, [editable, onManualTargetChange]);
+
+  useEffect(() => {
     if (!mapRef.current || !overlayRef.current) return;
 
     const overlay = overlayRef.current;
@@ -145,7 +184,7 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
 
     const source = L.latLng(photo.lat, photo.lng);
     const points: L.LatLng[] = [source];
-    const targetPointCoordinates = getAnalysisTarget(photo);
+    const targetPointCoordinates = getAnalysisTarget(photo, manualTarget);
 
     L.circleMarker(source, {
       radius: 4.5,
@@ -165,20 +204,36 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
         color: "rgba(255, 172, 64, 0.95)",
         weight: 2.3,
         opacity: 0.98,
-        dashArray: photo.view_mode === "estimated" ? "4 6" : undefined,
+        dashArray: photo.view_mode === "estimated" && !manualTarget ? "4 6" : undefined,
         lineCap: "round",
         interactive: false,
       }).addTo(overlay);
 
-      L.circleMarker(target, {
-        radius: 4,
-        color: "#5b3d0f",
-        weight: 1.1,
-        fillColor: "#fff2da",
-        fillOpacity: 0.97,
-        opacity: 0.95,
-        interactive: false,
-      }).addTo(overlay);
+      if (editable) {
+        const marker = L.marker(target, {
+          draggable: true,
+          icon: manualTargetIcon(),
+          keyboard: false,
+          autoPan: false,
+        });
+        if (onManualTargetChange) {
+          marker.on("dragend", () => {
+            const position = marker.getLatLng();
+            onManualTargetChange({ lat: position.lat, lng: position.lng });
+          });
+        }
+        marker.addTo(overlay);
+      } else {
+        L.circleMarker(target, {
+          radius: 4,
+          color: "#5b3d0f",
+          weight: 1.1,
+          fillColor: "#fff2da",
+          fillOpacity: 0.97,
+          opacity: 0.95,
+          interactive: false,
+        }).addTo(overlay);
+      }
 
       if (photo.location_uncertainty_m != null && Number.isFinite(photo.location_uncertainty_m)) {
         const radius = Math.max(1.4, Math.min(photo.location_uncertainty_m, 50));
@@ -257,7 +312,7 @@ export function PhotoMapInset({ photo, baseMapStyle }: PhotoMapInsetProps) {
       animate: false,
       maxZoom: Math.min(BASE_MAP_STYLES[baseMapStyle].maxZoom, 17),
     });
-  }, [photo, baseMapStyle]);
+  }, [photo, baseMapStyle, editable, manualTarget, onManualTargetChange]);
 
   return (
     <div className="photo-viewer-map-inset" aria-hidden="true">

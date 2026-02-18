@@ -67,6 +67,29 @@ def _extract_meta_value(tags: list[str], prefix: str) -> str | None:
     return None
 
 
+def _extract_meta_float(tags: list[str], prefix: str) -> float | None:
+    raw = _extract_meta_value(tags, prefix)
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value):
+        return None
+    return value
+
+
+def _extract_manual_view_override(tags: list[str]) -> tuple[float, float] | None:
+    lat = _extract_meta_float(tags, "meta:manual_view_lat")
+    lng = _extract_meta_float(tags, "meta:manual_view_lng")
+    if lat is None or lng is None:
+        return None
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        return None
+    return lat, lng
+
+
 def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, value))
 
@@ -128,6 +151,12 @@ def _derive_quality_confidence(photo: Photo, quality_flags: list[str], geometry_
 
 
 def _derive_location_uncertainty_m(photo: Photo, quality_flags: list[str], geometry_confidence: float, view_mode: str) -> float:
+    if view_mode == "manual":
+        uncertainty = 2.5
+        if "qc:missing_gps" in quality_flags:
+            uncertainty += 2.0
+        return round(uncertainty, 2)
+
     if photo.pitch_deg is None or photo.altitude_m is None:
         return 30.0 if photo.altitude_m is None else 22.0
 
@@ -353,7 +382,15 @@ def _base_photo_query(user_id: int, selected_date: date, mode: str):
     return query
 
 
-def _derive_camera_view(photo: Photo) -> tuple[float, float, GeometryMethod, float | None, float]:
+def _derive_camera_view(photo: Photo, tags: list[str] | None = None) -> tuple[float, float, GeometryMethod, float | None, float]:
+    tag_list = tags if tags is not None else _parse_tags(getattr(photo, "tags_json", None))
+    manual_override = _extract_manual_view_override(tag_list)
+    if manual_override is not None:
+        manual_lat, manual_lng = manual_override
+        east_m, north_m = _offsets_from_positions(photo.lat, photo.lng, manual_lat, manual_lng)
+        forward_distance_m = round(math.sqrt(east_m * east_m + north_m * north_m), 2)
+        return manual_lat, manual_lng, "manual", forward_distance_m, 1.0
+
     if photo.heading_deg is None or photo.pitch_deg is None or photo.altitude_m is None:
         return photo.lat, photo.lng, "point", None, 0.5
 
@@ -372,8 +409,8 @@ def _serialize_photo(
     previous_photo: Photo | None = None,
     next_photo: Photo | None = None,
 ) -> dict:
-    view_lat, view_lng, view_mode, view_distance_m, view_confidence = _derive_camera_view(photo)
     tags = _parse_tags(photo.tags_json)
+    view_lat, view_lng, view_mode, view_distance_m, view_confidence = _derive_camera_view(photo, tags=tags)
     quality_flags = _extract_quality_flags(tags)
     needs_manual_qc = "qc:needs_manual_qc" in quality_flags
     heading_source = _extract_meta_value(tags, "meta:heading_source")

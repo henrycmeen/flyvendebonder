@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import logging
+import json
 from datetime import datetime
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -71,6 +73,53 @@ _PHOTO_ANALYSIS_ESTIMATED_FALLBACK_SCORE_THRESHOLD = 1
 
 def _split_comma_values(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _parse_tags(photo: Photo) -> list[str]:
+    try:
+        parsed = json.loads(photo.tags_json or "[]")
+    except Exception:  # noqa: BLE001
+        return []
+    return [str(tag) for tag in parsed if isinstance(tag, str) and tag.strip()]
+
+
+def _extract_meta_value(tags: list[str], key: str) -> str | None:
+    prefix = key.rstrip("=") + "="
+    for tag in tags:
+        if tag.startswith(prefix):
+            return tag[len(prefix) :].strip()
+    return None
+
+
+def _extract_meta_float(tags: list[str], key: str) -> float | None:
+    raw = _extract_meta_value(tags, key)
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value):
+        return None
+    return value
+
+
+def _extract_manual_view_override(photo: Photo) -> tuple[float, float] | None:
+    tags = _parse_tags(photo)
+    lat = _extract_meta_float(tags, "meta:manual_view_lat")
+    lng = _extract_meta_float(tags, "meta:manual_view_lng")
+    if lat is None or lng is None:
+        return None
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        return None
+    return lat, lng
+
+
+def _distance_m(from_lat: float, from_lng: float, to_lat: float, to_lng: float) -> float:
+    mean_lat_rad = math.radians((from_lat + to_lat) / 2.0)
+    east_m = (to_lng - from_lng) * 111_320.0 * max(0.000001, math.cos(mean_lat_rad))
+    north_m = (to_lat - from_lat) * 111_320.0
+    return math.sqrt(east_m * east_m + north_m * north_m)
 
 
 def _build_fallback_metadata(photo: Photo) -> ExtractedMetadata:
@@ -545,6 +594,17 @@ def _derive_geometry(
 ) -> GeometryResult:
     if not settings.photo_analysis_enabled:
         return GeometryResult(lat=photo.lat, lng=photo.lng, geometry_method="manual", confidence=0.6)
+
+    manual_override = _extract_manual_view_override(photo)
+    if manual_override is not None:
+        manual_lat, manual_lng = manual_override
+        return GeometryResult(
+            lat=manual_lat,
+            lng=manual_lng,
+            geometry_method="manual",
+            confidence=1.0,
+            forward_distance_m=_distance_m(photo.lat, photo.lng, manual_lat, manual_lng),
+        )
 
     # UI viser view-punkt basert på photo-feltene. Vi prioriterer de samme feltene i analyse for konsistens.
     pitch = photo.pitch_deg if photo.pitch_deg is not None else select_pitch_from_metadata(metadata).value

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 from datetime import date as date_type, datetime
@@ -88,6 +89,61 @@ def _set_quality_flag(tags: list[str], needs_manual_qc: bool | None) -> list[str
         normalized_set.discard("qc:needs_manual_qc")
 
     return sorted(normalized_set)
+
+
+def _extract_meta_value(tags: list[str], key: str) -> str | None:
+    prefix = key.rstrip("=") + "="
+    for tag in tags:
+        if tag.startswith(prefix):
+            return tag[len(prefix) :].strip()
+    return None
+
+
+def _set_meta_value(tags: list[str], key: str, value: str | None) -> list[str]:
+    prefix = key.rstrip("=") + "="
+    filtered = [tag for tag in tags if not tag.startswith(prefix)]
+    if value is not None:
+        filtered.append(f"{prefix}{value}")
+    return filtered
+
+
+def _extract_manual_view_override(tags: list[str]) -> tuple[float | None, float | None]:
+    raw_lat = _extract_meta_value(tags, "meta:manual_view_lat")
+    raw_lng = _extract_meta_value(tags, "meta:manual_view_lng")
+    if raw_lat is None or raw_lng is None:
+        return None, None
+
+    try:
+        lat = float(raw_lat)
+        lng = float(raw_lng)
+    except (TypeError, ValueError):
+        return None, None
+
+    if not math.isfinite(lat) or not math.isfinite(lng):
+        return None, None
+
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        return None, None
+
+    return lat, lng
+
+
+def _set_manual_view_override(tags: list[str], lat: float | None, lng: float | None) -> list[str]:
+    if lat is None and lng is None:
+        cleared = _set_meta_value(tags, "meta:manual_view_lat", None)
+        return _set_meta_value(cleared, "meta:manual_view_lng", None)
+
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må settes sammen")
+
+    if not math.isfinite(lat) or not math.isfinite(lng):
+        raise HTTPException(status_code=400, detail="Manuelt målpunkt må være gyldige tall")
+
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        raise HTTPException(status_code=400, detail="Manuelt målpunkt er utenfor gyldig koordinatområde")
+
+    with_lat = _set_meta_value(tags, "meta:manual_view_lat", f"{lat:.6f}")
+    return _set_meta_value(with_lat, "meta:manual_view_lng", f"{lng:.6f}")
 
 
 def _serialize_tag_list(photo: Photo) -> list[str]:
@@ -325,6 +381,12 @@ def patch_photo_metadata(
         tags = _set_quality_flag(tags, payload.needs_manual_qc)
         photo.tags_json = json.dumps(tags, ensure_ascii=False)
 
+    if "manual_view_lat" in payload.model_fields_set or "manual_view_lng" in payload.model_fields_set:
+        if "manual_view_lat" not in payload.model_fields_set or "manual_view_lng" not in payload.model_fields_set:
+            raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må sendes sammen")
+        tags = _set_manual_view_override(tags, payload.manual_view_lat, payload.manual_view_lng)
+        photo.tags_json = json.dumps(tags, ensure_ascii=False)
+
     if "altitude_m" in payload.model_fields_set:
         photo.altitude_m = payload.altitude_m
     if "heading_deg" in payload.model_fields_set:
@@ -333,6 +395,7 @@ def patch_photo_metadata(
         photo.pitch_deg = payload.pitch_deg
 
     needs_manual_qc = "qc:needs_manual_qc" in tags
+    manual_view_lat, manual_view_lng = _extract_manual_view_override(tags)
 
     db.commit()
     db.refresh(photo)
@@ -346,6 +409,8 @@ def patch_photo_metadata(
         altitude_m=photo.altitude_m,
         heading_deg=photo.heading_deg,
         pitch_deg=photo.pitch_deg,
+        manual_view_lat=manual_view_lat,
+        manual_view_lng=manual_view_lng,
     )
 
 

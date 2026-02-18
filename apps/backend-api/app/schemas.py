@@ -102,6 +102,8 @@ class PhotoMetadataPatchRequest(BaseModel):
     altitude_m: float | None = None
     heading_deg: float | None = None
     pitch_deg: float | None = None
+    manual_view_lat: float | None = None
+    manual_view_lng: float | None = None
 
 
 class PhotoMetadataActionResponse(BaseModel):
@@ -113,6 +115,8 @@ class PhotoMetadataActionResponse(BaseModel):
     altitude_m: float | None = None
     heading_deg: float | None = None
     pitch_deg: float | None = None
+    manual_view_lat: float | None = None
+    manual_view_lng: float | None = None
 
 
 class GeoPoint(BaseModel):

@@ -41,6 +41,11 @@ interface BackendLogEntry {
   raw: string;
 }
 
+interface ManualViewTarget {
+  lat: number;
+  lng: number;
+}
+
 const LOG_LIMIT = 220;
 
 type SeasonFilter = "all" | "spring" | "summer" | "autumn" | "winter";
@@ -148,6 +153,24 @@ function numbersEqual(a: number | null, b: number | null): boolean {
   if (a == null && b == null) return true;
   if (a == null || b == null) return false;
   return Math.abs(a - b) < 0.000001;
+}
+
+function parseManualViewTarget(tags: string[] | null | undefined): ManualViewTarget | null {
+  if (!tags?.length) return null;
+  const latTag = tags.find((tag) => tag.startsWith("meta:manual_view_lat="));
+  const lngTag = tags.find((tag) => tag.startsWith("meta:manual_view_lng="));
+  if (!latTag || !lngTag) return null;
+  const lat = Number(latTag.slice("meta:manual_view_lat=".length));
+  const lng = Number(lngTag.slice("meta:manual_view_lng=".length));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+function sameManualViewTarget(a: ManualViewTarget | null, b: ManualViewTarget | null): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return Math.abs(a.lat - b.lat) < 0.000001 && Math.abs(a.lng - b.lng) < 0.000001;
 }
 
 function formatGeometryMethod(value: string | null): string {
@@ -328,6 +351,7 @@ export default function App() {
   const [metadataAltitudeDraft, setMetadataAltitudeDraft] = useState("");
   const [metadataHeadingDraft, setMetadataHeadingDraft] = useState("");
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
+  const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
@@ -358,6 +382,10 @@ export default function App() {
       null
     );
   }, [albumPhotos, photos, selectedPhotoId]);
+  const selectedPhotoManualViewTarget = useMemo(
+    () => parseManualViewTarget(selectedPhoto?.tags),
+    [selectedPhoto?.tags],
+  );
   const hoverPreviewPhoto = useMemo(() => {
     if (!hoverPreviewPhotoId) return null;
     return photos.find((photo) => photoIdKey(photo.id) === photoIdKey(hoverPreviewPhotoId)) ?? null;
@@ -384,6 +412,10 @@ export default function App() {
   }, [navigationPhotos, selectedPhotoId]);
   const hasPrevPhoto = selectedNavigationIndex > 0;
   const hasNextPhoto = selectedNavigationIndex >= 0 && selectedNavigationIndex < navigationPhotos.length - 1;
+  const activeInsetManualTarget = useMemo(
+    () => (metadataEditMode ? metadataManualViewTargetDraft : selectedPhotoManualViewTarget),
+    [metadataEditMode, metadataManualViewTargetDraft, selectedPhotoManualViewTarget],
+  );
   const stripPhotos = useMemo(() => {
     if (selectedNavigationIndex < 0) return [];
     const start = Math.max(0, selectedNavigationIndex - 7);
@@ -408,16 +440,19 @@ export default function App() {
       !draftPitch.valid ||
       !numbersEqual(selectedPhoto.altitude_m, draftAltitude.value) ||
       !numbersEqual(selectedPhoto.heading_deg, draftHeading.value) ||
-      !numbersEqual(selectedPhoto.pitch_deg, draftPitch.value)
+      !numbersEqual(selectedPhoto.pitch_deg, draftPitch.value) ||
+      !sameManualViewTarget(selectedPhotoManualViewTarget, metadataManualViewTargetDraft)
     );
   }, [
     metadataAltitudeDraft,
     metadataCaptionDraft,
     metadataHeadingDraft,
+    metadataManualViewTargetDraft,
     metadataNeedsManualQcDraft,
     metadataPitchDraft,
     metadataTagsDraft,
     selectedPhoto,
+    selectedPhotoManualViewTarget,
   ]);
 
   const timelineIndexed = useMemo<TimelineEntryIndexed[]>(
@@ -684,6 +719,7 @@ export default function App() {
     const nextTags = normalizeTagsInput(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
     const nextNeedsManualQc = metadataNeedsManualQcDraft;
+    const manualTargetChanged = !sameManualViewTarget(selectedPhotoManualViewTarget, metadataManualViewTargetDraft);
     const altitudeInput = parseDraftNumber(metadataAltitudeDraft);
     const headingInput = parseDraftNumber(metadataHeadingDraft);
     const pitchInput = parseDraftNumber(metadataPitchDraft);
@@ -703,6 +739,12 @@ export default function App() {
           altitude_m: altitudeInput.value,
           heading_deg: headingInput.value,
           pitch_deg: pitchInput.value,
+          ...(manualTargetChanged
+            ? {
+                manual_view_lat: metadataManualViewTargetDraft?.lat ?? null,
+                manual_view_lng: metadataManualViewTargetDraft?.lng ?? null,
+              }
+            : {}),
         }),
       );
 
@@ -721,6 +763,11 @@ export default function App() {
       setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
       setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
       setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
+      setMetadataManualViewTargetDraft(
+        data.manual_view_lat != null && data.manual_view_lng != null
+          ? { lat: data.manual_view_lat, lng: data.manual_view_lng }
+          : null,
+      );
       setMetadataTagDraft("");
       addLog("info", "Metadata lagret", requestId, {
         photoId: data.photo_id,
@@ -743,8 +790,10 @@ export default function App() {
     metadataAltitudeDraft,
     metadataCaptionDraft,
     metadataHeadingDraft,
+    metadataManualViewTargetDraft,
     metadataTagsDraft,
     selectedPhoto,
+    selectedPhotoManualViewTarget,
     trackRequest,
     updatePhotoMetadataState,
     metadataNeedsManualQcDraft,
@@ -760,6 +809,7 @@ export default function App() {
     setMetadataAltitudeDraft(toDraftNumber(selectedPhoto.altitude_m));
     setMetadataHeadingDraft(toDraftNumber(selectedPhoto.heading_deg));
     setMetadataPitchDraft(toDraftNumber(selectedPhoto.pitch_deg));
+    setMetadataManualViewTargetDraft(parseManualViewTarget(selectedPhoto.tags));
     setMetadataEditMode(false);
   }, [selectedPhoto]);
 
@@ -824,6 +874,7 @@ export default function App() {
       setMetadataAltitudeDraft("");
       setMetadataHeadingDraft("");
       setMetadataPitchDraft("");
+      setMetadataManualViewTargetDraft(null);
       setMetadataEditMode(false);
       setShowTechnicalMetadata(false);
       return;
@@ -835,6 +886,7 @@ export default function App() {
     setMetadataAltitudeDraft(toDraftNumber(selectedPhoto.altitude_m));
     setMetadataHeadingDraft(toDraftNumber(selectedPhoto.heading_deg));
     setMetadataPitchDraft(toDraftNumber(selectedPhoto.pitch_deg));
+    setMetadataManualViewTargetDraft(parseManualViewTarget(selectedPhoto.tags));
     setMetadataEditMode(false);
     setShowTechnicalMetadata(false);
   }, [selectedPhoto?.id]);
@@ -1704,6 +1756,39 @@ export default function App() {
                                 )}
                               </dd>
                             </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <dt>Målpunkt</dt>
+                              <dd className="max-w-[14rem] text-right">
+                                {metadataEditMode ? (
+                                  <div className="space-y-1">
+                                    <p className="text-[11px] text-earth-700/90">Klikk i kartet eller dra punktet</p>
+                                    <p className="font-medium">
+                                      {metadataManualViewTargetDraft
+                                        ? `${formatCoordinate(metadataManualViewTargetDraft.lat)}, ${formatCoordinate(metadataManualViewTargetDraft.lng)}`
+                                        : "Beregnet automatisk"}
+                                    </p>
+                                    <div className="flex justify-end">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-[11px]"
+                                        onClick={() => setMetadataManualViewTargetDraft(null)}
+                                        disabled={metadataBusyPhotoId === selectedPhoto.id}
+                                      >
+                                        Bruk beregnet punkt
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="font-medium">
+                                    {selectedPhotoManualViewTarget
+                                      ? `${formatCoordinate(selectedPhotoManualViewTarget.lat)}, ${formatCoordinate(selectedPhotoManualViewTarget.lng)}`
+                                      : "Beregnet automatisk"}
+                                  </span>
+                                )}
+                              </dd>
+                            </div>
                           </dl>
 
                           <div className="mt-2 space-y-2">
@@ -1820,7 +1905,13 @@ export default function App() {
                         <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
                           <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Kartutsnitt</p>
                           <div className="mt-1">
-                            <PhotoMapInset photo={selectedPhoto} baseMapStyle={baseMapStyle} />
+                            <PhotoMapInset
+                              photo={selectedPhoto}
+                              baseMapStyle={baseMapStyle}
+                              editable={metadataEditMode}
+                              manualTarget={activeInsetManualTarget}
+                              onManualTargetChange={setMetadataManualViewTargetDraft}
+                            />
                           </div>
                         </div>
 

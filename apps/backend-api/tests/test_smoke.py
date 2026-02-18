@@ -136,16 +136,23 @@ def test_photo_metadata_patch(client):
             "altitude_m": 212.4,
             "heading_deg": -132.6,
             "pitch_deg": -57.0,
+            "manual_view_lat": 59.168146,
+            "manual_view_lng": 9.662754,
         },
     )
     assert patch.status_code == 200
     patched = patch.json()
     assert patched["photo_id"] == photo_id
-    assert patched["tags"] == ["meen-gard", "test-tag"]
+    assert "meen-gard" in patched["tags"]
+    assert "test-tag" in patched["tags"]
+    assert "meta:manual_view_lat=59.168146" in patched["tags"]
+    assert "meta:manual_view_lng=9.662754" in patched["tags"]
     assert patched["caption"] == "Oppdatert notat"
     assert patched["altitude_m"] == 212.4
     assert patched["heading_deg"] == -132.6
     assert patched["pitch_deg"] == -57.0
+    assert patched["manual_view_lat"] == 59.168146
+    assert patched["manual_view_lng"] == 9.662754
 
     after = client.get(
         "/api/v1/photos",
@@ -153,11 +160,28 @@ def test_photo_metadata_patch(client):
     )
     assert after.status_code == 200
     updated_photo = next(item for item in after.json()["photos"] if item["id"] == photo_id)
-    assert updated_photo["tags"] == ["meen-gard", "test-tag"]
+    assert "meen-gard" in updated_photo["tags"]
+    assert "test-tag" in updated_photo["tags"]
+    assert "meta:manual_view_lat=59.168146" in updated_photo["tags"]
+    assert "meta:manual_view_lng=9.662754" in updated_photo["tags"]
     assert updated_photo["caption"] == "Oppdatert notat"
     assert updated_photo["altitude_m"] == 212.4
     assert updated_photo["heading_deg"] == -132.6
     assert updated_photo["pitch_deg"] == -57.0
+    assert updated_photo["view_mode"] == "manual"
+    assert updated_photo["view_lat"] == 59.168146
+    assert updated_photo["view_lng"] == 9.662754
+
+    clear_patch = client.patch(
+        f"/api/v1/photos/{photo_id}/metadata",
+        json={"manual_view_lat": None, "manual_view_lng": None},
+    )
+    assert clear_patch.status_code == 200
+    clear_payload = clear_patch.json()
+    assert clear_payload["manual_view_lat"] is None
+    assert clear_payload["manual_view_lng"] is None
+    assert "meta:manual_view_lat=59.168146" not in clear_payload["tags"]
+    assert "meta:manual_view_lng=9.662754" not in clear_payload["tags"]
 
 
 def test_photos_page_smoke(client):

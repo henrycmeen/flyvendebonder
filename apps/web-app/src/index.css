@@ -243,6 +243,28 @@ body {
   filter: saturate(0.95) contrast(1.02);
 }
 
+.photo-viewer-map-target-handle-shell {
+  background: transparent;
+  border: 0;
+}
+
+.photo-viewer-map-target-handle {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(72, 39, 11, 0.95);
+  background: rgba(255, 238, 198, 0.95);
+  box-shadow:
+    0 0 0 4px rgba(255, 170, 77, 0.22),
+    0 2px 8px rgba(37, 19, 5, 0.34);
+  cursor: grab;
+}
+
+.photo-viewer-map-target-handle:active {
+  cursor: grabbing;
+}
+
 .photo-viewer-strip-wrap {
   position: absolute;
   left: 0;

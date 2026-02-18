@@ -97,6 +97,8 @@ export interface PhotoMetadataActionResponse {
   altitude_m: number | null;
   heading_deg: number | null;
   pitch_deg: number | null;
+  manual_view_lat: number | null;
+  manual_view_lng: number | null;
 }
 
 export interface PhotoFeature {
