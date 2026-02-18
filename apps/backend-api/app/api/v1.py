@@ -45,6 +45,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+_METADATA_ALTITUDE_MIN_M = -500.0
+_METADATA_ALTITUDE_MAX_M = 12_000.0
+_METADATA_HEADING_MIN_DEG = -360.0
+_METADATA_HEADING_MAX_DEG = 360.0
+_METADATA_PITCH_MIN_DEG = -90.0
+_METADATA_PITCH_MAX_DEG = 90.0
+
 
 def _current_user(db: Session) -> User:
     user = db.execute(select(User).order_by(User.id)).scalars().first()
@@ -144,6 +151,28 @@ def _set_manual_view_override(tags: list[str], lat: float | None, lng: float | N
 
     with_lat = _set_meta_value(tags, "meta:manual_view_lat", f"{lat:.6f}")
     return _set_meta_value(with_lat, "meta:manual_view_lng", f"{lng:.6f}")
+
+
+def _validate_numeric_override(
+    field_name: str,
+    value: float | None,
+    *,
+    min_value: float,
+    max_value: float,
+) -> float | None:
+    if value is None:
+        return None
+
+    if not math.isfinite(value):
+        raise HTTPException(status_code=400, detail=f"{field_name} må være et gyldig tall")
+
+    if value < min_value or value > max_value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} må være mellom {min_value:g} og {max_value:g}",
+        )
+
+    return float(value)
 
 
 def _serialize_tag_list(photo: Photo) -> list[str]:
@@ -388,11 +417,26 @@ def patch_photo_metadata(
         photo.tags_json = json.dumps(tags, ensure_ascii=False)
 
     if "altitude_m" in payload.model_fields_set:
-        photo.altitude_m = payload.altitude_m
+        photo.altitude_m = _validate_numeric_override(
+            "altitude_m",
+            payload.altitude_m,
+            min_value=_METADATA_ALTITUDE_MIN_M,
+            max_value=_METADATA_ALTITUDE_MAX_M,
+        )
     if "heading_deg" in payload.model_fields_set:
-        photo.heading_deg = payload.heading_deg
+        photo.heading_deg = _validate_numeric_override(
+            "heading_deg",
+            payload.heading_deg,
+            min_value=_METADATA_HEADING_MIN_DEG,
+            max_value=_METADATA_HEADING_MAX_DEG,
+        )
     if "pitch_deg" in payload.model_fields_set:
-        photo.pitch_deg = payload.pitch_deg
+        photo.pitch_deg = _validate_numeric_override(
+            "pitch_deg",
+            payload.pitch_deg,
+            min_value=_METADATA_PITCH_MIN_DEG,
+            max_value=_METADATA_PITCH_MAX_DEG,
+        )
 
     needs_manual_qc = "qc:needs_manual_qc" in tags
     manual_view_lat, manual_view_lng = _extract_manual_view_override(tags)

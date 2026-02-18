@@ -886,7 +886,7 @@ export default function App() {
     } catch (error) {
       const apiError = error as ApiError;
       addLog("error", "Kunne ikke lagre metadata", apiError.requestId, apiError.detail);
-      setStatusText("Kunne ikke lagre metadata.");
+      setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
     } finally {
       setMetadataBusyPhotoId(null);
     }

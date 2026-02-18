@@ -119,17 +119,46 @@ function getRequestIdFromBody(payload: unknown): string | null {
   return typeof requestId === "string" ? requestId : null;
 }
 
+function buildErrorMessage(detail: unknown, responseStatus: number): string {
+  if (typeof detail === "string" && detail.trim().length > 0) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    for (const item of detail) {
+      if (!item || typeof item !== "object") continue;
+      const msg = (item as { msg?: unknown }).msg;
+      if (typeof msg !== "string" || msg.trim().length === 0) continue;
+      const locValue = (item as { loc?: unknown }).loc;
+      if (Array.isArray(locValue) && locValue.length > 0) {
+        const loc = locValue
+          .map((part) => String(part))
+          .filter((part) => part.length > 0)
+          .join(".");
+        if (loc.length > 0) {
+          return `${loc}: ${msg}`;
+        }
+      }
+      return msg;
+    }
+  }
+
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return `Request feilet med status ${responseStatus}`;
+}
+
 async function parseApiError(response: Response): Promise<ApiError> {
   const payload = await parseResponse<unknown>(response);
   const requestIdFromHeader = response.headers.get("X-Request-ID");
   const requestId = getRequestIdFromBody(payload) ?? requestIdFromHeader;
   const detail = normalizeErrorDetail(payload);
-  const detailString =
-    typeof detail === "string" && detail.trim().length > 0
-      ? detail
-      : payload && typeof payload === "object" && typeof (payload as ErrorPayload).message === "string"
-        ? String((payload as ErrorPayload).message)
-        : `Request feilet med status ${response.status}`;
+  const detailString = buildErrorMessage(detail, response.status);
   return new ApiError({
     message: detailString,
     status: response.status,
