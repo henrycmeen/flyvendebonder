@@ -132,6 +132,50 @@ function mapMediaPinIcon(
   });
 }
 
+function createPopupContent(photo: PhotoFeature, onOpenFullscreen: () => void): HTMLElement {
+  const photoImageUrl = photo.thumbnail_url || photo.image_url || "";
+  const popupContent = document.createElement("div");
+  popupContent.className = "photo-popup-card";
+
+  if (photoImageUrl) {
+    const popupImage = document.createElement("img");
+    popupImage.src = photoImageUrl;
+    popupImage.alt = photo.title || "Foto";
+    popupImage.decoding = "async";
+    popupImage.loading = "lazy";
+    popupImage.tabIndex = 0;
+    popupImage.setAttribute("role", "button");
+    popupImage.setAttribute("aria-label", `Åpne ${photo.title || "foto"} i fullskjerm`);
+    popupImage.addEventListener("click", onOpenFullscreen);
+    popupImage.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onOpenFullscreen();
+      }
+    });
+    popupContent.appendChild(popupImage);
+
+    const popupFullscreenButton = document.createElement("button");
+    popupFullscreenButton.type = "button";
+    popupFullscreenButton.className = "photo-popup-card__open";
+    popupFullscreenButton.setAttribute("aria-label", "Åpne i fullskjerm");
+    popupFullscreenButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    popupFullscreenButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenFullscreen();
+    });
+    popupContent.appendChild(popupFullscreenButton);
+    return popupContent;
+  }
+
+  const popupImagePlaceholder = document.createElement("div");
+  popupImagePlaceholder.className = "photo-popup-card__empty";
+  popupContent.appendChild(popupImagePlaceholder);
+  return popupContent;
+}
+
 const FALLBACK_MAX_ZOOM = 20;
 
 function isNIBIOStatusOk(statusCode: number | null, statusDesc: string | null): boolean {
@@ -224,6 +268,9 @@ export function MapCanvas({
       spiderfyOnMaxZoom: true,
       disableClusteringAtZoom: 16,
       maxClusterRadius: 48,
+      chunkedLoading: true,
+      chunkInterval: 90,
+      chunkDelay: 20,
     });
     map.addLayer(clusterLayer);
     const viewLayer = L.layerGroup();
@@ -436,51 +483,12 @@ export function MapCanvas({
       const marker = L.marker(point, {
         icon: mapMediaPinIcon(mediaKind, false, photo),
       });
-      const photoImageUrl = photo.thumbnail_url || photo.image_url || "";
-      const popupContent = document.createElement("div");
-      popupContent.className = "photo-popup-card";
 
       const openInFullscreen = () => {
         onOpenPhotoFullscreen(photo.id);
       };
 
-      if (photoImageUrl) {
-        const popupImage = document.createElement("img");
-        popupImage.src = photoImageUrl;
-        popupImage.alt = photo.title || "Foto";
-        popupImage.decoding = "async";
-        popupImage.loading = "lazy";
-        popupImage.tabIndex = 0;
-        popupImage.setAttribute("role", "button");
-        popupImage.setAttribute("aria-label", `Åpne ${photo.title || "foto"} i fullskjerm`);
-        popupImage.addEventListener("click", openInFullscreen);
-        popupImage.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openInFullscreen();
-          }
-        });
-        popupContent.appendChild(popupImage);
-
-        const popupFullscreenButton = document.createElement("button");
-        popupFullscreenButton.type = "button";
-        popupFullscreenButton.className = "photo-popup-card__open";
-        popupFullscreenButton.setAttribute("aria-label", "Åpne i fullskjerm");
-        popupFullscreenButton.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-        popupFullscreenButton.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          openInFullscreen();
-        });
-        popupContent.appendChild(popupFullscreenButton);
-      } else {
-        const popupImagePlaceholder = document.createElement("div");
-        popupImagePlaceholder.className = "photo-popup-card__empty";
-        popupContent.appendChild(popupImagePlaceholder);
-      }
-
-      marker.bindPopup(popupContent, {
+      marker.bindPopup(() => createPopupContent(photo, openInFullscreen), {
         className: "fb-leaflet-popup",
         closeButton: false,
       });
@@ -534,8 +542,9 @@ export function MapCanvas({
   }, [onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
 
   useEffect(() => {
+    const photoById = new Map(photos.map((photo) => [photo.id, photo]));
     markersByIdRef.current.forEach((marker, id) => {
-      const markerPhoto = photos.find((photo) => photo.id === id) ?? null;
+      const markerPhoto = photoById.get(id) ?? null;
       const kind = markerPhoto ? inferMediaKind(markerPhoto) : "drone";
       const isSelected = id === selectedPhotoId;
       const isHovered = id === hoveredPhotoId;

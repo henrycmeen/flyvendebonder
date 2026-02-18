@@ -54,6 +54,10 @@ type DayScope = "all" | "selected";
 type AppView = "map" | "album";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
+const MAP_PHOTO_PAGE_LIMIT = 180;
+const MAP_PHOTO_TIMEOUT_MS = 45_000;
+const MAP_PHOTO_MAX_PAGES = 80;
+const MAX_NEAREST_PATH_PHOTOS = 900;
 const PREF_MAP_STYLE_KEY = "fb.map.baseStyle";
 const PREF_MAP_STYLE_MANUAL_KEY = "fb.map.baseStyle.manual";
 const PREF_MAP_GRAYSCALE_KEY = "fb.map.grayscale";
@@ -83,6 +87,14 @@ function seasonLabel(season: SeasonFilter): string {
   if (season === "autumn") return "Høst";
   if (season === "winter") return "Vinter";
   return "Hele året";
+}
+
+function splitCapturedDate(value: string): { year: string; month: string } | null {
+  if (typeof value !== "string" || value.length < 7) return null;
+  return {
+    year: value.slice(0, 4),
+    month: value.slice(5, 7),
+  };
 }
 
 function buildPhotoStatusText(
@@ -260,6 +272,10 @@ function distanceScore(a: PhotoFeature, b: PhotoFeature): number {
 
 function buildNearestPath(photos: PhotoFeature[], anchorId: string): PhotoFeature[] {
   if (photos.length <= 1) return photos;
+  if (photos.length > MAX_NEAREST_PATH_PHOTOS) {
+    // O(n²)-banen blir for tung på store datasett; bruk deterministisk tidsrekkefølge.
+    return [...photos].sort(compareByCapturedAtThenId);
+  }
   const byId = new Map(photos.map((photo) => [photo.id, photo]));
   const anchor = byId.get(anchorId);
   if (!anchor) {
@@ -1209,48 +1225,122 @@ export default function App() {
         return;
       }
 
+      const matchesClientFilters = (photo: PhotoFeature): boolean => {
+        const dateParts = splitCapturedDate(photo.captured_date);
+        if (!dateParts) return false;
+        if (selectedYear !== "all" && dateParts.year !== selectedYear) return false;
+        if (selectedSeason !== "all" && monthToSeason(dateParts.month) !== selectedSeason) return false;
+        if (showOnlyManualQc && !photo.needs_manual_qc) return false;
+        if (showOnlyLowConfidence && (photo.confidence_score == null || photo.confidence_score > CONFIDENCE_FILTER_THRESHOLD)) {
+          return false;
+        }
+        return true;
+      };
+
       try {
-        const { data, requestId } = await trackRequest(() =>
-          apiGet<PhotosResponse>(
-            "/api/v1/photos",
-            {
-              query: {
-                date: latestFilteredDate,
-                mode: "cumulative",
-                include_analysis: false,
-              },
-              signal: abortController.signal,
-            },
-          ),
-        );
+        let mergedPhotos: PhotoFeature[] = [];
+        let cursor: string | null = null;
+        let pagesLoaded = 0;
+        let hasMore = true;
+        let lastRequestId: string | null = null;
 
-        if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
-
-        const filteredPhotos = data.photos.filter((photo) => {
-          const year = photo.captured_date.slice(0, 4);
-          const month = photo.captured_date.slice(5, 7);
-          if (selectedYear !== "all" && year !== selectedYear) return false;
-          if (selectedSeason !== "all" && monthToSeason(month) !== selectedSeason) return false;
-          if (showOnlyManualQc && !photo.needs_manual_qc) return false;
-          if (
-            showOnlyLowConfidence &&
-            (photo.confidence_score == null || photo.confidence_score > CONFIDENCE_FILTER_THRESHOLD)
-          ) {
-            return false;
+        while (hasMore && pagesLoaded < MAP_PHOTO_MAX_PAGES) {
+          setStatusText(`Laster bilder ... side ${pagesLoaded + 1}`);
+          const pageQuery: Record<string, string | number | boolean> = {
+            date: latestFilteredDate,
+            mode: "cumulative",
+            include_analysis: false,
+            limit: MAP_PHOTO_PAGE_LIMIT,
+            sort: "desc",
+          };
+          if (cursor) {
+            pageQuery.cursor = cursor;
           }
-          return true;
-        });
 
-        setPhotoPool(filteredPhotos);
+          const { data, requestId } = await trackRequest(() =>
+            apiGet<PhotosPageResponse>("/api/v1/photos/page", {
+              query: pageQuery,
+              signal: abortController.signal,
+              timeoutMs: MAP_PHOTO_TIMEOUT_MS,
+              cache: false,
+              dedupe: false,
+            }),
+          );
+
+          if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
+
+          lastRequestId = requestId;
+          pagesLoaded += 1;
+
+          const filteredPage = data.photos.filter(matchesClientFilters);
+          mergedPhotos = mergePhotoPages(mergedPhotos, filteredPage);
+          setPhotoPool(mergedPhotos);
+
+          const oldestYearInPage = data.photos.reduce<number | null>((oldest, photo) => {
+            const dateParts = splitCapturedDate(photo.captured_date);
+            if (!dateParts) return oldest;
+            const yearNumber = Number(dateParts.year);
+            if (!Number.isFinite(yearNumber)) return oldest;
+            if (oldest == null || yearNumber < oldest) return yearNumber;
+            return oldest;
+          }, null);
+
+          const shouldStopForSelectedYear =
+            selectedYear !== "all" &&
+            oldestYearInPage != null &&
+            Number.isFinite(Number(selectedYear)) &&
+            oldestYearInPage < Number(selectedYear);
+
+          cursor = data.next_cursor ?? null;
+          hasMore = Boolean(cursor) && !shouldStopForSelectedYear;
+        }
+
         setPhotosLoadFailed(false);
-        addLog("info", "Bilder lastet", requestId, {
+        addLog("info", "Bilder lastet", lastRequestId, {
           apiDate: latestFilteredDate,
-          count: filteredPhotos.length,
+          count: mergedPhotos.length,
+          pages: pagesLoaded,
           year: selectedYear,
           season: selectedSeason,
         });
       } catch (error) {
         const apiError = error as ApiError;
+        if (apiError.status === 404) {
+          try {
+            const { data, requestId } = await trackRequest(() =>
+              apiGet<PhotosResponse>("/api/v1/photos", {
+                query: {
+                  date: latestFilteredDate,
+                  mode: "cumulative",
+                  include_analysis: false,
+                },
+                signal: abortController.signal,
+                timeoutMs: MAP_PHOTO_TIMEOUT_MS,
+                cache: false,
+                dedupe: false,
+              }),
+            );
+            if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
+
+            const filteredPhotos = data.photos.filter(matchesClientFilters);
+            setPhotoPool(filteredPhotos);
+            setPhotosLoadFailed(false);
+            addLog("warn", "Backend mangler /photos/page, bruker fallback for kart", requestId, {
+              apiDate: latestFilteredDate,
+              count: filteredPhotos.length,
+            });
+            return;
+          } catch (fallbackError) {
+            const fallbackApiError = fallbackError as ApiError;
+            if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
+            if (isRequestAborted(fallbackApiError)) return;
+            setPhotosLoadFailed(true);
+            setStatusText(`Kunne ikke laste bilder: ${fallbackApiError.message}`);
+            addLog("error", "Bildelasting fallback feilet", fallbackApiError.requestId, fallbackApiError.detail);
+            return;
+          }
+        }
+
         if (seq !== photoLoadSeqRef.current) return;
         if (isRequestAborted(apiError) || abortController.signal.aborted) {
           return;
