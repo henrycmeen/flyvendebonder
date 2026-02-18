@@ -10,11 +10,11 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `apps/shared-assets/` – felles logo/ikoner/bilder
 - `scripts/` – deploy-steg, import og vedlikehold
 - `docs/` – dokumentasjon, drift og planlegging
-- `docs/issues/` – backlog og arbeide-issues
 - `docs/status/` – prosjektstatus og ukentlige notater
+- `GitHub Issues` – operativ backlog for alt videre arbeid (`https://github.com/henrycmeen/flyvendebonder/issues`)
 
 ## Standard arbeidsflyt
-1. Legg ny arbeid i en issue først (`docs/issues/`)
+1. Legg ny arbeid i en GitHub-issue først (`https://github.com/henrycmeen/flyvendebonder/issues/new`)
 2. Løs med små, målbare steg
 3. Valider med lokal sjekk (frontend build / backend lint om tilgjengelig)
 4. Oppdater status i `docs/status/`
@@ -38,4 +38,3 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - Bruk tydelige norske navn i filer/komponenter der det gir mening, men tekniske konstanter kan være engelske.
 - Skriv små komponenter med én hensikt per område.
 - Oppdater `docs/status/` når en større visuell eller funksjonell endring går live.
-- Nye mapper i `docs/issues/` bør ha kort og tydelig tittel (for eksempel `2026-02` + issue-ID).

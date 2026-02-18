@@ -8,7 +8,7 @@
 - `apps/shared-assets/`: felles assets (logo/video)
 - `docs/`: innsikt, brand og driftsdokumentasjon
 - `docs/status/`: samlet status på siste funksjoner/arbeid
-- `docs/issues/`: enkel backlog for nye saker
+- `GitHub Issues`: opprettet i repoet (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `archive/`: historiske versjoner av tidligere sideoppsett
 - `scripts/`: staging og deploy scripts
 
