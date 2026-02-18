@@ -1108,6 +1108,20 @@ export default function App() {
   }, [selectedSeason, selectedYear, timelineIndexed]);
 
   useEffect(() => {
+    if (timelineIndexed.length === 0) return;
+    if (filteredTimeline.length > 0) return;
+    if (selectedYear === "all" && selectedSeason === "all") return;
+    addLog("warn", "År/sesong-filter ga ingen treff, tilbakestiller til alle", null, {
+      year: selectedYear,
+      season: selectedSeason,
+    });
+    setSelectedYear("all");
+    setSelectedSeason("all");
+    setDayScope("all");
+    setStatusText("Ingen treff for valgt år/sesong. Viser alle bilder.");
+  }, [addLog, filteredTimeline.length, selectedSeason, selectedYear, timelineIndexed.length]);
+
+  useEffect(() => {
     if (activeView !== "map") return;
     if (!selectedPhotoId) {
       setMapNavigationAnchorId(null);
