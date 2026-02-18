@@ -1469,6 +1469,18 @@ export default function App() {
                             Front {formatPercent(selectedPhoto.overlap_front)} / Side {formatPercent(selectedPhoto.overlap_side)}
                           </dd>
                         </div>
+                        {selectedPhoto.coverage_profile ? (
+                          <div>
+                            <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">
+                              Overlapp-kontroll
+                            </dt>
+                            <dd className="font-medium text-earth-950">
+                              {selectedPhoto.coverage_profile.actual_front == null && selectedPhoto.coverage_profile.actual_side == null
+                                ? "Måles fra kamerarekke"
+                                : `Front ${formatPercent(selectedPhoto.coverage_profile.actual_front)} / Side ${formatPercent(selectedPhoto.coverage_profile.actual_side)} (${selectedPhoto.coverage_profile.quality})`}
+                            </dd>
+                          </div>
+                        ) : null}
                         <div>
                           <dt className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Oblique-korreksjon</dt>
                           <dd className="font-medium text-earth-950">

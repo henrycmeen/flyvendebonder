@@ -20,6 +20,7 @@ _ANALYSIS_STRATEGY = "cross_5"
 _ANALYSIS_RADIUS_MIN_M = 1.5
 _ANALYSIS_RADIUS_MAX_M = 5.0
 _ANALYSIS_RADIUS_DEFAULT_M = 2.8
+_COVERAGE_GAP_WARN_THRESHOLD = 0.18
 
 
 def timeline_dates(db: Session, user_id: int) -> list[dict[str, int | date]]:
@@ -259,9 +260,9 @@ def _build_coverage_profile(
     quality = "unknown"
     if any(v is not None for v in (actual_front, actual_side)):
         flags = []
-        if front_gap is not None and front_gap > 0.18:
+        if front_gap is not None and front_gap > _COVERAGE_GAP_WARN_THRESHOLD:
             flags.append("front")
-        if side_gap is not None and side_gap > 0.18:
+        if side_gap is not None and side_gap > _COVERAGE_GAP_WARN_THRESHOLD:
             flags.append("side")
         quality = "warn" if flags else "ok"
 
@@ -272,6 +273,7 @@ def _build_coverage_profile(
         "actual_side": actual_side,
         "front_gap": front_gap,
         "side_gap": side_gap,
+        "neighbor_count": len([item for item in (previous_photo, next_photo) if item is not None]),
         "quality": quality,
     }
 

@@ -136,6 +136,7 @@ class CoverageProfile(BaseModel):
     actual_side: float | None = None
     front_gap: float | None = None
     side_gap: float | None = None
+    neighbor_count: int | None = None
     quality: str = "ok"
 
 

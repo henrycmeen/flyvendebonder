@@ -84,6 +84,7 @@ def test_photos_include_coverage_profile(client):
         "actual_side",
         "front_gap",
         "side_gap",
+        "neighbor_count",
         "quality",
     }
     assert coverage["planned_front"] == first["overlap_front"]

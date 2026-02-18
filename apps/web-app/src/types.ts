@@ -71,6 +71,17 @@ export interface AnalysisZone {
   analysis_area_m?: number;
 }
 
+export interface CoverageProfile {
+  planned_front: number | null;
+  planned_side: number | null;
+  actual_front: number | null;
+  actual_side: number | null;
+  front_gap: number | null;
+  side_gap: number | null;
+  neighbor_count: number | null;
+  quality: "ok" | "warn" | "unknown";
+}
+
 export interface PhotoAnalysisActionResponse {
   status: string;
   photo_id: string;
@@ -111,6 +122,7 @@ export interface PhotoFeature {
   confidence_score: number;
   confidence_reasons: string[];
   location_uncertainty_m: number | null;
+  coverage_profile: CoverageProfile | null;
   analysis_zone: AnalysisZone | null;
   needs_manual_qc: boolean;
   quality_flags: string[];
