@@ -182,7 +182,12 @@ export function PhotoMapInset({
     const overlay = overlayRef.current;
     overlay.clearLayers();
 
-    const source = L.latLng(photo.lat, photo.lng);
+    const sourcePoint = toLatLngFromPoint(photo);
+    if (!sourcePoint) {
+      return;
+    }
+
+    const source = L.latLng(sourcePoint[0], sourcePoint[1]);
     const points: L.LatLng[] = [source];
     const targetPointCoordinates = getAnalysisTarget(photo, manualTarget);
 
@@ -294,6 +299,14 @@ export function PhotoMapInset({
       }).addTo(overlay);
     }
 
+    if (points.length <= 0) {
+      mapRef.current.fitBounds(L.latLngBounds([source]), {
+        animate: false,
+        maxZoom: Math.min(BASE_MAP_STYLES[baseMapStyle].maxZoom, 16),
+      });
+      return;
+    }
+
     const bounds = L.latLngBounds(points);
     const uncertaintyContextM =
       photo.location_uncertainty_m != null && Number.isFinite(photo.location_uncertainty_m)
@@ -307,11 +320,15 @@ export function PhotoMapInset({
     const contextBounds = expandBoundsWithContext(bounds, contextRadiusM);
 
     // Inset ligger i et layout som kan endres når fullskjerm åpnes/lukkes.
-    mapRef.current.invalidateSize(false);
-    mapRef.current.fitBounds(contextBounds.pad(0.35), {
-      animate: false,
-      maxZoom: Math.min(BASE_MAP_STYLES[baseMapStyle].maxZoom, 17),
-    });
+    try {
+      mapRef.current.invalidateSize(false);
+      mapRef.current.fitBounds(contextBounds.pad(0.35), {
+        animate: false,
+        maxZoom: Math.min(BASE_MAP_STYLES[baseMapStyle].maxZoom, 17),
+      });
+    } catch {
+      mapRef.current.setView(source, 16, { animate: false });
+    }
   }, [photo, baseMapStyle, editable, manualTarget, onManualTargetChange]);
 
   return (

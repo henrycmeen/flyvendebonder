@@ -92,6 +92,11 @@ function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefine
   return [point.lat, point.lng];
 }
 
+function toPhotoLatLng(photo: PhotoFeature): LatLngPair | null {
+  if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lng)) return null;
+  return [photo.lat, photo.lng];
+}
+
 function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
   if (!raw || raw.length === 0 || !Array.isArray(raw[0])) return [];
   const parsed: (LatLngPair | null)[] = raw[0].map(([lng, lat]) => {
@@ -318,14 +323,17 @@ export function MapCanvas({
     if (!activeDirectionPhotoId) return;
 
     const selectedPhoto = photos.find((photo) => photo.id === activeDirectionPhotoId) ?? null;
-    if (!selectedPhoto || selectedPhoto.lat == null || selectedPhoto.lng == null) return;
+    if (!selectedPhoto) return;
 
     const target = getAnalysisTarget(selectedPhoto);
     if (target == null) {
       return;
     }
 
-    const source = L.latLng(selectedPhoto.lat, selectedPhoto.lng);
+    const sourcePoint = toPhotoLatLng(selectedPhoto);
+    if (sourcePoint == null) return;
+
+    const source = L.latLng(sourcePoint[0], sourcePoint[1]);
     const targetLatLng = L.latLng(target[0], target[1]);
     if (source.distanceTo(targetLatLng) < 4) {
       return;
@@ -416,9 +424,16 @@ export function MapCanvas({
     markersRef.current.clearLayers();
     markersByIdRef.current.clear();
 
-    photos.forEach((photo) => {
+    const photosWithCoordinates = photos
+      .map((photo) => ({
+        photo,
+        point: toPhotoLatLng(photo),
+      }))
+      .filter((entry): entry is { photo: PhotoFeature; point: LatLngPair } => entry.point !== null);
+
+    photosWithCoordinates.forEach(({ photo, point }) => {
       const mediaKind = inferMediaKind(photo);
-      const marker = L.marker([photo.lat, photo.lng], {
+      const marker = L.marker(point, {
         icon: mapMediaPinIcon(mediaKind, false, photo),
       });
       const photoImageUrl = photo.thumbnail_url || photo.image_url || "";
@@ -506,10 +521,15 @@ export function MapCanvas({
       markersByIdRef.current.set(photo.id, marker);
     });
 
-    if (photos.length > 0 && !hasFitRef.current) {
-      const bounds = L.latLngBounds(photos.map((photo) => [photo.lat, photo.lng] as [number, number]));
+    if (photosWithCoordinates.length > 0 && !hasFitRef.current) {
+      const bounds = L.latLngBounds(photosWithCoordinates.map((entry) => entry.point));
       mapRef.current.fitBounds(bounds.pad(0.2), { animate: true });
       hasFitRef.current = true;
+      return;
+    }
+
+    if (photos.length === 0) {
+      hasFitRef.current = false;
     }
   }, [onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
 

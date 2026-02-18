@@ -4,8 +4,9 @@ import logging
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .api.v1 import router as v1_router
 from .config import get_settings
@@ -35,20 +36,86 @@ async def request_context_middleware(request: Request, call_next):
     token = request_id_ctx.set(request_id)
 
     started = time.perf_counter()
-    response = await call_next(request)
-    elapsed_ms = (time.perf_counter() - started) * 1000
+    response: JSONResponse | None = None
 
-    response.headers["X-Request-ID"] = request_id
-    logger.info(
-        "%s %s -> %s (%.1f ms)",
-        request.method,
-        request.url.path,
-        response.status_code,
-        elapsed_ms,
+    route = getattr(request.scope.get("route"), "path", None)
+    path = request.url.path
+
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        request_time = round((time.perf_counter() - started) * 1000, 2)
+        status_code = 500
+        if isinstance(exc, HTTPException):
+            status_code = exc.status_code
+
+        logger.exception(
+            "Request feilet",
+            extra={
+                "method": request.method,
+                "path": path,
+                "route": route,
+                "status_code": status_code,
+                "latency_ms": request_time,
+            },
+        )
+        raise
+    finally:
+        response_time = round((time.perf_counter() - started) * 1000, 2)
+        request_id_ctx.reset(token)
+
+        if response is not None:
+            response.headers["X-Request-ID"] = request_id
+            logger.info(
+                "Request ferdig",
+                extra={
+                    "method": request.method,
+                    "path": path,
+                    "route": route,
+                    "status_code": response.status_code,
+                    "latency_ms": response_time,
+                },
+            )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+    request_id = request_id_ctx.get("-")
+    status_code = exc.status_code
+    logger.warning(
+        "HTTP-feil",
+        extra={
+            "method": getattr(_request, "method", None),
+            "path": getattr(_request.url, "path", None),
+            "status_code": status_code,
+            "detail": exc.detail,
+        },
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "error", "detail": exc.detail, "request_id": request_id},
+        headers={"X-Request-ID": request_id},
     )
 
-    request_id_ctx.reset(token)
-    return response
+
+@app.exception_handler(Exception)
+async def global_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    request_id = request_id_ctx.get("-")
+    logger.exception(
+        "Unhandled exception",
+        extra={
+            "method": getattr(_request, "method", None),
+            "path": getattr(_request.url, "path", None),
+        },
+    )
+
+    request_id_header = {"X-Request-ID": request_id} if request_id is not None else None
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "detail": "Uventet serverfeil", "request_id": request_id},
+        headers=request_id_header,
+    )
 
 
 @app.on_event("startup")

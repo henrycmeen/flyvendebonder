@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { subscribeClientLogs } from "@/lib/client-logger";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { AlbumPage } from "@/components/album-page";
 import { MapCanvas } from "@/components/map-canvas";
@@ -57,6 +58,9 @@ const PREF_MAP_STYLE_KEY = "fb.map.baseStyle";
 const PREF_MAP_STYLE_MANUAL_KEY = "fb.map.baseStyle.manual";
 const PREF_MAP_GRAYSCALE_KEY = "fb.map.grayscale";
 const PREF_MAP_VINTAGE_KEY = "fb.map.vintage";
+
+const isRequestAborted = (error: ApiError): boolean =>
+  error.status === 0 && error.message === "Request avbrutt";
 
 interface TimelineEntryIndexed extends TimelineDate {
   index: number;
@@ -363,6 +367,20 @@ export default function App() {
   const initialPhotoRef = useRef<string | null>(initialPhoto);
   const tileRetryJobRef = useRef<string | null>(null);
   const albumScrollSpinTimeoutRef = useRef<number | null>(null);
+  const bootstrapAbortRef = useRef<AbortController | null>(null);
+  const profileAbortRef = useRef<AbortController | null>(null);
+  const timelineAbortRef = useRef<AbortController | null>(null);
+  const photosAbortRef = useRef<AbortController | null>(null);
+  const backendLogAbortRef = useRef<AbortController | null>(null);
+  const gardskartJobAbortRef = useRef<AbortController | null>(null);
+  const albumAbortRef = useRef<AbortController | null>(null);
+  const photoLoadSeqRef = useRef(0);
+  const albumLoadSeqRef = useRef(0);
+  const profileLoadSeqRef = useRef(0);
+  const timelineLoadSeqRef = useRef(0);
+  const backendLogLoadSeqRef = useRef(0);
+  const gardskartJobLoadSeqRef = useRef(0);
+  const bootstrapLoadSeqRef = useRef(0);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const isLoading = pendingRequests > 0;
@@ -522,32 +540,101 @@ export default function App() {
     });
   }, []);
 
-  const loadProfile = useCallback(async (): Promise<ProfileResponse> => {
+  useEffect(() => {
+    const unsubscribe = subscribeClientLogs((entry) => {
+      setLogs((previous) => {
+        const next = [
+          ...previous,
+          {
+            id: entry.id,
+            time: entry.time,
+            level: entry.level,
+            message: entry.message,
+            requestId: entry.requestId,
+            details: entry.details ? toLogDetails(entry.details) : undefined,
+          },
+        ];
+        if (next.length > LOG_LIMIT) {
+          return next.slice(next.length - LOG_LIMIT);
+        }
+        return next;
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  const loadProfile = useCallback(async (options?: { signal?: AbortSignal }): Promise<ProfileResponse> => {
+    const seq = ++profileLoadSeqRef.current;
+    const requestController = options?.signal
+      ? null
+      : (() => {
+          profileAbortRef.current?.abort();
+          const next = new AbortController();
+          profileAbortRef.current = next;
+          return next;
+        })();
+
     return trackRequest(async () => {
-      const { data, requestId } = await apiGet<ProfileResponse>("/api/v1/profile/current");
+      const { data, requestId } = await apiGet<ProfileResponse>("/api/v1/profile/current", {
+        signal: requestController?.signal ?? options?.signal,
+      });
+
+      if (seq !== profileLoadSeqRef.current) return data;
+
       setProfile(data);
       addLog("info", "Profil lastet", requestId, { userId: data.user.id });
       return data;
     });
   }, [addLog, trackRequest]);
 
-  const loadTimeline = useCallback(async (): Promise<TimelineResponse> => {
+  const loadTimeline = useCallback(async (options?: { signal?: AbortSignal }): Promise<TimelineResponse> => {
+    const seq = ++timelineLoadSeqRef.current;
+    const requestController = options?.signal
+      ? null
+      : (() => {
+          timelineAbortRef.current?.abort();
+          const next = new AbortController();
+          timelineAbortRef.current = next;
+          return next;
+        })();
+
     return trackRequest(async () => {
-      const { data, requestId } = await apiGet<TimelineResponse>("/api/v1/timeline/dates");
+      const { data, requestId } = await apiGet<TimelineResponse>("/api/v1/timeline/dates", {
+        signal: requestController?.signal ?? options?.signal,
+      });
+
+      if (seq !== timelineLoadSeqRef.current) return data;
+
       setTimeline(data.dates);
       addLog("info", "Tidslinje lastet", requestId, { days: data.dates.length });
       return data;
     });
   }, [addLog, trackRequest]);
 
-  const loadBackendLogs = useCallback(async () => {
+  const loadBackendLogs = useCallback(async (options?: { signal?: AbortSignal }) => {
+    const seq = ++backendLogLoadSeqRef.current;
+    const requestController = options?.signal
+      ? null
+      : (() => {
+          backendLogAbortRef.current?.abort();
+          const next = new AbortController();
+          backendLogAbortRef.current = next;
+          return next;
+        })();
+
     setIsBackendLogsLoading(true);
     try {
       const { data, requestId } = await apiGet<{
         count: number;
         source: string;
         lines: BackendLogEntry[];
-      }>(`/api/v1/logs?limit=120`);
+      }>(`/api/v1/logs`, {
+        query: { limit: 120 },
+        signal: requestController?.signal ?? options?.signal,
+      });
+
+      if (seq !== backendLogLoadSeqRef.current) return;
+
       setBackendLogs(
         data.lines.map((line) => ({
           ...line,
@@ -560,6 +647,8 @@ export default function App() {
       });
     } catch (error) {
       const apiError = error as ApiError;
+      if (seq !== backendLogLoadSeqRef.current) return;
+      if (isRequestAborted(apiError)) return;
       addLog("error", "Kunne ikke hente backendlogg", apiError.requestId, apiError.detail);
     } finally {
       setIsBackendLogsLoading(false);
@@ -624,17 +713,32 @@ export default function App() {
   );
 
   const loadGardskartJob = useCallback(
-    async (forceRefresh: boolean) => {
+    async (forceRefresh: boolean, options?: { signal?: AbortSignal }) => {
       if (!profile?.property || !showPropertyLayer) {
         return;
       }
 
-      const query = forceRefresh ? "?force_refresh=true" : "";
+      const seq = ++gardskartJobLoadSeqRef.current;
+      const requestController = options?.signal
+        ? null
+        : (() => {
+            gardskartJobAbortRef.current?.abort();
+            const next = new AbortController();
+            gardskartJobAbortRef.current = next;
+            return next;
+          })();
+
       try {
         const { data, requestId } = await trackRequest(() =>
-          apiGet<GardskartJob>(`/api/v1/properties/current/gardskart-job${query}`),
+          apiGet<GardskartJob>(`/api/v1/properties/current/gardskart-job`, {
+            query: { force_refresh: forceRefresh ? true : undefined },
+            signal: requestController?.signal ?? options?.signal,
+          }),
         );
-        setJob(data);
+
+      if (seq !== gardskartJobLoadSeqRef.current) return;
+
+      setJob(data);
         const statusDescLower = (data.status_desc ?? "").toLowerCase();
         const statusIsOk =
           data.status_code === null ||
@@ -666,6 +770,8 @@ export default function App() {
         });
       } catch (error) {
         const apiError = error as ApiError;
+        if (seq !== gardskartJobLoadSeqRef.current) return;
+        if (isRequestAborted(apiError)) return;
         setPropertyStatus("Kunne ikke hente eiendomslag fra backend.");
         addLog("error", "jobId-henting feilet", apiError.requestId, apiError.detail);
       }
@@ -709,7 +815,7 @@ export default function App() {
         setAnalysisBusyPhotoId(null);
       }
     },
-    [addLog, analysisBusyPhotoId, apiPost, trackRequest, updatePhotoAnalysisState],
+    [addLog, analysisBusyPhotoId, trackRequest, updatePhotoAnalysisState],
   );
 
   const handleSavePhotoMetadata = useCallback(async () => {
@@ -785,7 +891,6 @@ export default function App() {
     }
   }, [
     addLog,
-    apiPatch,
     metadataBusyPhotoId,
     metadataAltitudeDraft,
     metadataCaptionDraft,
@@ -889,7 +994,7 @@ export default function App() {
     setMetadataManualViewTargetDraft(parseManualViewTarget(selectedPhoto.tags));
     setMetadataEditMode(false);
     setShowTechnicalMetadata(false);
-  }, [selectedPhoto?.id]);
+  }, [selectedPhoto]);
 
   useEffect(() => {
     const storedStyle = window.localStorage.getItem(PREF_MAP_STYLE_KEY);
@@ -931,13 +1036,26 @@ export default function App() {
   }, [mapVintage]);
 
   useEffect(() => {
-    let cancelled = false;
+    const bootstrap = async (options?: { signal?: AbortSignal }) => {
+      const seq = ++bootstrapLoadSeqRef.current;
+      const requestController = options?.signal
+        ? null
+        : (() => {
+            bootstrapAbortRef.current?.abort();
+            const next = new AbortController();
+            bootstrapAbortRef.current = next;
+            return next;
+          })();
+      const signal = requestController?.signal ?? options?.signal;
 
-    const bootstrap = async () => {
       try {
         setStatusText("Laster profil og tidslinje ...");
-        const [profileData, timelineData] = await Promise.all([loadProfile(), loadTimeline()]);
-        if (cancelled) return;
+        const [profileData, timelineData] = await Promise.all([
+          loadProfile({ signal }),
+          loadTimeline({ signal }),
+        ]);
+
+        if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
 
         if (timelineData.dates.length === 0) {
           setSelectedYear("all");
@@ -959,15 +1077,17 @@ export default function App() {
         setStatusText(`Klar for ${profileData.user.full_name}`);
       } catch (error) {
         const apiError = error as ApiError;
+        if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
         setStatusText(`Oppstart feilet: ${apiError.message}`);
         addLog("error", "Oppstart feilet", apiError.requestId, apiError.detail);
       }
     };
 
-    void bootstrap();
+    const abortController = new AbortController();
+    void bootstrap({ signal: abortController.signal });
 
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
   }, [addLog, initialDate, loadProfile, loadTimeline]);
 
@@ -1054,7 +1174,10 @@ export default function App() {
   }, [filteredTimeline, selectedIndex]);
 
   useEffect(() => {
-    let cancelled = false;
+    const seq = ++photoLoadSeqRef.current;
+    photosAbortRef.current?.abort();
+    const abortController = new AbortController();
+    photosAbortRef.current = abortController;
 
     const loadPhotos = async () => {
       if (!latestFilteredDate) {
@@ -1068,11 +1191,19 @@ export default function App() {
       try {
         const { data, requestId } = await trackRequest(() =>
           apiGet<PhotosResponse>(
-            `/api/v1/photos?date=${latestFilteredDate}&mode=cumulative&include_analysis=false`,
+            "/api/v1/photos",
+            {
+              query: {
+                date: latestFilteredDate,
+                mode: "cumulative",
+                include_analysis: false,
+              },
+              signal: abortController.signal,
+            },
           ),
         );
 
-        if (cancelled) return;
+        if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
 
         const filteredPhotos = data.photos.filter((photo) => {
           const year = photo.captured_date.slice(0, 4);
@@ -1099,7 +1230,10 @@ export default function App() {
         });
       } catch (error) {
         const apiError = error as ApiError;
-        if (cancelled) return;
+        if (seq !== photoLoadSeqRef.current) return;
+        if (isRequestAborted(apiError) || abortController.signal.aborted) {
+          return;
+        }
         setPhotosLoadFailed(true);
         setStatusText(`Kunne ikke laste bilder: ${apiError.message}`);
         addLog("error", "Bildelasting feilet", apiError.requestId, apiError.detail);
@@ -1109,7 +1243,7 @@ export default function App() {
     void loadPhotos();
 
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
   }, [
     addLog,
@@ -1122,7 +1256,12 @@ export default function App() {
   ]);
 
   const loadAlbumPage = useCallback(
-    async ({ reset }: { reset: boolean }) => {
+    async (
+      { reset }: { reset: boolean },
+      options?: {
+        signal?: AbortSignal;
+      },
+    ) => {
       if (!latestTimelineDate) {
         setAlbumPhotos([]);
         setAlbumCursor(null);
@@ -1131,6 +1270,17 @@ export default function App() {
         setAlbumLoadFailed(false);
         return;
       }
+
+      const seq = ++albumLoadSeqRef.current;
+      const requestController = options?.signal
+        ? null
+        : (() => {
+            albumAbortRef.current?.abort();
+            const next = new AbortController();
+            albumAbortRef.current = next;
+            return next;
+          })();
+      const signal = requestController?.signal ?? options?.signal;
 
       if (reset) {
         if (albumLoadingInitial) return;
@@ -1143,21 +1293,26 @@ export default function App() {
       setAlbumLoadFailed(false);
 
       const cursor = reset ? null : albumCursor;
-      const query = new URLSearchParams({
+      const pageQuery: Record<string, string | number | boolean> = {
         date: latestTimelineDate,
         mode: "cumulative",
-        include_analysis: "false",
-        limit: "120",
+        include_analysis: false,
+        limit: 120,
         sort: "asc",
-      });
+      };
       if (cursor) {
-        query.set("cursor", cursor);
+        pageQuery.cursor = cursor;
       }
 
       try {
         const { data, requestId } = await trackRequest(() =>
-          apiGet<PhotosPageResponse>(`/api/v1/photos/page?${query.toString()}`),
+          apiGet<PhotosPageResponse>("/api/v1/photos/page", {
+            query: pageQuery,
+            signal,
+          }),
         );
+
+        if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
 
         const pagePhotos = data.photos.filter(
           (photo) =>
@@ -1174,7 +1329,6 @@ export default function App() {
         setAlbumCursor(data.next_cursor ?? null);
         setAlbumHasMore(Boolean(data.next_cursor));
         setAlbumLoadFailed(false);
-
         addLog("info", reset ? "Album side 1 lastet" : "Albumside lastet", requestId, {
           count: data.count,
           nextCursor: Boolean(data.next_cursor),
@@ -1182,13 +1336,21 @@ export default function App() {
         });
       } catch (error) {
         const apiError = error as ApiError;
+        if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
         if (apiError.status === 404) {
           try {
             const { data, requestId } = await trackRequest(() =>
-              apiGet<PhotosResponse>(
-                `/api/v1/photos?date=${latestTimelineDate}&mode=cumulative&include_analysis=false`,
-              ),
+              apiGet<PhotosResponse>("/api/v1/photos", {
+                query: {
+                  date: latestTimelineDate,
+                  mode: "cumulative",
+                  include_analysis: false,
+                },
+                signal,
+              }),
             );
+            if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
+
             const ordered = [...data.photos]
               .filter(
                 (photo) =>
@@ -1209,6 +1371,7 @@ export default function App() {
             });
             return;
           } catch (fallbackError) {
+            if (seq !== albumLoadSeqRef.current) return;
             const fallbackApiError = fallbackError as ApiError;
             setAlbumLoadFailed(true);
             addLog("error", "Albumfallback feilet", fallbackApiError.requestId, fallbackApiError.detail);
@@ -1219,25 +1382,27 @@ export default function App() {
         setAlbumLoadFailed(true);
         addLog("error", "Albumlasting feilet", apiError.requestId, apiError.detail);
       } finally {
-        if (reset) {
-          setAlbumLoadingInitial(false);
-        } else {
-          setAlbumLoadingMore(false);
+        if (seq === albumLoadSeqRef.current) {
+          if (reset) {
+            setAlbumLoadingInitial(false);
+          } else {
+            setAlbumLoadingMore(false);
+          }
         }
       }
     },
     [
-    addLog,
-    albumCursor,
-    albumHasMore,
-    albumLoadingInitial,
-    albumLoadingMore,
-    showOnlyManualQc,
-    showOnlyLowConfidence,
-    latestTimelineDate,
-    trackRequest,
-  ],
-);
+      addLog,
+      albumCursor,
+      albumHasMore,
+      albumLoadingInitial,
+      albumLoadingMore,
+      showOnlyManualQc,
+      showOnlyLowConfidence,
+      latestTimelineDate,
+      trackRequest,
+    ],
+  );
 
   useEffect(() => {
     setAlbumPhotos([]);

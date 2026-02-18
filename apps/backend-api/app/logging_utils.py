@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
-import re
+import traceback
+from collections.abc import Iterable
 from collections import deque
 from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import re
 
 from .config import get_settings
 
@@ -17,6 +20,26 @@ class RequestIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_ctx.get("-")
         return True
+
+
+class JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, datefmt="%Y-%m-%d %H:%M:%S,%f"),
+            "level": record.levelname,
+            "logger": record.name,
+            "request_id": getattr(record, "request_id", "-"),
+            "message": record.getMessage(),
+            "method": getattr(record, "method", None),
+            "path": getattr(record, "path", None),
+            "status": getattr(record, "status_code", None),
+            "latency_ms": getattr(record, "latency_ms", None),
+        }
+        if record.exc_info:
+            payload["exception"] = "".join(traceback.format_exception(*record.exc_info))
+        elif record.exc_text:
+            payload["exception"] = record.exc_text
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def _parse_level_filter(level: str | None) -> str | None:
@@ -49,10 +72,7 @@ def configure_logging(level: str = "INFO") -> None:
     settings = get_settings()
     log_level = getattr(logging, level.upper(), logging.INFO)
 
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s [req=%(request_id)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S,%f",
-    )
+    formatter = JsonLogFormatter()
     req_filter = RequestIdFilter()
 
     root = logging.getLogger()
@@ -60,7 +80,7 @@ def configure_logging(level: str = "INFO") -> None:
 
     if settings.log_to_console:
         if not root.handlers:
-            logging.basicConfig(level=log_level)
+            root.addHandler(logging.StreamHandler())
         for handler in root.handlers:
             handler.setLevel(log_level)
             _configure_handler(handler, formatter, req_filter)
@@ -86,6 +106,24 @@ def configure_logging(level: str = "INFO") -> None:
             root.addHandler(file_handler)
 
 
+def _iter_handlers() -> Iterable[logging.Handler]:
+    return logging.getLogger().handlers
+
+
+def _extract_json_fields(line: str) -> dict[str, object]:
+    try:
+        payload = json.loads(line)
+        return {
+            "timestamp": str(payload.get("timestamp", "")),
+            "level": str(payload.get("level", "")).upper(),
+            "logger": str(payload.get("logger", "")),
+            "request_id": payload.get("request_id") if isinstance(payload.get("request_id"), str) else None,
+            "message": str(payload.get("message", line)),
+        }
+    except json.JSONDecodeError:
+        return {}
+
+
 def read_recent_logs(limit: int = 200, level: str | None = None) -> list[dict[str, str | None]]:
     settings = get_settings()
     level_filter = _parse_level_filter(level)
@@ -95,8 +133,15 @@ def read_recent_logs(limit: int = 200, level: str | None = None) -> list[dict[st
 
     for raw in entries:
         text = raw.rstrip("\n")
-        match = _LOG_LINE_RE.match(text)
+        parsed = _extract_json_fields(text)
+        if parsed:
+            parsed_level = parsed.get("level", "")
+            if level_filter is not None and parsed_level != level_filter:
+                continue
+            out.append({**parsed, "raw": text})  # type: ignore[arg-type]
+            continue
 
+        match = _LOG_LINE_RE.match(text)
         if match is None:
             out.append(
                 {
