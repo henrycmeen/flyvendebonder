@@ -528,6 +528,7 @@ export default function App() {
   );
   const latestFilteredDate = filteredTimeline[filteredTimeline.length - 1]?.date ?? null;
   const latestTimelineDate = timeline[timeline.length - 1]?.date ?? null;
+  const filteredTimelineHasData = filteredTimeline.length > 0;
 
   const trackRequest = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
     setPendingRequests((count) => count + 1);
@@ -1237,6 +1238,34 @@ export default function App() {
         return true;
       };
 
+      const loadFallbackPhotos = async (reason: string): Promise<boolean> => {
+        const { data, requestId } = await trackRequest(() =>
+          apiGet<PhotosResponse>("/api/v1/photos", {
+            query: {
+              date: latestFilteredDate,
+              mode: "cumulative",
+              include_analysis: false,
+            },
+            signal: abortController.signal,
+            timeoutMs: MAP_PHOTO_TIMEOUT_MS,
+            cache: false,
+            dedupe: false,
+          }),
+        );
+        if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return true;
+        const filteredPhotos = data.photos.filter(matchesClientFilters);
+        setPhotoPool(filteredPhotos);
+        setPhotosLoadFailed(false);
+        addLog("warn", "Bruker fallback for kartbilder", requestId, {
+          reason,
+          apiDate: latestFilteredDate,
+          count: filteredPhotos.length,
+          year: selectedYear,
+          season: selectedSeason,
+        });
+        return true;
+      };
+
       try {
         let mergedPhotos: PhotoFeature[] = [];
         let cursor: string | null = null;
@@ -1295,6 +1324,13 @@ export default function App() {
           hasMore = Boolean(cursor) && !shouldStopForSelectedYear;
         }
 
+        if (mergedPhotos.length === 0 && filteredTimelineHasData && !showOnlyManualQc && !showOnlyLowConfidence) {
+          const recovered = await loadFallbackPhotos("paged_load_returned_empty");
+          if (recovered) {
+            return;
+          }
+        }
+
         setPhotosLoadFailed(false);
         addLog("info", "Bilder lastet", lastRequestId, {
           apiDate: latestFilteredDate,
@@ -1305,46 +1341,25 @@ export default function App() {
         });
       } catch (error) {
         const apiError = error as ApiError;
-        if (apiError.status === 404) {
-          try {
-            const { data, requestId } = await trackRequest(() =>
-              apiGet<PhotosResponse>("/api/v1/photos", {
-                query: {
-                  date: latestFilteredDate,
-                  mode: "cumulative",
-                  include_analysis: false,
-                },
-                signal: abortController.signal,
-                timeoutMs: MAP_PHOTO_TIMEOUT_MS,
-                cache: false,
-                dedupe: false,
-              }),
-            );
-            if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
-
-            const filteredPhotos = data.photos.filter(matchesClientFilters);
-            setPhotoPool(filteredPhotos);
-            setPhotosLoadFailed(false);
-            addLog("warn", "Backend mangler /photos/page, bruker fallback for kart", requestId, {
-              apiDate: latestFilteredDate,
-              count: filteredPhotos.length,
-            });
-            return;
-          } catch (fallbackError) {
-            const fallbackApiError = fallbackError as ApiError;
-            if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
-            if (isRequestAborted(fallbackApiError)) return;
-            setPhotosLoadFailed(true);
-            setStatusText(`Kunne ikke laste bilder: ${fallbackApiError.message}`);
-            addLog("error", "Bildelasting fallback feilet", fallbackApiError.requestId, fallbackApiError.detail);
-            return;
-          }
-        }
-
         if (seq !== photoLoadSeqRef.current) return;
         if (isRequestAborted(apiError) || abortController.signal.aborted) {
           return;
         }
+        try {
+          const recovered = await loadFallbackPhotos(apiError.status === 404 ? "photos_page_missing" : "photos_page_failed");
+          if (recovered) {
+            return;
+          }
+        } catch (fallbackError) {
+          const fallbackApiError = fallbackError as ApiError;
+          if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return;
+          if (isRequestAborted(fallbackApiError)) return;
+          setPhotosLoadFailed(true);
+          setStatusText(`Kunne ikke laste bilder: ${fallbackApiError.message}`);
+          addLog("error", "Bildelasting fallback feilet", fallbackApiError.requestId, fallbackApiError.detail);
+          return;
+        }
+
         setPhotosLoadFailed(true);
         setStatusText(`Kunne ikke laste bilder: ${apiError.message}`);
         addLog("error", "Bildelasting feilet", apiError.requestId, apiError.detail);
@@ -1365,6 +1380,7 @@ export default function App() {
     showOnlyManualQc,
     showOnlyLowConfidence,
     trackRequest,
+    filteredTimelineHasData,
   ]);
 
   const loadAlbumPage = useCallback(
