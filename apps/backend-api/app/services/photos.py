@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import math
 from datetime import date, datetime
@@ -13,13 +12,20 @@ from sqlalchemy.orm import selectinload
 from ..models import Photo, PhotoAsset
 from .analysis_enrich import enrich_photo
 from .geometry_utils import GeometryMethod, choose_geometry
+from .quality_metrics import (
+    derive_location_uncertainty,
+    derive_quality_confidence,
+    build_analysis_zone as build_shared_analysis_zone,
+)
+from .tag_utils import (
+    extract_meta_float,
+    extract_meta_value,
+    merge_tag_groups,
+    parse_tag_groups,
+)
 
 logger = logging.getLogger(__name__)
 
-_ANALYSIS_STRATEGY = "cross_5"
-_ANALYSIS_RADIUS_MIN_M = 1.5
-_ANALYSIS_RADIUS_MAX_M = 5.0
-_ANALYSIS_RADIUS_DEFAULT_M = 2.8
 _COVERAGE_GAP_WARN_THRESHOLD = 0.18
 
 
@@ -46,183 +52,19 @@ def _choose_asset(assets: list[PhotoAsset], kind: str) -> PhotoAsset | None:
     return None
 
 
-def _parse_tags(photo_tags_json: str | None) -> list[str]:
-    try:
-        parsed = json.loads(photo_tags_json or "[]")
-    except json.JSONDecodeError:
-        return []
-
-    return [str(tag) for tag in parsed if isinstance(tag, str) and tag.strip()]
-
-
-def _extract_quality_flags(tags: list[str]) -> list[str]:
-    return sorted({tag for tag in tags if tag.startswith("qc:")})
-
-
-def _extract_meta_value(tags: list[str], prefix: str) -> str | None:
-    normalized_prefix = prefix.rstrip("=") + "="
-    for tag in tags:
-        if tag.startswith(normalized_prefix):
-            return tag[len(normalized_prefix) :].strip()
-    return None
-
-
-def _extract_meta_float(tags: list[str], prefix: str) -> float | None:
-    raw = _extract_meta_value(tags, prefix)
-    if raw is None:
-        return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(value):
-        return None
-    return value
-
-
-def _extract_manual_view_override(tags: list[str]) -> tuple[float, float] | None:
-    lat = _extract_meta_float(tags, "meta:manual_view_lat")
-    lng = _extract_meta_float(tags, "meta:manual_view_lng")
-    if lat is None or lng is None:
-        return None
-    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
-        return None
-    return lat, lng
-
-
-def _clamp_unit(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _derive_quality_confidence(photo: Photo, quality_flags: list[str], geometry_confidence: float) -> tuple[float, list[str]]:
-    reasons: list[str] = []
-    score = geometry_confidence
-
-    if photo.altitude_m is None:
-        reasons.append("missing_altitude")
-        score -= 0.12
-    else:
-        reasons.append("altitude_present")
-
-    if photo.heading_deg is None:
-        reasons.append("missing_heading")
-        score -= 0.15
-    else:
-        reasons.append("heading_present")
-
-    if photo.pitch_deg is None:
-        reasons.append("missing_pitch")
-        score -= 0.1
-    else:
-        reasons.append("pitch_present")
-
-    if "qc:missing_gps" in quality_flags:
-        reasons.append("gps_issue")
-        score -= 0.22
-    if "qc:missing_heading" in quality_flags:
-        reasons.append("heading_issue")
-        score -= 0.18
-    if "qc:missing_pitch" in quality_flags:
-        reasons.append("pitch_issue")
-        score -= 0.12
-    if "qc:heading_source_switch" in quality_flags:
-        reasons.append("heading_source_switched")
-        score -= 0.08
-    if "qc:pitch_source_switch" in quality_flags:
-        reasons.append("pitch_source_switched")
-        score -= 0.06
-    if "qc:heading_source_conflict" in quality_flags:
-        reasons.append("heading_source_conflict")
-        score -= 0.1
-    if "qc:pitch_source_conflict" in quality_flags:
-        reasons.append("pitch_source_conflict")
-        score -= 0.08
-    if "qc:pitch_sign_uncertain" in quality_flags:
-        reasons.append("pitch_sign_uncertain")
-        score -= 0.06
-    if "qc:missing_gsd_input" in quality_flags:
-        reasons.append("ground_sampling_unavailable")
-        score -= 0.08
-
-    if quality_flags:
-        reasons.append("metadata_flags_present")
-
-    return _clamp_unit(round(score, 2)), reasons
-
-
-def _derive_location_uncertainty_m(photo: Photo, quality_flags: list[str], geometry_confidence: float, view_mode: str) -> float:
-    if view_mode == "manual":
-        uncertainty = 2.5
-        if "qc:missing_gps" in quality_flags:
-            uncertainty += 2.0
-        return round(uncertainty, 2)
-
-    if photo.pitch_deg is None or photo.altitude_m is None:
-        return 30.0 if photo.altitude_m is None else 22.0
-
-    if view_mode == "estimated":
-        altitude = max(1.0, abs(photo.altitude_m))
-        pitch_abs = abs(photo.pitch_deg or 0.0)
-        uncertainty = max(2.0, altitude / max(15.0, pitch_abs) * 0.9)
-        if geometry_confidence < 0.7:
-            uncertainty += 6.0
-    else:
-        uncertainty = 15.0
-
-    if "qc:missing_heading" in quality_flags:
-        uncertainty += 5.0
-    if "qc:missing_pitch" in quality_flags:
-        uncertainty += 4.0
-    if "qc:missing_gps" in quality_flags:
-        uncertainty += 8.0
-    if "qc:heading_source_switch" in quality_flags:
-        uncertainty += 2.0
-    if "qc:pitch_source_switch" in quality_flags:
-        uncertainty += 3.0
-    if "qc:heading_source_conflict" in quality_flags:
-        uncertainty += 4.0
-    if "qc:pitch_source_conflict" in quality_flags:
-        uncertainty += 4.0
-    if "qc:pitch_sign_uncertain" in quality_flags:
-        uncertainty += 2.0
-
-    return round(uncertainty, 2)
-
-
-def _meters_per_degree_latitude() -> float:
-    return 111_320.0
-
-
-def _meters_per_degree_longitude(latitude: float) -> float:
-    return max(1.0, 111_320.0 * math.cos(math.radians(latitude)))
-
-
-def _degrees_from_offsets(latitude: float, north_m: float, east_m: float) -> tuple[float, float]:
-    d_lat = north_m / _meters_per_degree_latitude()
-    d_lng = east_m / _meters_per_degree_longitude(latitude)
-    return d_lat, d_lng
-
-
 def _offsets_from_positions(
     from_lat: float,
     from_lng: float,
     to_lat: float,
     to_lng: float,
 ) -> tuple[float, float]:
-    east_m = (to_lng - from_lng) * _meters_per_degree_longitude(from_lat)
-    north_m = (to_lat - from_lat) * _meters_per_degree_latitude()
+    east_m = (to_lng - from_lng) * max(1.0, 111_320.0 * math.cos(math.radians(from_lat)))
+    north_m = (to_lat - from_lat) * 111_320.0
     return east_m, north_m
 
 
-def _rotate_vector(east_m: float, north_m: float, heading_deg: float | None) -> tuple[float, float]:
-    angle = math.radians((heading_deg or 0.0) % 360.0)
-    cos_a = math.cos(angle)
-    sin_a = math.sin(angle)
-
-    # x=øst, y=nord
-    east_rot = east_m * cos_a - north_m * sin_a
-    north_rot = east_m * sin_a + north_m * cos_a
-    return east_rot, north_rot
+def _normalize_tag_inputs(photo: Photo) -> tuple[list[str], list[str]]:
+    return parse_tag_groups(photo.tags_json)
 
 
 def _project_forward_side(east_m: float, north_m: float, heading_deg: float | None) -> tuple[float, float]:
@@ -307,39 +149,6 @@ def _build_coverage_profile(
     }
 
 
-def _derive_analysis_radius(location_uncertainty_m: float | None, forward_distance_m: float | None) -> float:
-    radius = _ANALYSIS_RADIUS_DEFAULT_M
-    if forward_distance_m is not None and forward_distance_m > 0:
-        radius = max(radius, min(_ANALYSIS_RADIUS_MAX_M, forward_distance_m * 0.08))
-    if location_uncertainty_m is not None:
-        radius = max(radius, min(_ANALYSIS_RADIUS_MAX_M, location_uncertainty_m * 0.4))
-
-    return round(max(_ANALYSIS_RADIUS_MIN_M, min(_ANALYSIS_RADIUS_MAX_M, radius)), 2)
-
-
-def _build_footprint_polygon(
-    center_lat: float,
-    center_lng: float,
-    heading_deg: float | None,
-    radius_m: float,
-) -> dict:
-    local_corners = [
-        (-radius_m, -radius_m),
-        (radius_m, -radius_m),
-        (radius_m, radius_m),
-        (-radius_m, radius_m),
-        (-radius_m, -radius_m),
-    ]
-
-    coordinates: list[list[float]] = []
-    for east_local, north_local in local_corners:
-        east, north = _rotate_vector(east_local, north_local, heading_deg)
-        d_lat, d_lng = _degrees_from_offsets(center_lat, north, east)
-        coordinates.append([center_lng + d_lng, center_lat + d_lat])
-
-    return {"type": "Polygon", "coordinates": [coordinates]}
-
-
 def _build_analysis_zone(
     photo: Photo,
     view_lat: float,
@@ -347,43 +156,35 @@ def _build_analysis_zone(
     view_distance_m: float | None,
     location_uncertainty_m: float,
 ) -> dict:
-    radius_m = _derive_analysis_radius(location_uncertainty_m, view_distance_m)
-
-    sample_offsets = [
-        (0.0, 0.0),     # sentrum
-        (0.0, radius_m),  # fram (heading-nord)
-        (0.0, -radius_m), # bak
-        (radius_m, 0.0),  # høyre (øst)
-        (-radius_m, 0.0), # venstre (vest)
-    ]
-
-    sample_points: list[dict[str, float]] = []
-    for east_local, north_local in sample_offsets:
-        east, north = _rotate_vector(east_local, north_local, photo.heading_deg)
-        d_lat, d_lng = _degrees_from_offsets(view_lat, north, east)
-        sample_points.append({"lat": view_lat + d_lat, "lng": view_lng + d_lng})
-
-    return {
-        "center_point": {"lat": view_lat, "lng": view_lng},
-        "sample_points": sample_points,
-        "footprint_polygon": _build_footprint_polygon(view_lat, view_lng, photo.heading_deg, radius_m),
-        "sampling_strategy": {"type": _ANALYSIS_STRATEGY, "radius_m": radius_m},
-        "uncertainty_radius_m": location_uncertainty_m,
-        "analysis_area_m": round(math.pi * (radius_m ** 2), 2),
-    }
+    return build_shared_analysis_zone(
+        center_lat=view_lat,
+        center_lng=view_lng,
+        heading_deg=photo.heading_deg,
+        forward_distance_m=view_distance_m,
+        location_uncertainty_m=location_uncertainty_m,
+    )
 
 
-def _base_photo_query(user_id: int, selected_date: date, mode: str):
-    query = select(Photo).where(Photo.user_id == user_id)
-    if mode == "day":
-        query = query.where(Photo.captured_date == selected_date)
-    else:
-        query = query.where(Photo.captured_date <= selected_date)
-    return query
+def _extract_manual_view_override(tags: list[str]) -> tuple[float, float] | None:
+    lat = extract_meta_float(tags, "meta:manual_view_lat")
+    lng = extract_meta_float(tags, "meta:manual_view_lng")
+    if lat is None or lng is None:
+        return None
+
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        return None
+    return lat, lng
+
+
+def _extract_quality_flags(system_tags: list[str]) -> list[str]:
+    return [tag for tag in system_tags if tag.casefold().startswith("qc:")]
 
 
 def _derive_camera_view(photo: Photo, tags: list[str] | None = None) -> tuple[float, float, GeometryMethod, float | None, float]:
-    tag_list = tags if tags is not None else _parse_tags(getattr(photo, "tags_json", None))
+    tag_list = tags
+    if tag_list is None:
+        user_tags, system_tags = _normalize_tag_inputs(photo)
+        tag_list = merge_tag_groups(user_tags, system_tags)
     manual_override = _extract_manual_view_override(tag_list)
     if manual_override is not None:
         manual_lat, manual_lng = manual_override
@@ -404,19 +205,41 @@ def _derive_camera_view(photo: Photo, tags: list[str] | None = None) -> tuple[fl
     return geometry.lat, geometry.lng, geometry.geometry_method, geometry.forward_distance_m, geometry.confidence
 
 
+def _base_photo_query(user_id: int, selected_date: date, mode: str):
+    query = select(Photo).where(Photo.user_id == user_id)
+    if mode == "day":
+        query = query.where(Photo.captured_date == selected_date)
+    else:
+        query = query.where(Photo.captured_date <= selected_date)
+    return query
+
+
 def _serialize_photo(
     photo: Photo,
     previous_photo: Photo | None = None,
     next_photo: Photo | None = None,
 ) -> dict:
-    tags = _parse_tags(photo.tags_json)
+    user_tags, system_tags = _normalize_tag_inputs(photo)
+    tags = merge_tag_groups(user_tags, system_tags)
     view_lat, view_lng, view_mode, view_distance_m, view_confidence = _derive_camera_view(photo, tags=tags)
-    quality_flags = _extract_quality_flags(tags)
+    quality_flags = _extract_quality_flags(system_tags)
     needs_manual_qc = "qc:needs_manual_qc" in quality_flags
     heading_source = _extract_meta_value(tags, "meta:heading_source")
     pitch_source = _extract_meta_value(tags, "meta:pitch_source")
-    confidence_score, confidence_reasons = _derive_quality_confidence(photo, quality_flags, view_confidence)
-    location_uncertainty_m = _derive_location_uncertainty_m(photo, quality_flags, view_confidence, view_mode)
+    confidence_score, confidence_reasons = derive_quality_confidence(
+        altitude_m=photo.altitude_m,
+        heading_deg=photo.heading_deg,
+        pitch_deg=photo.pitch_deg,
+        quality_flags=quality_flags,
+        geometry_confidence=view_confidence,
+    )
+    location_uncertainty_m = derive_location_uncertainty(
+        altitude_m=photo.altitude_m,
+        pitch_deg=photo.pitch_deg,
+        quality_flags=quality_flags,
+        geometry_confidence=view_confidence,
+        view_mode=view_mode,
+    )
     analysis_zone = _build_analysis_zone(
         photo,
         view_lat=view_lat,
@@ -463,6 +286,8 @@ def _serialize_photo(
         "image_url": f"/api/v1/assets/{web_asset.path}" if web_asset else None,
         "needs_manual_qc": needs_manual_qc,
         "quality_flags": quality_flags,
+        "user_tags": user_tags,
+        "system_tags": system_tags,
         "analysis": {
             "ar5_class": photo.analysis.ar5_class if photo.analysis else None,
             "soil_class": photo.analysis.soil_class if photo.analysis else None,

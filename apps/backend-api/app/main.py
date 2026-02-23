@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .api.v1 import router as v1_router
@@ -77,6 +78,31 @@ async def request_context_middleware(request: Request, call_next):
                     "latency_ms": response_time,
                 },
             )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    request_id = request_id_ctx.get("-")
+    logger.warning(
+        "Valideringsfeil",
+        extra={
+            "method": getattr(_request, "method", None),
+            "path": getattr(_request.url, "path", None),
+            "errors": exc.errors(),
+        },
+    )
+    headers = {"X-Request-ID": request_id} if request_id is not None else None
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "error",
+            "error_code": "request_validation_error",
+            "detail": "Ugyldig input",
+            "errors": exc.errors(),
+            "request_id": request_id,
+        },
+        headers=headers,
+    )
 
 
 @app.exception_handler(HTTPException)

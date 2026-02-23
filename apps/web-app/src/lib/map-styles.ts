@@ -1,17 +1,24 @@
-export type BaseMapStyle = "osm" | "topo" | "light" | "voyager" | "satellite";
+export type BaseMapStyle = "none" | "osm" | "topo" | "light" | "voyager" | "satellite";
 
 interface BaseMapStyleConfig {
   id: BaseMapStyle;
   label: string;
-  tileUrl: string;
+  tileUrl: string | null;
   attribution: string;
   maxZoom: number;
   subdomains?: string;
 }
 
-export const BASE_MAP_STYLE_ORDER: BaseMapStyle[] = ["osm", "topo", "voyager", "light", "satellite"];
+export const BASE_MAP_STYLE_ORDER: BaseMapStyle[] = ["none", "osm", "topo", "voyager", "light", "satellite"];
 
 export const BASE_MAP_STYLES: Record<BaseMapStyle, BaseMapStyleConfig> = {
+  none: {
+    id: "none",
+    label: "Ingen bakgrunn",
+    tileUrl: null,
+    attribution: "",
+    maxZoom: 20,
+  },
   osm: {
     id: "osm",
     label: "Standard",

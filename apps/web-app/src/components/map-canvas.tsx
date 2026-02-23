@@ -22,6 +22,7 @@ interface MapCanvasProps {
   onOpenPhotoFullscreen: (photoId: string) => void;
   onPropertyStatus: (text: string) => void;
   onPropertyTileError: (jobId: string) => void;
+  onBaseMapTileError: (style: BaseMapStyle) => void;
 }
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
@@ -218,6 +219,7 @@ export function MapCanvas({
   onOpenPhotoFullscreen,
   onPropertyStatus,
   onPropertyTileError,
+  onBaseMapTileError,
 }: MapCanvasProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -317,6 +319,9 @@ export function MapCanvas({
     }
 
     const style = BASE_MAP_STYLES[baseMapStyle];
+    if (!style.tileUrl) {
+      return;
+    }
     const layerOptions: L.TileLayerOptions = {
       maxZoom: style.maxZoom,
       attribution: style.attribution,
@@ -327,6 +332,9 @@ export function MapCanvas({
     }
 
     const layer = L.tileLayer(style.tileUrl, layerOptions);
+    layer.on("tileerror", () => {
+      onBaseMapTileError(baseMapStyle);
+    });
 
     layer.addTo(mapRef.current);
     baseLayerRef.current = layer;
@@ -336,7 +344,7 @@ export function MapCanvas({
         mapRef.current.removeLayer(layer);
       }
     };
-  }, [baseMapStyle]);
+  }, [baseMapStyle, onBaseMapTileError]);
 
   useEffect(() => {
     if (!mapRef.current) return;

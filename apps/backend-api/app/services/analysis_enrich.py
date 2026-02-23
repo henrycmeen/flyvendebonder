@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import logging
-import json
 from datetime import datetime
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -20,6 +19,7 @@ from .metadata_utils import (
     select_heading_from_metadata,
     select_pitch_from_metadata,
 )
+from .tag_utils import extract_meta_float, parse_tag_groups
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -76,38 +76,14 @@ def _split_comma_values(raw: str) -> list[str]:
 
 
 def _parse_tags(photo: Photo) -> list[str]:
-    try:
-        parsed = json.loads(photo.tags_json or "[]")
-    except Exception:  # noqa: BLE001
-        return []
-    return [str(tag) for tag in parsed if isinstance(tag, str) and tag.strip()]
-
-
-def _extract_meta_value(tags: list[str], key: str) -> str | None:
-    prefix = key.rstrip("=") + "="
-    for tag in tags:
-        if tag.startswith(prefix):
-            return tag[len(prefix) :].strip()
-    return None
-
-
-def _extract_meta_float(tags: list[str], key: str) -> float | None:
-    raw = _extract_meta_value(tags, key)
-    if raw is None:
-        return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(value):
-        return None
-    return value
+    user_tags, system_tags = parse_tag_groups(photo.tags_json)
+    return [*user_tags, *system_tags]
 
 
 def _extract_manual_view_override(photo: Photo) -> tuple[float, float] | None:
     tags = _parse_tags(photo)
-    lat = _extract_meta_float(tags, "meta:manual_view_lat")
-    lng = _extract_meta_float(tags, "meta:manual_view_lng")
+    lat = extract_meta_float(tags, "meta:manual_view_lat")
+    lng = extract_meta_float(tags, "meta:manual_view_lng")
     if lat is None or lng is None:
         return None
     if lat < -90 or lat > 90 or lng < -180 or lng > 180:

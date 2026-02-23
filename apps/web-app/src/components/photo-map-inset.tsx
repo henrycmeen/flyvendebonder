@@ -148,6 +148,9 @@ export function PhotoMapInset({
     }
 
     const style = BASE_MAP_STYLES[baseMapStyle];
+    if (!style.tileUrl) {
+      return;
+    }
     const options: L.TileLayerOptions = {
       maxZoom: style.maxZoom,
       attribution: style.attribution,

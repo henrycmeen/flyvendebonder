@@ -110,6 +110,8 @@ class PhotoMetadataActionResponse(BaseModel):
     status: str
     photo_id: str
     tags: list[str]
+    user_tags: list[str] = Field(default_factory=list)
+    system_tags: list[str] = Field(default_factory=list)
     caption: str | None = None
     needs_manual_qc: bool = False
     altitude_m: float | None = None
@@ -188,6 +190,8 @@ class PhotoFeature(BaseModel):
     coverage_profile: CoverageProfile | None = None
     analysis_zone: AnalysisZone | None = None
     tags: list[str]
+    user_tags: list[str] = Field(default_factory=list)
+    system_tags: list[str] = Field(default_factory=list)
     caption: str | None = None
     thumbnail_url: str | None = None
     image_url: str | None = None

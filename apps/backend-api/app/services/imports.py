@@ -20,6 +20,7 @@ from .metadata_utils import (
     extract_metadata as extract_image_metadata,
 )
 from .image_derivatives import write_derivatives
+from .tag_utils import serialize_tag_groups
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -65,19 +66,6 @@ def _derive_quality_tags(metadata_issues: list[str]) -> list[str]:
             qc_tags.add("qc:metadata_issue")
 
     return sorted(qc_tags)
-
-
-def _merge_photo_tags(base_tags: list[str], quality_flags: list[str], include_manual_qc_flag: bool) -> list[str]:
-    tags = list(base_tags)
-    tag_set = {tag for tag in tags if isinstance(tag, str)}
-
-    if include_manual_qc_flag:
-        tag_set.add("qc:needs_manual_qc")
-    else:
-        tag_set.discard("qc:needs_manual_qc")
-
-    tag_set.update(quality_flags)
-    return sorted(tag_set)
 
 
 def _default_targets(db: Session) -> tuple[User, Property | None]:
@@ -180,25 +168,22 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
                 source_filename=file_path.name,
                 source_hash=source_hash,
                 notes=f"Importert fra {file_path.parent.name}",
-                tags_json=json.dumps(
-                    _merge_photo_tags(
-                        [
-                            "meen-gard",
-                            "dronefoto",
-                            file_path.parent.name,
-                            f"meta:heading_source={heading_source}",
-                            f"meta:heading_source_detail={heading_selection.source_detail}",
-                            f"meta:pitch_source={pitch_selection.source}",
-                            f"meta:pitch_source_detail={pitch_selection.source_detail}",
-                        ],
-                        [
-                            f"meta:heading_source_candidates={heading_candidates}" if heading_candidates else None,
-                            f"meta:pitch_source_candidates={pitch_candidates}" if pitch_candidates else None,
-                        ]
-                        + quality_flags,
-                        needs_manual_qc,
-                    ),
-                    ensure_ascii=False,
+                tags_json=serialize_tag_groups(
+                    user_tags=[
+                        "meen-gard",
+                        "dronefoto",
+                        file_path.parent.name,
+                    ],
+                    system_tags=[
+                        f"meta:heading_source={heading_source}",
+                        f"meta:heading_source_detail={heading_selection.source_detail}",
+                        f"meta:pitch_source={pitch_selection.source}",
+                        f"meta:pitch_source_detail={pitch_selection.source_detail}",
+                        f"meta:heading_source_candidates={heading_candidates}" if heading_candidates else None,
+                        f"meta:pitch_source_candidates={pitch_candidates}" if pitch_candidates else None,
+                        *quality_flags,
+                        "qc:needs_manual_qc" if needs_manual_qc else None,
+                    ],
                 ),
             )
 

@@ -19,6 +19,12 @@ else:
 
 from app.services.geometry_utils import choose_geometry
 from app.services.metadata_utils import ExtractedMetadata, extract_metadata
+from app.services.quality_metrics import (
+    build_analysis_zone as build_shared_analysis_zone,
+    derive_analysis_radius,
+    derive_location_uncertainty,
+    derive_quality_confidence,
+)
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".tif", ".tiff", ".png"}
 
@@ -64,38 +70,6 @@ def _derive_quality_tags(metadata_issues: list[str]) -> list[str]:
     return sorted(set(qc_tags))
 
 
-def _meters_per_degree_latitude() -> float:
-    return 111_320.0
-
-
-def _meters_per_degree_longitude(latitude: float) -> float:
-    return max(1.0, 111_320.0 * math.cos(math.radians(latitude)))
-
-
-def _offset_deg(latitude: float, north_m: float, east_m: float) -> tuple[float, float]:
-    d_lat = north_m / _meters_per_degree_latitude()
-    d_lng = east_m / _meters_per_degree_longitude(latitude)
-    return d_lat, d_lng
-
-
-def _rotate_local(east_m: float, north_m: float, heading_deg: float | None) -> tuple[float, float]:
-    angle = math.radians((heading_deg or 0.0) % 360.0)
-    cos_a = math.cos(angle)
-    sin_a = math.sin(angle)
-    east_rot = east_m * cos_a - north_m * sin_a
-    north_rot = east_m * sin_a + north_m * cos_a
-    return east_rot, north_rot
-
-
-def _derive_analysis_radius(location_uncertainty_m: float | None, view_distance_m: float | None) -> float:
-    radius = 2.8
-    if location_uncertainty_m is not None:
-        radius = max(radius, min(5.0, location_uncertainty_m * 0.4))
-    if view_distance_m is not None and view_distance_m > 0:
-        radius = max(radius, min(5.0, view_distance_m * 0.08))
-    return round(max(1.5, min(5.0, radius)), 2)
-
-
 def _build_analysis_zone(
     view_lat: float,
     view_lng: float,
@@ -103,80 +77,23 @@ def _build_analysis_zone(
     location_uncertainty_m: float,
     view_distance_m: float | None,
 ) -> dict[str, Any]:
-    radius_m = _derive_analysis_radius(location_uncertainty_m, view_distance_m)
-    sample_offsets = [
-        (0.0, 0.0),
-        (0.0, radius_m),
-        (0.0, -radius_m),
-        (radius_m, 0.0),
-        (-radius_m, 0.0),
-    ]
-
-    sample_points: list[dict[str, float]] = []
-    for east_local, north_local in sample_offsets:
-        east, north = _rotate_local(east_local, north_local, heading_deg)
-        d_lat, d_lng = _offset_deg(view_lat, north, east)
-        sample_points.append({"lat": view_lat + d_lat, "lng": view_lng + d_lng})
-
-    footprint_local = [
-        (-radius_m, -radius_m),
-        (radius_m, -radius_m),
-        (radius_m, radius_m),
-        (-radius_m, radius_m),
-        (-radius_m, -radius_m),
-    ]
-    footprint_coords: list[list[float]] = []
-    for east_local, north_local in footprint_local:
-        east, north = _rotate_local(east_local, north_local, heading_deg)
-        d_lat, d_lng = _offset_deg(view_lat, north, east)
-        footprint_coords.append([view_lng + d_lng, view_lat + d_lat])
-
-    return {
-        "center_point": {"lat": view_lat, "lng": view_lng},
-        "sample_points": sample_points,
-        "footprint_polygon": {"type": "Polygon", "coordinates": [footprint_coords]},
-        "sampling_strategy": {"type": "cross_5", "radius_m": radius_m},
-        "uncertainty_radius_m": location_uncertainty_m,
-        "analysis_area_m": round(math.pi * (radius_m ** 2), 2),
-    }
+    return build_shared_analysis_zone(
+        center_lat=view_lat,
+        center_lng=view_lng,
+        heading_deg=heading_deg,
+        forward_distance_m=view_distance_m,
+        location_uncertainty_m=location_uncertainty_m,
+    )
 
 
 def _derive_quality_confidence(altitude_m: float | None, heading: float | None, pitch: float | None, quality_flags: list[str], geometry_confidence: float) -> tuple[float, list[str]]:
-    score = geometry_confidence
-    reasons: list[str] = []
-
-    if altitude_m is None:
-        score -= 0.12
-        reasons.append("missing_altitude")
-    else:
-        reasons.append("altitude_present")
-
-    if heading is None:
-        score -= 0.15
-        reasons.append("missing_heading")
-    else:
-        reasons.append("heading_present")
-
-    if pitch is None:
-        score -= 0.1
-        reasons.append("missing_pitch")
-    else:
-        reasons.append("pitch_present")
-
-    if "qc:missing_gps" in quality_flags:
-        score -= 0.22
-        reasons.append("gps_issue")
-    if "qc:missing_heading" in quality_flags:
-        score -= 0.18
-        reasons.append("heading_issue")
-    if "qc:missing_pitch" in quality_flags:
-        score -= 0.12
-        reasons.append("pitch_issue")
-
-    if quality_flags:
-        reasons.append("metadata_flags_present")
-
-    return round(max(0.0, min(1.0, score)), 2), reasons
+    return derive_quality_confidence(
+        altitude_m=altitude_m,
+        heading_deg=heading,
+        pitch_deg=pitch,
+        quality_flags=quality_flags,
+        geometry_confidence=geometry_confidence,
+    )
 
 
 def _derive_location_uncertainty(
@@ -186,26 +103,20 @@ def _derive_location_uncertainty(
     geometry_confidence: float,
     view_mode: str,
 ) -> float:
-    if pitch is None or altitude_m is None:
-        return 30.0 if altitude_m is None else 22.0
+    return derive_location_uncertainty(
+        altitude_m=altitude_m,
+        pitch_deg=pitch,
+        quality_flags=quality_flags,
+        geometry_confidence=geometry_confidence,
+        view_mode=view_mode,
+    )
 
-    if view_mode == "estimated":
-        altitude = max(1.0, abs(altitude_m))
-        pitch_abs = abs(pitch or 0.0)
-        uncertainty = max(2.0, altitude / max(15.0, pitch_abs) * 0.9)
-        if geometry_confidence < 0.7:
-            uncertainty += 6.0
-    else:
-        uncertainty = 15.0
 
-    if "qc:missing_heading" in quality_flags:
-        uncertainty += 5.0
-    if "qc:missing_pitch" in quality_flags:
-        uncertainty += 4.0
-    if "qc:missing_gps" in quality_flags:
-        uncertainty += 8.0
-
-    return round(uncertainty, 2)
+def _derive_analysis_radius(location_uncertainty_m: float | None, view_distance_m: float | None) -> float:
+    return derive_analysis_radius(
+        location_uncertainty_m=location_uncertainty_m,
+        forward_distance_m=view_distance_m,
+    )
 
 
 def _analyze_file(path: Path) -> dict[str, Any]:
@@ -387,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
             entries.append(_analyze_file(path))
         except Exception as exc:  # noqa: BLE001
             parse_errors += 1
+            fallback_radius_m = _derive_analysis_radius(location_uncertainty_m=30.0, forward_distance_m=None)
             entries.append(
                 {
                     "file": str(path),
@@ -410,8 +322,8 @@ def main(argv: list[str] | None = None) -> int:
                     "confidence_score": 0.0,
                     "confidence_reasons": ["parse_error"],
                     "location_uncertainty_m": 30.0,
-                    "analysis_zone_radius_m": 2.5,
-                    "analysis_area_m2": round(math.pi * 2.5 ** 2, 2),
+                    "analysis_zone_radius_m": round(fallback_radius_m, 2),
+                    "analysis_area_m2": round(math.pi * fallback_radius_m ** 2, 2),
                 }
             )
 

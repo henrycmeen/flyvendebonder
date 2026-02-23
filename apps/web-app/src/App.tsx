@@ -3,7 +3,7 @@ import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Pencil, X } from "l
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
-import type { BaseMapStyle } from "@/lib/map-styles";
+import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { AlbumPage } from "@/components/album-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
@@ -326,7 +326,7 @@ export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
   const initialPhoto = params.get("photo");
-  const initialView = params.get("view") === "album" ? "album" : "map";
+  const initialView: AppView = params.get("view") === "album" ? "album" : "map";
   const hasExplicitDeepLink = initialDate !== null || initialPhoto !== null;
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
@@ -351,10 +351,10 @@ export default function App() {
   const [mapGrayscale, setMapGrayscale] = useState(false);
   const [mapVintage, setMapVintage] = useState(false);
   const [job, setJob] = useState<GardskartJob | null>(null);
-  const [showPropertyLayer, setShowPropertyLayer] = useState(true);
+  const [showPropertyLayer, setShowPropertyLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
-  const [propertyStatus, setPropertyStatus] = useState("Eiendomslag venter på data ...");
+  const [propertyStatus, setPropertyStatus] = useState("Eiendomslag er skrudd av.");
   const [statusText, setStatusText] = useState("Laster data ...");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([]);
@@ -373,6 +373,7 @@ export default function App() {
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
+  const [isMapPhotosLoading, setIsMapPhotosLoading] = useState(false);
   const [photoLoadRetryToken, setPhotoLoadRetryToken] = useState(0);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
@@ -383,6 +384,7 @@ export default function App() {
 
   const initialPhotoRef = useRef<string | null>(initialPhoto);
   const tileRetryJobRef = useRef<string | null>(null);
+  const baseMapTileErrorRef = useRef<BaseMapStyle | null>(null);
   const albumScrollSpinTimeoutRef = useRef<number | null>(null);
   const bootstrapAbortRef = useRef<AbortController | null>(null);
   const profileAbortRef = useRef<AbortController | null>(null);
@@ -1015,20 +1017,7 @@ export default function App() {
   }, [selectedPhoto]);
 
   useEffect(() => {
-    const storedStyle = window.localStorage.getItem(PREF_MAP_STYLE_KEY);
-    const hasManualStyle = window.localStorage.getItem(PREF_MAP_STYLE_MANUAL_KEY) === "1";
-    if (
-      hasManualStyle &&
-      (storedStyle === "osm" ||
-        storedStyle === "topo" ||
-        storedStyle === "light" ||
-        storedStyle === "voyager" ||
-        storedStyle === "satellite")
-    ) {
-      setBaseMapStyle(storedStyle);
-    } else {
-      setBaseMapStyle("osm");
-    }
+    setBaseMapStyle("osm");
 
     const storedGrayscale = window.localStorage.getItem(PREF_MAP_GRAYSCALE_KEY);
     if (storedGrayscale === "1") {
@@ -1223,8 +1212,13 @@ export default function App() {
         setPhotosLoadFailed(false);
         setSelectedPhotoId(null);
         setStatusText("Ingen bilder for valgt filter.");
+        if (seq === photoLoadSeqRef.current) {
+          setIsMapPhotosLoading(false);
+        }
         return;
       }
+
+      setIsMapPhotosLoading(true);
 
       const matchesClientFilters = (photo: PhotoFeature): boolean => {
         const dateParts = splitCapturedDate(photo.captured_date);
@@ -1363,6 +1357,10 @@ export default function App() {
         setPhotosLoadFailed(true);
         setStatusText(`Kunne ikke laste bilder: ${apiError.message}`);
         addLog("error", "Bildelasting feilet", apiError.requestId, apiError.detail);
+      } finally {
+        if (seq === photoLoadSeqRef.current) {
+          setIsMapPhotosLoading(false);
+        }
       }
     };
 
@@ -1381,6 +1379,7 @@ export default function App() {
     showOnlyLowConfidence,
     trackRequest,
     filteredTimelineHasData,
+    setIsMapPhotosLoading,
   ]);
 
   const loadAlbumPage = useCallback(
@@ -1678,7 +1677,10 @@ export default function App() {
   const handlePropertyTileError = useCallback(
     (jobId: string) => {
       if (tileRetryJobRef.current === jobId) {
-        addLog("warn", "Tile-feil kom igjen etter auto-refresh", null, { jobId });
+        setShowPropertyLayer(false);
+        setJob(null);
+        setPropertyStatus("Eiendomslag skrudd av automatisk etter tilgangsfeil fra NIBIO.");
+        addLog("warn", "Eiendomslag skrudd av etter gjentatt tile-feil", null, { jobId });
         return;
       }
 
@@ -1687,6 +1689,17 @@ export default function App() {
       void loadGardskartJob(true);
     },
     [addLog, loadGardskartJob],
+  );
+
+  const handleBaseMapTileError = useCallback(
+    (style: BaseMapStyle) => {
+      if (style === "none") return;
+      if (baseMapTileErrorRef.current === style) return;
+      baseMapTileErrorRef.current = style;
+      setStatusText(`Bakgrunnskart (${BASE_MAP_STYLES[style].label}) har delvis last-feil.`);
+      addLog("warn", "Bakgrunnskart tile-feil", null, { style });
+    },
+    [addLog],
   );
 
   const handleLoadMoreAlbum = useCallback(() => {
@@ -2424,6 +2437,7 @@ export default function App() {
           onOpenPhotoFullscreen={handleOpenPhotoViewer}
           onPropertyStatus={setPropertyStatus}
           onPropertyTileError={handlePropertyTileError}
+          onBaseMapTileError={handleBaseMapTileError}
         />
       ) : (
         <AlbumPage
@@ -2480,7 +2494,7 @@ export default function App() {
           onToggleManualQcFilter={handleToggleManualQcFilter}
           onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           isLoading={isLoading}
-          logoSpinActive={albumScrollSpin}
+          logoSpinActive={albumScrollSpin || isMapPhotosLoading}
           logs={logs}
           onClearLogs={() => setLogs([])}
           backendLogs={backendLogs}
@@ -2488,6 +2502,7 @@ export default function App() {
           onClearBackendLogs={() => setBackendLogs([])}
           onFetchBackendLogs={loadBackendLogs}
           onChangeBaseMapStyle={(style) => {
+            baseMapTileErrorRef.current = null;
             setBaseMapStyle(style);
             window.localStorage.setItem(PREF_MAP_STYLE_MANUAL_KEY, "1");
             addLog("info", "Bakgrunnskart endret", null, { style });

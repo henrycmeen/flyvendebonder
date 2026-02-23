@@ -170,10 +170,12 @@ async function parseApiError(response: Response): Promise<ApiError> {
 function combineSignal(
   providedSignal: AbortSignal | undefined,
   timeoutMs: number,
-): { signal: AbortSignal; cleanup: () => void } {
+): { signal: AbortSignal; cleanup: () => void; didTimeout: () => boolean } {
+  let timedOut = false;
   if (!providedSignal) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
+      timedOut = true;
       controller.abort(new DOMException("Request timeout", "AbortError"));
     }, timeoutMs);
     return {
@@ -184,6 +186,7 @@ function combineSignal(
           controller.abort();
         }
       },
+      didTimeout: () => timedOut,
     };
   }
 
@@ -192,6 +195,7 @@ function combineSignal(
     merged.abort(providedSignal.reason);
   };
   const timeoutId = window.setTimeout(() => {
+    timedOut = true;
     merged.abort(new DOMException("Request timeout", "AbortError"));
   }, timeoutMs);
 
@@ -212,6 +216,7 @@ function combineSignal(
         forwardAbort();
       }
     },
+    didTimeout: () => timedOut,
   };
 }
 
@@ -230,7 +235,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
   const maxRetries = options.retries ?? DEFAULT_RETRIES;
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const shouldCache = method === "GET" && options.cache !== false;
-  const shouldDedupe = method === "GET" && options.dedupe !== false;
+  const shouldDedupe = method === "GET" && options.dedupe !== false && !options.signal;
   const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
 
   const url = buildUrl(path, options.query);
@@ -252,7 +257,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
   }
 
   const performRequest = async (): Promise<ApiResponse<T>> => {
-    const { signal, cleanup } = combineSignal(options.signal, timeoutMs);
+    const { signal, cleanup, didTimeout } = combineSignal(options.signal, timeoutMs);
     try {
       let attempt = 0;
       let lastError: Error | null = null;
@@ -302,12 +307,20 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
           }
 
           if (error instanceof DOMException && error.name === "AbortError") {
-            throw new ApiError({
-              message: "Request avbrutt",
-              status: 0,
+            const timeoutAbort = didTimeout();
+            const abortError = new ApiError({
+              message: timeoutAbort ? "Request timeout" : "Request avbrutt",
+              status: timeoutAbort ? 408 : 0,
               requestId: null,
               detail: error.message,
             });
+            if (timeoutAbort && attempt < maxRetries) {
+              lastError = abortError;
+              await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
+              attempt += 1;
+              continue;
+            }
+            throw abortError;
           }
 
           const fallback = error instanceof Error ? error : new Error(String(error));
@@ -345,9 +358,14 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
   const promise = performRequest();
   if (shouldDedupe) {
     inFlightMap.set(cacheKey, promise as Promise<ApiResponse<unknown>>);
-    promise.finally(() => {
-      inFlightMap.delete(cacheKey);
-    });
+    void promise.then(
+      () => {
+        inFlightMap.delete(cacheKey);
+      },
+      () => {
+        inFlightMap.delete(cacheKey);
+      },
+    );
   }
 
   return promise;

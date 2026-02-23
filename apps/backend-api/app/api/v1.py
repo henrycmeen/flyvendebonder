@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import math
 import os
@@ -40,6 +39,15 @@ from ..services.gardskart import get_job_id
 from ..services.imports import run_photo_ingest
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
+from ..services.tag_utils import (
+    extract_meta_float,
+    normalize_user_tags,
+    parse_tag_groups,
+    set_meta_value,
+    set_quality_flag,
+    serialize_tag_groups,
+    merge_tag_groups,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,70 +83,34 @@ def _current_property(db: Session, user_id: int) -> Property | None:
     )
 
 
-def _normalize_tags(photo: Photo) -> list[str]:
-    try:
-        parsed = json.loads(photo.tags_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    return [str(tag) for tag in parsed if str(tag).strip()]
+def _parse_stored_tags(photo: Photo) -> tuple[list[str], list[str]]:
+    return parse_tag_groups(photo.tags_json)
 
 
-def _set_quality_flag(tags: list[str], needs_manual_qc: bool | None) -> list[str]:
-    normalized = [tag for tag in tags if tag.strip()]
-    normalized_set = set(normalized)
-
-    if needs_manual_qc is None:
-        return sorted(normalized_set)
-
-    if needs_manual_qc:
-        normalized_set.add("qc:needs_manual_qc")
-    else:
-        normalized_set.discard("qc:needs_manual_qc")
-
-    return sorted(normalized_set)
-
-
-def _extract_meta_value(tags: list[str], key: str) -> str | None:
-    prefix = key.rstrip("=") + "="
-    for tag in tags:
-        if tag.startswith(prefix):
-            return tag[len(prefix) :].strip()
-    return None
-
-
-def _set_meta_value(tags: list[str], key: str, value: str | None) -> list[str]:
-    prefix = key.rstrip("=") + "="
-    filtered = [tag for tag in tags if not tag.startswith(prefix)]
-    if value is not None:
-        filtered.append(f"{prefix}{value}")
-    return filtered
-
-
-def _extract_manual_view_override(tags: list[str]) -> tuple[float | None, float | None]:
-    raw_lat = _extract_meta_value(tags, "meta:manual_view_lat")
-    raw_lng = _extract_meta_value(tags, "meta:manual_view_lng")
-    if raw_lat is None or raw_lng is None:
-        return None, None
-
-    try:
-        lat = float(raw_lat)
-        lng = float(raw_lng)
-    except (TypeError, ValueError):
-        return None, None
-
-    if not math.isfinite(lat) or not math.isfinite(lng):
-        return None, None
-
-    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
-        return None, None
-
-    return lat, lng
+def _validate_user_tags_payload(payload_tags: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in payload_tags:
+        tag = str(item).strip()
+        if not tag:
+            continue
+        key = tag.casefold()
+        if key.startswith("meta:") or key.startswith("qc:"):
+            raise HTTPException(
+                status_code=400,
+                detail="Bruker-tags kan ikke inneholde meta:- eller qc:-prefikser",
+            )
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(tag[:72])
+    return normalize_user_tags(normalized)
 
 
 def _set_manual_view_override(tags: list[str], lat: float | None, lng: float | None) -> list[str]:
     if lat is None and lng is None:
-        cleared = _set_meta_value(tags, "meta:manual_view_lat", None)
-        return _set_meta_value(cleared, "meta:manual_view_lng", None)
+        cleared = set_meta_value(tags, "meta:manual_view_lat", None)
+        return set_meta_value(cleared, "meta:manual_view_lng", None)
 
     if lat is None or lng is None:
         raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må settes sammen")
@@ -149,8 +121,8 @@ def _set_manual_view_override(tags: list[str], lat: float | None, lng: float | N
     if lat < -90 or lat > 90 or lng < -180 or lng > 180:
         raise HTTPException(status_code=400, detail="Manuelt målpunkt er utenfor gyldig koordinatområde")
 
-    with_lat = _set_meta_value(tags, "meta:manual_view_lat", f"{lat:.6f}")
-    return _set_meta_value(with_lat, "meta:manual_view_lng", f"{lng:.6f}")
+    with_lat = set_meta_value(tags, "meta:manual_view_lat", f"{lat:.6f}")
+    return set_meta_value(with_lat, "meta:manual_view_lng", f"{lng:.6f}")
 
 
 def _validate_numeric_override(
@@ -173,10 +145,6 @@ def _validate_numeric_override(
         )
 
     return float(value)
-
-
-def _serialize_tag_list(photo: Photo) -> list[str]:
-    return _normalize_tags(photo)
 
 
 @router.get("/health")
@@ -381,40 +349,28 @@ def patch_photo_metadata(
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
 
-    tags: list[str]
+    user_tags: list[str]
+    system_tags: list[str]
     try:
-        tags = _serialize_tag_list(photo)
+        user_tags, system_tags = _parse_stored_tags(photo)
     except Exception:  # noqa: BLE001
-        tags = []
+        user_tags = []
+        system_tags = []
 
     if payload.tags is not None:
-        normalized_tags: list[str] = []
-        seen: set[str] = set()
-        for item in payload.tags:
-            tag = str(item).strip()
-            if not tag:
-                continue
-            key = tag.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            normalized_tags.append(tag[:72])
-        tags = normalized_tags
-        photo.tags_json = json.dumps(tags, ensure_ascii=False)
+        user_tags = _validate_user_tags_payload(payload.tags)
 
     if payload.caption is not None:
         cleaned_caption = payload.caption.strip()
         photo.notes = cleaned_caption if cleaned_caption else None
 
     if payload.needs_manual_qc is not None:
-        tags = _set_quality_flag(tags, payload.needs_manual_qc)
-        photo.tags_json = json.dumps(tags, ensure_ascii=False)
+        system_tags = set_quality_flag(system_tags, "qc:needs_manual_qc", payload.needs_manual_qc)
 
     if "manual_view_lat" in payload.model_fields_set or "manual_view_lng" in payload.model_fields_set:
         if "manual_view_lat" not in payload.model_fields_set or "manual_view_lng" not in payload.model_fields_set:
             raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må sendes sammen")
-        tags = _set_manual_view_override(tags, payload.manual_view_lat, payload.manual_view_lng)
-        photo.tags_json = json.dumps(tags, ensure_ascii=False)
+        system_tags = _set_manual_view_override(system_tags, payload.manual_view_lat, payload.manual_view_lng)
 
     if "altitude_m" in payload.model_fields_set:
         photo.altitude_m = _validate_numeric_override(
@@ -438,8 +394,12 @@ def patch_photo_metadata(
             max_value=_METADATA_PITCH_MAX_DEG,
         )
 
-    needs_manual_qc = "qc:needs_manual_qc" in tags
-    manual_view_lat, manual_view_lng = _extract_manual_view_override(tags)
+    photo.tags_json = serialize_tag_groups(user_tags=user_tags, system_tags=system_tags)
+    tags = merge_tag_groups(user_tags, system_tags)
+
+    needs_manual_qc = "qc:needs_manual_qc" in system_tags
+    manual_view_lat = extract_meta_float(system_tags, "meta:manual_view_lat")
+    manual_view_lng = extract_meta_float(system_tags, "meta:manual_view_lng")
 
     db.commit()
     db.refresh(photo)
@@ -448,6 +408,8 @@ def patch_photo_metadata(
         status="ok",
         photo_id=photo.id,
         tags=tags,
+        user_tags=user_tags,
+        system_tags=system_tags,
         caption=photo.notes,
         needs_manual_qc=needs_manual_qc,
         altitude_m=photo.altitude_m,
