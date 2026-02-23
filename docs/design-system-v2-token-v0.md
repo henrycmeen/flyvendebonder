@@ -80,3 +80,52 @@ Når dette er bekreftet, går vi videre i punkt 2–3:
 - implementere token-fil i `apps/web-app` (`src/styles/tokens.css` eller tilsvarende)
 - mappe 6–8 kerneklasser i Tailwind-tokenlaget
 - begynne pilot-refaktor for map shell
+
+
+## Sesongtema (pilot, v1)
+
+Vi beholder basis-tokenene fra v1 som standard, og legger på en liten sesong-modifikator for aksent/surface-hold.
+
+### data-season attributt (app-root)
+- default: `data-season="spring"`
+- summer, autumn, winter kan byttes via `data-season`.
+
+### Vår (`spring`)
+- `--fb-accent-sky: #365CD2`
+- `--fb-accent-sky-subtle: rgba(54, 92, 210, 0.12)`
+- `--fb-accent-emerald: #1CA85D`
+- `--fb-accent-emerald-subtle: rgba(28, 168, 93, 0.14)`
+- `--fb-accent-bridge: #2D8FA1`
+- `--fb-accent-bridge-subtle: rgba(45, 143, 161, 0.12)`
+- `--fb-background-tint: linear-gradient(145deg, rgba(246, 232, 205, 0.85), rgba(222, 209, 177, 0.75))`
+
+### Sommer (`summer`)
+- `--fb-accent-sky: #4F7CFF`
+- `--fb-accent-sky-subtle: rgba(79, 124, 255, 0.16)`
+- `--fb-accent-emerald: #24B56D`
+- `--fb-accent-emerald-subtle: rgba(36, 181, 109, 0.16)`
+- `--fb-accent-bridge: #2FA3CC`
+- `--fb-accent-bridge-subtle: rgba(47, 163, 204, 0.14)`
+- `--fb-background-tint: linear-gradient(145deg, rgba(244, 236, 224, 0.86), rgba(210, 229, 248, 0.30))`
+
+### Høst (`autumn`)
+- `--fb-accent-sky: #4A6F9A`
+- `--fb-accent-sky-subtle: rgba(74, 111, 154, 0.16)`
+- `--fb-accent-emerald: #B87A3D`
+- `--fb-accent-emerald-subtle: rgba(184, 122, 61, 0.18)`
+- `--fb-accent-bridge: #B07A3B`
+- `--fb-accent-bridge-subtle: rgba(176, 122, 59, 0.14)`
+- `--fb-background-tint: linear-gradient(145deg, rgba(243, 223, 198, 0.82), rgba(219, 173, 134, 0.44))`
+
+### Vinter (`winter`)
+- `--fb-accent-sky: #5A8FD6`
+- `--fb-accent-sky-subtle: rgba(90, 143, 214, 0.16)`
+- `--fb-accent-emerald: #2C9A73`
+- `--fb-accent-emerald-subtle: rgba(44, 154, 115, 0.14)`
+- `--fb-accent-bridge: #3D9FBC`
+- `--fb-accent-bridge-subtle: rgba(61, 159, 188, 0.14)`
+- `--fb-background-tint: linear-gradient(145deg, rgba(236, 244, 250, 0.76), rgba(208, 224, 240, 0.40))`
+
+### Bruksregel
+- Sesongendringer skal kun treffe: `--fb-accent-*` og `--fb-background-tint` i første omgang.
+- CTA-fargene (`--fb-interactive-*`) og tekstfarger holdes stabile for lesbarhet.
