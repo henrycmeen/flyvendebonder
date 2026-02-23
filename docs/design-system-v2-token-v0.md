@@ -32,6 +32,12 @@ Dette er en praktisk startversjon for appen (`apps/web-app`) basert på dagens U
 - `--fb-accent-brand: #915027`
 - `--fb-accent-accent: #dfbe96`
 - `--fb-danger: #bb4335`
+- `--fb-accent-sky: #365CD2`
+- `--fb-accent-sky-subtle: rgba(54, 92, 210, 0.16)`
+- `--fb-accent-emerald: #1CA85D`
+- `--fb-accent-emerald-subtle: rgba(28, 168, 93, 0.16)`
+- `--fb-accent-bridge: #2D8FA1`
+- `--fb-accent-bridge-subtle: rgba(45, 143, 161, 0.14)`
 
 ## Interaksjonsfarger
 - `--fb-interactive-default: var(--fb-earth-700)`
@@ -56,7 +62,7 @@ Dette er en praktisk startversjon for appen (`apps/web-app`) basert på dagens U
 - `--fb-shadow-subtle: 0 1px 0 rgba(255, 251, 244, 0.75) inset`
 - `--fb-shadow-raised: 0 20px 38px rgba(58, 28, 8, 0.22)`
 - `--fb-shadow-floating: 0 12px 22px rgba(24, 11, 4, 0.33)`
-- `--fb-focus-ring: 0 0 0 2px rgba(165, 108, 52, 0.28)`
+- `--fb-focus-glow: 0 0 0 2px rgba(165, 108, 52, 0.28)`
 
 ## App-first tema-matrise (v2)
 - `--fb-theme: app`
@@ -66,8 +72,9 @@ Dette er en praktisk startversjon for appen (`apps/web-app`) basert på dagens U
 
 ## Neste avklaring (for oss)
 1. Bekreft at disse baseline-navnene er OK.
-2. Velg om `--fb-earth-900` eller `--fb-earth-700` skal være hoved-CTA.
-3. Avklar om `--fb-focus-ring` også skal brukes i text-input + dialog/ring.
+2. Velg om CTA fortsatt skal være `--fb-earth-700` eller gå til `--fb-earth-600`.
+3. Bekreft at blå/grønn kun brukes som aksent/state-farger, og ikke som primær CTA.
+4. Avklar om `--fb-accent-bridge` brukes i kartlag/legend også.
 
 Når dette er bekreftet, går vi videre i punkt 2–3:
 - implementere token-fil i `apps/web-app` (`src/styles/tokens.css` eller tilsvarende)
