@@ -3,7 +3,32 @@ import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Pencil, X } from "l
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
+import {
+  buildPhotoStatusText,
+  formatCapturedAt,
+  formatConfidence,
+  formatCoordinate,
+  formatGeometryMethod,
+  formatGsd,
+  formatMeters,
+  formatPercent,
+  formatQCRating,
+  getAnalysisToneText,
+  normalizeTagsInput,
+  numbersEqual,
+  parseDraftNumber,
+  parseManualViewTarget,
+  sameManualViewTarget,
+  splitCapturedDate,
+  toDraftNumber,
+  toLogDetails,
+  type ManualViewTarget,
+} from "@/lib/formatters";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
+import { makePhotoFilter } from "@/lib/photo-filters";
+import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKey } from "@/lib/photo-ordering";
+import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
+import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
@@ -42,14 +67,9 @@ interface BackendLogEntry {
   raw: string;
 }
 
-interface ManualViewTarget {
-  lat: number;
-  lng: number;
-}
-
 const LOG_LIMIT = 220;
 
-type SeasonFilter = "all" | "spring" | "summer" | "autumn" | "winter";
+type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
 type AppView = "map" | "album";
 type UiTheme = "standard" | "satellite";
@@ -57,11 +77,6 @@ const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
 const MAP_PHOTO_TIMEOUT_MS = 45_000;
 const MAP_PHOTO_MAX_PAGES = 80;
-const MAX_NEAREST_PATH_PHOTOS = 900;
-const PREF_MAP_STYLE_KEY = "fb.map.baseStyle";
-const PREF_MAP_STYLE_MANUAL_KEY = "fb.map.baseStyle.manual";
-const PREF_MAP_GRAYSCALE_KEY = "fb.map.grayscale";
-const PREF_MAP_VINTAGE_KEY = "fb.map.vintage";
 
 const isRequestAborted = (error: ApiError): boolean =>
   error.status === 0 && error.message === "Request avbrutt";
@@ -71,249 +86,6 @@ interface TimelineEntryIndexed extends TimelineDate {
   year: string;
   month: string;
   season: Exclude<SeasonFilter, "all">;
-}
-
-function monthToSeason(month: string): Exclude<SeasonFilter, "all"> {
-  const number = Number(month);
-  if (number >= 3 && number <= 5) return "spring";
-  if (number >= 6 && number <= 8) return "summer";
-  if (number >= 9 && number <= 11) return "autumn";
-  return "winter";
-}
-
-function seasonLabel(season: SeasonFilter): string {
-  if (season === "spring") return "Vår";
-  if (season === "summer") return "Sommer";
-  if (season === "autumn") return "Høst";
-  if (season === "winter") return "Vinter";
-  return "Hele året";
-}
-
-function splitCapturedDate(value: string): { year: string; month: string } | null {
-  if (typeof value !== "string" || value.length < 7) return null;
-  return {
-    year: value.slice(0, 4),
-    month: value.slice(5, 7),
-  };
-}
-
-function buildPhotoStatusText(
-  count: number,
-  year: string,
-  season: SeasonFilter,
-  dayScope: DayScope,
-  selectedDate: string | null,
-): string {
-  const yearText = year === "all" ? "alle år" : `år ${year}`;
-  const seasonText = seasonLabel(season).toLowerCase();
-  const dayText = dayScope === "all" ? "alle dager" : selectedDate ? `dag ${selectedDate}` : "valgt dag";
-  return `${count} bilder vist (${yearText}, ${seasonText}, ${dayText})`;
-}
-
-function formatCapturedAt(value: string): string {
-  try {
-    return new Date(value).toLocaleString("nb-NO", {
-      dateStyle: "full",
-      timeStyle: "short",
-      hour12: false,
-    });
-  } catch {
-    return value;
-  }
-}
-
-function formatCoordinate(value: number): string {
-  return Number.isFinite(value) ? value.toFixed(6) : "ukjent";
-}
-
-function formatMeters(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "ukjent";
-  return `${value.toFixed(1)} m`;
-}
-
-function formatPercent(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "ukjent";
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-function formatGsd(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "ukjent";
-  return `${(value * 100).toFixed(2)} cm/px`;
-}
-
-function formatConfidence(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "ukjent";
-  const normalized = Math.max(0, Math.min(1, value));
-  return `${Math.round(normalized * 100)}%`;
-}
-
-function formatQCRating(source: string | null): string {
-  if (source == null || source.trim() === "") return "ukjent";
-  return source;
-}
-
-function toDraftNumber(value: number | null, decimals = 1): string {
-  if (value == null || !Number.isFinite(value)) return "";
-  return value.toFixed(decimals);
-}
-
-function parseDraftNumber(value: string): { valid: boolean; value: number | null } {
-  const normalized = value.trim().replace(",", ".");
-  if (!normalized) return { valid: true, value: null };
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) return { valid: false, value: null };
-  return { valid: true, value: parsed };
-}
-
-function numbersEqual(a: number | null, b: number | null): boolean {
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
-  return Math.abs(a - b) < 0.000001;
-}
-
-function parseManualViewTarget(tags: string[] | null | undefined): ManualViewTarget | null {
-  if (!tags?.length) return null;
-  const latTag = tags.find((tag) => tag.startsWith("meta:manual_view_lat="));
-  const lngTag = tags.find((tag) => tag.startsWith("meta:manual_view_lng="));
-  if (!latTag || !lngTag) return null;
-  const lat = Number(latTag.slice("meta:manual_view_lat=".length));
-  const lng = Number(lngTag.slice("meta:manual_view_lng=".length));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { lat, lng };
-}
-
-function sameManualViewTarget(a: ManualViewTarget | null, b: ManualViewTarget | null): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  return Math.abs(a.lat - b.lat) < 0.000001 && Math.abs(a.lng - b.lng) < 0.000001;
-}
-
-function formatGeometryMethod(value: string | null): string {
-  if (value === "estimated") return "estimert";
-  if (value === "point") return "punkt";
-  if (value === "manual") return "manuell";
-  return "ikke satt";
-}
-
-function getAnalysisConfidenceTone(confidence: number | null): "good" | "medium" | "low" | "none" {
-  if (confidence == null) return "none";
-  if (confidence >= 0.75) return "good";
-  if (confidence >= 0.6) return "medium";
-  return "low";
-}
-
-function getAnalysisToneText(confidence: number | null): string {
-  if (confidence == null) return "Mangler verdi";
-  const tone = getAnalysisConfidenceTone(confidence);
-  if (tone === "good") return "Høy";
-  if (tone === "medium") return "Middels";
-  return "Lav";
-}
-
-function toLogDetails(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function normalizeTagsInput(values: string[]): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-  values.forEach((value) => {
-    const tag = value.trim();
-    if (!tag) return;
-    const key = tag.toLocaleLowerCase("nb-NO");
-    if (seen.has(key)) return;
-    seen.add(key);
-    result.push(tag.slice(0, 72));
-  });
-  return result;
-}
-
-function photoIdKey(id: string | number | null | undefined): string {
-  return String(id ?? "");
-}
-
-function mergePhotoPages(existing: PhotoFeature[], incoming: PhotoFeature[]): PhotoFeature[] {
-  if (existing.length === 0) return incoming;
-  if (incoming.length === 0) return existing;
-
-  const seen = new Set(existing.map((photo) => photoIdKey(photo.id)));
-  const next = [...existing];
-  incoming.forEach((photo) => {
-    const key = photoIdKey(photo.id);
-    if (seen.has(key)) return;
-    seen.add(key);
-    next.push(photo);
-  });
-  return next;
-}
-
-function compareByCapturedAtThenId(a: PhotoFeature, b: PhotoFeature): number {
-  const aTime = Date.parse(a.captured_at);
-  const bTime = Date.parse(b.captured_at);
-  const safeATime = Number.isNaN(aTime) ? 0 : aTime;
-  const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
-  const diff = safeATime - safeBTime;
-  if (diff !== 0) return diff;
-  return a.id.localeCompare(b.id);
-}
-
-function distanceScore(a: PhotoFeature, b: PhotoFeature): number {
-  const latMidRad = ((a.lat + b.lat) / 2) * (Math.PI / 180);
-  const lngFactor = Math.cos(latMidRad);
-  const dx = (a.lng - b.lng) * lngFactor;
-  const dy = a.lat - b.lat;
-  return dx * dx + dy * dy;
-}
-
-function buildNearestPath(photos: PhotoFeature[], anchorId: string): PhotoFeature[] {
-  if (photos.length <= 1) return photos;
-  if (photos.length > MAX_NEAREST_PATH_PHOTOS) {
-    // O(n²)-banen blir for tung på store datasett; bruk deterministisk tidsrekkefølge.
-    return [...photos].sort(compareByCapturedAtThenId);
-  }
-  const byId = new Map(photos.map((photo) => [photo.id, photo]));
-  const anchor = byId.get(anchorId);
-  if (!anchor) {
-    return [...photos].sort(compareByCapturedAtThenId);
-  }
-
-  const remaining = new Map(byId);
-  remaining.delete(anchorId);
-
-  const ordered: PhotoFeature[] = [anchor];
-  let current = anchor;
-
-  while (remaining.size > 0) {
-    let nextId: string | null = null;
-    let nextPhoto: PhotoFeature | null = null;
-    let best = Number.POSITIVE_INFINITY;
-
-    remaining.forEach((candidate) => {
-      const score = distanceScore(current, candidate);
-      if (score < best) {
-        best = score;
-        nextPhoto = candidate;
-        nextId = candidate.id;
-        return;
-      }
-      if (score === best && nextPhoto && compareByCapturedAtThenId(candidate, nextPhoto) < 0) {
-        nextPhoto = candidate;
-        nextId = candidate.id;
-      }
-    });
-
-    if (!nextPhoto || !nextId) break;
-    ordered.push(nextPhoto);
-    remaining.delete(nextId);
-    current = nextPhoto;
-  }
-
-  return ordered;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -347,9 +119,15 @@ export default function App() {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [hoverPreviewPhotoId, setHoverPreviewPhotoId] = useState<string | null>(null);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [baseMapStyle, setBaseMapStyle] = useState<BaseMapStyle>("osm");
-  const [mapGrayscale, setMapGrayscale] = useState(false);
-  const [mapVintage, setMapVintage] = useState(false);
+  const {
+    baseMapStyle,
+    mapGrayscale,
+    mapVintage,
+    setBaseMapStyle,
+    setMapGrayscale,
+    setMapVintage,
+    markMapStyleAsManual,
+  } = useMapPreferences();
   const [job, setJob] = useState<GardskartJob | null>(null);
   const [showPropertyLayer, setShowPropertyLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
@@ -378,6 +156,19 @@ export default function App() {
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
+
+  const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
+    if (selectedSeason !== "all") return selectedSeason;
+    const month = new Date().getMonth() + 1;
+    return monthToSeason(String(month));
+  }, [selectedSeason]);
+
+  useEffect(() => {
+    document.documentElement.dataset.season = activeUiSeason;
+    return () => {
+      document.documentElement.removeAttribute("data-season");
+    };
+  }, [activeUiSeason]);
   const [mapResetToken, setMapResetToken] = useState(0);
   const [syncSelectionToUrl, setSyncSelectionToUrl] = useState(() => Boolean(initialDate || initialPhoto));
   const uiTheme: UiTheme = baseMapStyle === "satellite" ? "satellite" : "standard";
@@ -411,6 +202,28 @@ export default function App() {
 
     return photoPool;
   }, [dayScope, photoPool, selectedDate]);
+  const mapPhotoFilter = useMemo(
+    () =>
+      makePhotoFilter({
+        selectedYear,
+        selectedSeason,
+        showOnlyManualQc,
+        showOnlyLowConfidence,
+        lowConfidenceThreshold: CONFIDENCE_FILTER_THRESHOLD,
+      }),
+    [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
+  );
+  const albumPhotoFilter = useMemo(
+    () =>
+      makePhotoFilter({
+        selectedYear: "all",
+        selectedSeason: "all",
+        showOnlyManualQc,
+        showOnlyLowConfidence,
+        lowConfidenceThreshold: CONFIDENCE_FILTER_THRESHOLD,
+      }),
+    [showOnlyLowConfidence, showOnlyManualQc],
+  );
   const selectedPhoto = useMemo(() => {
     if (!selectedPhotoId) return null;
     return (
@@ -1017,32 +830,6 @@ export default function App() {
   }, [selectedPhoto]);
 
   useEffect(() => {
-    setBaseMapStyle("osm");
-
-    const storedGrayscale = window.localStorage.getItem(PREF_MAP_GRAYSCALE_KEY);
-    if (storedGrayscale === "1") {
-      setMapGrayscale(true);
-    }
-
-    const storedVintage = window.localStorage.getItem(PREF_MAP_VINTAGE_KEY);
-    if (storedVintage === "1") {
-      setMapVintage(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_STYLE_KEY, baseMapStyle);
-  }, [baseMapStyle]);
-
-  useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_GRAYSCALE_KEY, mapGrayscale ? "1" : "0");
-  }, [mapGrayscale]);
-
-  useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_VINTAGE_KEY, mapVintage ? "1" : "0");
-  }, [mapVintage]);
-
-  useEffect(() => {
     const bootstrap = async (options?: { signal?: AbortSignal }) => {
       const seq = ++bootstrapLoadSeqRef.current;
       const requestController = options?.signal
@@ -1220,18 +1007,6 @@ export default function App() {
 
       setIsMapPhotosLoading(true);
 
-      const matchesClientFilters = (photo: PhotoFeature): boolean => {
-        const dateParts = splitCapturedDate(photo.captured_date);
-        if (!dateParts) return false;
-        if (selectedYear !== "all" && dateParts.year !== selectedYear) return false;
-        if (selectedSeason !== "all" && monthToSeason(dateParts.month) !== selectedSeason) return false;
-        if (showOnlyManualQc && !photo.needs_manual_qc) return false;
-        if (showOnlyLowConfidence && (photo.confidence_score == null || photo.confidence_score > CONFIDENCE_FILTER_THRESHOLD)) {
-          return false;
-        }
-        return true;
-      };
-
       const loadFallbackPhotos = async (reason: string): Promise<boolean> => {
         const { data, requestId } = await trackRequest(() =>
           apiGet<PhotosResponse>("/api/v1/photos", {
@@ -1247,7 +1022,7 @@ export default function App() {
           }),
         );
         if (seq !== photoLoadSeqRef.current || abortController.signal.aborted) return true;
-        const filteredPhotos = data.photos.filter(matchesClientFilters);
+        const filteredPhotos = data.photos.filter(mapPhotoFilter);
         setPhotoPool(filteredPhotos);
         setPhotosLoadFailed(false);
         addLog("warn", "Bruker fallback for kartbilder", requestId, {
@@ -1295,7 +1070,7 @@ export default function App() {
           lastRequestId = requestId;
           pagesLoaded += 1;
 
-          const filteredPage = data.photos.filter(matchesClientFilters);
+          const filteredPage = data.photos.filter(mapPhotoFilter);
           mergedPhotos = mergePhotoPages(mergedPhotos, filteredPage);
           setPhotoPool(mergedPhotos);
 
@@ -1377,6 +1152,7 @@ export default function App() {
     selectedYear,
     showOnlyManualQc,
     showOnlyLowConfidence,
+    mapPhotoFilter,
     trackRequest,
     filteredTimelineHasData,
     setIsMapPhotosLoading,
@@ -1441,13 +1217,7 @@ export default function App() {
 
         if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
 
-        const pagePhotos = data.photos.filter(
-          (photo) =>
-            (!showOnlyManualQc || photo.needs_manual_qc) &&
-            (!showOnlyLowConfidence ||
-              photo.confidence_score == null ||
-              photo.confidence_score <= CONFIDENCE_FILTER_THRESHOLD),
-        );
+        const pagePhotos = data.photos.filter((photo) => albumPhotoFilter(photo));
 
         setAlbumPhotos((previous) => {
           if (reset) return pagePhotos;
@@ -1478,15 +1248,7 @@ export default function App() {
             );
             if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
 
-            const ordered = [...data.photos]
-              .filter(
-                (photo) =>
-                  (!showOnlyManualQc || photo.needs_manual_qc) &&
-                  (!showOnlyLowConfidence ||
-                    photo.confidence_score == null ||
-                    photo.confidence_score <= CONFIDENCE_FILTER_THRESHOLD),
-              )
-              .sort(compareByCapturedAtThenId);
+            const ordered = [...data.photos].filter((photo) => albumPhotoFilter(photo)).sort(compareByCapturedAtThenId);
             setAlbumPhotos(ordered);
             setAlbumCursor(null);
             setAlbumHasMore(false);
@@ -1524,8 +1286,7 @@ export default function App() {
       albumHasMore,
       albumLoadingInitial,
       albumLoadingMore,
-      showOnlyManualQc,
-      showOnlyLowConfidence,
+      albumPhotoFilter,
       latestTimelineDate,
       trackRequest,
     ],
@@ -1774,7 +1535,10 @@ export default function App() {
   }, [activeView]);
 
   return (
-    <div className={`relative h-screen overflow-hidden bg-canvas ${uiTheme === "satellite" ? "map-ui-satellite" : "map-ui-standard"}`}>
+    <div
+      data-season={activeUiSeason}
+      className={`relative h-screen overflow-hidden bg-canvas ${uiTheme === "satellite" ? "map-ui-satellite" : "map-ui-standard"}`}
+    >
       {isPhotoViewerOpen ? (
         <div
           className="photo-viewer-overlay fixed inset-0 z-[1300]"
@@ -1785,7 +1549,7 @@ export default function App() {
           }}
         >
           <div className="photo-viewer-shell h-full w-full p-2 sm:p-4">
-            <div className="photo-viewer-stage pointer-events-auto h-full w-full overflow-hidden rounded-[22px] border border-[#f4e6d1]/45">
+            <div className="photo-viewer-stage pointer-events-auto h-full w-full overflow-hidden rounded-[22px] border border-fb-border-subtle/45">
               <div className="photo-viewer-layout h-full">
                 {selectedPhoto ? (
                   <>
@@ -1862,14 +1626,14 @@ export default function App() {
                     <aside className="photo-viewer-meta-column">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Foto</p>
-                          <h2 className="text-base font-semibold text-earth-950">{selectedPhoto.title || "Foto"}</h2>
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                          <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Button
                             variant={metadataEditMode ? "default" : "ghost"}
                             size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
+                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
                             onClick={() => setMetadataEditMode((value) => !value)}
                             aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
                             aria-pressed={metadataEditMode}
@@ -1879,7 +1643,7 @@ export default function App() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
+                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
                             onClick={handleClosePhotoViewer}
                             aria-label="Lukk bildevisning"
                           >
@@ -1889,9 +1653,9 @@ export default function App() {
                       </div>
 
                       <div className="mt-3 space-y-2.5">
-                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Analyse</p>
-                          <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
+                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-muted">Analyse</p>
+                          <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
                             <div className="flex items-start justify-between gap-2">
                               <dt>AR5</dt>
                               <dd className="font-medium">{selectedPhoto.analysis?.ar5_class ?? "Ikke beregnet"}</dd>
@@ -1947,9 +1711,9 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Nøkkelinformasjon</p>
-                          <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
+                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Nøkkelinformasjon</p>
+                          <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
                             <div className="flex items-start justify-between gap-2">
                               <dt>Dato/tid</dt>
                               <dd className="text-right font-medium">{formatCapturedAt(selectedPhoto.captured_at)}</dd>
@@ -1978,15 +1742,15 @@ export default function App() {
                           </dl>
                         </div>
 
-                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Metadata</p>
-                            <span className="rounded-full border border-earth-500/25 bg-white/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-earth-800">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Metadata</p>
+                            <span className="rounded-full border border-fb-border-subtle bg-fb-surface-ghost px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-fb-text-secondary">
                               {metadataEditMode ? "Redigering" : "Lesemodus"}
                             </span>
                           </div>
 
-                          <dl className="mt-2 grid gap-2 text-xs text-earth-950">
+                          <dl className="mt-2 grid gap-2 text-xs text-fb-text-primary">
                             <div className="flex items-center justify-between gap-2">
                               <dt>Høyde (m)</dt>
                               <dd className="w-28">
@@ -1994,7 +1758,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     inputMode="decimal"
-                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                     value={metadataAltitudeDraft}
                                     placeholder="ukjent"
                                     onChange={(event) => setMetadataAltitudeDraft(event.target.value)}
@@ -2014,7 +1778,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     inputMode="decimal"
-                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                     value={metadataHeadingDraft}
                                     placeholder="ukjent"
                                     onChange={(event) => setMetadataHeadingDraft(event.target.value)}
@@ -2034,7 +1798,7 @@ export default function App() {
                                   <input
                                     type="text"
                                     inputMode="decimal"
-                                    className="h-8 w-full rounded-lg border border-earth-500/30 bg-white/78 px-2 text-right text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                    className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                     value={metadataPitchDraft}
                                     placeholder="ukjent"
                                     onChange={(event) => setMetadataPitchDraft(event.target.value)}
@@ -2051,7 +1815,7 @@ export default function App() {
                               <dt>Manuell QC</dt>
                               <dd className="text-right">
                                 {metadataEditMode ? (
-                                  <label className="inline-flex items-center gap-2 text-xs text-earth-900">
+                                  <label className="inline-flex items-center gap-2 text-xs text-fb-text-primary">
                                     <input
                                       type="checkbox"
                                       checked={metadataNeedsManualQcDraft}
@@ -2074,7 +1838,7 @@ export default function App() {
                               <dd className="max-w-[14rem] text-right">
                                 {metadataEditMode ? (
                                   <div className="space-y-1">
-                                    <p className="text-[11px] text-earth-700/90">Klikk i kartet eller dra punktet</p>
+                                    <p className="text-[11px] text-fb-text-secondary">Klikk i kartet eller dra punktet</p>
                                     <p className="font-medium">
                                       {metadataManualViewTargetDraft
                                         ? `${formatCoordinate(metadataManualViewTargetDraft.lat)}, ${formatCoordinate(metadataManualViewTargetDraft.lng)}`
@@ -2105,19 +1869,19 @@ export default function App() {
                           </dl>
 
                           <div className="mt-2 space-y-2">
-                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Tags</p>
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Tags</p>
                             <div className="flex flex-wrap gap-1.5">
                               {metadataTagsDraft.length > 0 ? (
                                 metadataTagsDraft.map((tag) => (
                                   <span
                                     key={tag}
-                                    className="inline-flex items-center gap-1 rounded-full border border-earth-500/28 bg-white/76 px-2.5 py-1 text-xs text-earth-900"
+                                    className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle bg-fb-surface-ghost px-2.5 py-1 text-xs text-fb-text-primary"
                                   >
                                     {tag}
                                     {metadataEditMode ? (
                                       <button
                                         type="button"
-                                        className="rounded text-earth-700 hover:text-earth-950"
+                                        className="rounded text-fb-text-secondary hover:text-fb-text-primary"
                                         aria-label={`Fjern tag ${tag}`}
                                         onClick={() =>
                                           setMetadataTagsDraft((previous) =>
@@ -2132,14 +1896,14 @@ export default function App() {
                                   </span>
                                 ))
                               ) : (
-                                <span className="text-xs text-earth-700/85">Ingen tags ennå</span>
+                                <span className="text-xs text-fb-text-secondary">Ingen tags ennå</span>
                               )}
                             </div>
                             {metadataEditMode ? (
                               <div className="flex items-center gap-2">
                                 <input
                                   type="text"
-                                  className="h-8 flex-1 rounded-lg border border-earth-500/30 bg-white/78 px-2 text-xs text-earth-950 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                  className="h-8 flex-1 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   placeholder="Ny tag"
                                   value={metadataTagDraft}
                                   onChange={(event) => setMetadataTagDraft(event.target.value)}
@@ -2173,17 +1937,17 @@ export default function App() {
                           </div>
 
                           <div className="mt-2 space-y-2">
-                            <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Notat</p>
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Notat</p>
                             {metadataEditMode ? (
                               <textarea
-                                className="min-h-[72px] w-full rounded-xl border border-earth-500/20 bg-white/75 p-2 text-sm text-earth-900 outline-none focus-visible:ring-2 focus-visible:ring-earth-700/30"
+                                className="min-h-[72px] w-full rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-sm text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                 value={metadataCaptionDraft}
                                 placeholder="Skriv notat ..."
                                 onChange={(event) => setMetadataCaptionDraft(event.target.value)}
                                 disabled={metadataBusyPhotoId === selectedPhoto.id}
                               />
                             ) : (
-                              <p className="rounded-lg border border-earth-500/20 bg-white/70 p-2 text-xs text-earth-900">
+                              <p className="rounded-lg border border-fb-border-subtle bg-fb-surface-ghost p-2 text-xs text-fb-text-primary">
                                 {selectedPhoto.caption && selectedPhoto.caption.trim() ? selectedPhoto.caption : "Ingen notat."}
                               </p>
                             )}
@@ -2215,8 +1979,8 @@ export default function App() {
                           ) : null}
                         </div>
 
-                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Kartutsnitt</p>
+                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Kartutsnitt</p>
                           <div className="mt-1">
                             <PhotoMapInset
                               photo={selectedPhoto}
@@ -2228,17 +1992,17 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="rounded-xl border border-earth-500/20 bg-white/75 p-2 text-earth-900">
+                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
                           <button
                             type="button"
                             className="flex w-full items-center justify-between text-left"
                             onClick={() => setShowTechnicalMetadata((value) => !value)}
                           >
-                            <span className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Teknisk metadata</span>
-                            <span className="text-[11px] text-earth-800">{showTechnicalMetadata ? "Skjul" : "Vis"}</span>
+                            <span className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Teknisk metadata</span>
+                            <span className="text-[11px] text-fb-text-primary">{showTechnicalMetadata ? "Skjul" : "Vis"}</span>
                           </button>
                           {showTechnicalMetadata ? (
-                            <dl className="mt-2 grid gap-1.5 text-xs text-earth-950">
+                            <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
                               <div className="flex items-start justify-between gap-2">
                                 <dt>Dato</dt>
                                 <dd className="text-right font-medium">{selectedPhoto.captured_date}</dd>
@@ -2386,8 +2150,8 @@ export default function App() {
 
                       <div className="photo-viewer-image-wrap relative flex items-center justify-center h-full w-full text-center">
                         <div>
-                          <p className="mb-2 text-sm text-white/80">Finner valgt bilde ...</p>
-                          <p className="text-xs text-white/70">
+                          <p className="mb-2 text-sm text-fb-text-primary/80">Finner valgt bilde ...</p>
+                          <p className="text-xs text-fb-text-primary/70">
                             Photo-ID: <span className="font-mono">{selectedPhotoId ?? "ukjent"}</span>
                           </p>
                         </div>
@@ -2397,13 +2161,13 @@ export default function App() {
                     <aside className="photo-viewer-meta-column">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-earth-700/90">Foto</p>
-                          <h2 className="text-base font-semibold text-earth-950">Laster metadata ...</h2>
+                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                          <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-lg border border-earth-500/30 bg-white/80 text-earth-900 hover:bg-white"
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
                           onClick={handleClosePhotoViewer}
                           aria-label="Lukk bildevisning"
                         >
@@ -2454,7 +2218,7 @@ export default function App() {
 
       {activeView === "map" && photosLoadFailed ? (
         <div className="pointer-events-none absolute left-1/2 top-3 z-[660] -translate-x-1/2 px-3">
-          <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-red-300/75 bg-white/95 px-3 py-2 text-sm text-red-900 shadow-lg">
+          <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary shadow-lg">
             <span>Kunne ikke laste bilder for valgt filter.</span>
             <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -2466,7 +2230,7 @@ export default function App() {
 
       {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen ? (
         <div className="pointer-events-none absolute left-1/2 top-4 z-[640] hidden -translate-x-1/2 md:block">
-          <div className="overflow-hidden rounded-2xl border border-white/45 bg-black/20 p-2 shadow-[0_18px_55px_rgba(8,10,18,0.4)] backdrop-blur-xl">
+          <div className="overflow-hidden rounded-2xl border border-fb-chip-satellite-border bg-fb-chip-satellite-bg p-2 shadow-fb-floating backdrop-blur-xl">
             <img
               src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
               alt={hoverPreviewPhoto.title || "Forhåndsvisning"}
@@ -2504,7 +2268,7 @@ export default function App() {
           onChangeBaseMapStyle={(style) => {
             baseMapTileErrorRef.current = null;
             setBaseMapStyle(style);
-            window.localStorage.setItem(PREF_MAP_STYLE_MANUAL_KEY, "1");
+            markMapStyleAsManual();
             addLog("info", "Bakgrunnskart endret", null, { style });
           }}
           onChangeMapGrayscale={(next) => {

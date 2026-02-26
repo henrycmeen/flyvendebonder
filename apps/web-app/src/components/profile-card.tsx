@@ -155,8 +155,8 @@ export function ProfileCard({
       <CardHeader className="gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="font-display text-2xl text-earth-950">{profile?.user.full_name ?? "Laster profil..."}</CardTitle>
-            <p className="text-sm text-earth-800">{profile?.property?.label ?? "Meen gård"}</p>
+            <CardTitle className="font-display text-2xl text-fb-text-primary">{profile?.user.full_name ?? "Laster profil..."}</CardTitle>
+            <p className="text-sm text-fb-text-secondary">{profile?.property?.label ?? "Meen gård"}</p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -275,7 +275,7 @@ export function ProfileCard({
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-2 text-sm text-earth-900">
+      <CardContent className="grid gap-2 text-sm text-fb-text-primary">
         <p>
           <strong>Eiendom:</strong> {propertyLabel}
         </p>
@@ -285,7 +285,7 @@ export function ProfileCard({
         <p>
           <strong>Telefon:</strong> {profile?.user.phone || "(ikke satt)"}
         </p>
-        <p className="text-earth-700">{propertyStatus}</p>
+        <p className="text-fb-text-secondary">{propertyStatus}</p>
 
         <div className="mt-1 flex items-center gap-2">
           <Switch id="show-property-layer" checked={showPropertyLayer} onCheckedChange={onTogglePropertyLayer} />

@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Flower2, Leaf, MoveHorizontal, Snowflake, Sun }
 import type { TimelineDate } from "@/types";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { Divider, Stack } from "@/components/ui/layout-primitives";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type SeasonFilter = "all" | "spring" | "summer" | "autumn" | "winter";
@@ -126,208 +127,206 @@ export function TimelineBottom({
         uiTheme === "satellite" && "timeline-bottom--satellite",
       )}
     >
-      <CardContent className={cn("px-4 sm:px-5", isExpanded ? "space-y-2.5 py-3 sm:py-4" : "py-2.5 sm:py-3")}>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full border transition-colors",
-              uiTheme === "satellite"
-                ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
-            )}
-            onClick={() => setIsExpanded((prev) => !prev)}
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? "Skjul filtre" : "Vis filtre"}
-          >
-            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-          </button>
-
-          <div className="relative min-w-0 flex-1">
-            {yearCanScrollLeft ? (
-              <div
-                aria-hidden="true"
+      <CardContent className={cn("px-4 sm:px-5", isExpanded ? "py-3 sm:py-4" : "py-2.5 sm:py-3")}>
+        <Stack gap={isExpanded ? 3 : 2}>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
                 className={cn(
-                  "pointer-events-none absolute inset-y-0 left-0 z-[1] w-6",
+                  "inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full border",
                   uiTheme === "satellite"
-                    ? "bg-gradient-to-r from-black/28 to-transparent"
-                    : "bg-gradient-to-r from-paper/80 to-transparent",
+                  ? "border-[color:var(--fb-surface-overlay)] bg-[color:var(--fb-surface-overlay)] text-[color:var(--fb-chip-satellite-text)] hover:bg-fb-surface-overlay"
+                  : "border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-overlay",
                 )}
-              />
-            ) : null}
-            {yearCanScrollRight ? (
-              <div
-                aria-hidden="true"
-                className={cn(
-                  "pointer-events-none absolute inset-y-0 right-0 z-[1] w-6",
-                  uiTheme === "satellite"
-                    ? "bg-gradient-to-l from-black/28 to-transparent"
-                    : "bg-gradient-to-l from-paper/80 to-transparent",
-                )}
-              />
-            ) : null}
-
-            <div
-              ref={yearRowRef}
-              className="overflow-x-auto px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              onScroll={updateYearScrollHint}
+              onClick={() => setIsExpanded((prev) => !prev)}
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? "Skjul filtre" : "Vis filtre"}
             >
-              <div className="mx-auto w-fit">
-                <ul className="flex min-w-max items-center gap-1.5 pb-1">
-                  <li>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-full border px-4 py-1.5 text-[20px] leading-none font-semibold transition-colors",
-                        selectedYear === "all"
-                          ? "border-transparent bg-[#141414] text-white"
-                          : uiTheme === "satellite"
-                            ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                            : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
-                      )}
-                      onClick={() => onYearChange("all")}
-                    >
-                      Alle
-                    </button>
-                  </li>
-                  {availableYears.map((year) => (
-                    <li key={year}>
+              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </button>
+
+            <div className="relative min-w-0 flex-1">
+              {yearCanScrollLeft ? (
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute inset-y-0 left-0 z-[1] w-6",
+                    uiTheme === "satellite"
+                      ? "bg-gradient-to-r from-[color:var(--fb-surface-overlay)] to-transparent"
+                      : "bg-gradient-to-r from-[color:var(--fb-surface-ghost)]/80 to-transparent",
+                  )}
+                />
+              ) : null}
+              {yearCanScrollRight ? (
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute inset-y-0 right-0 z-[1] w-6",
+                    uiTheme === "satellite"
+                      ? "bg-gradient-to-l from-[color:var(--fb-surface-overlay)] to-transparent"
+                      : "bg-gradient-to-l from-[color:var(--fb-surface-ghost)]/80 to-transparent",
+                  )}
+                />
+              ) : null}
+
+              <div
+                ref={yearRowRef}
+                className="overflow-x-auto px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onScroll={updateYearScrollHint}
+              >
+                <div className="mx-auto w-fit">
+                  <ul className="flex min-w-max items-center gap-1.5 pb-1">
+                    <li>
                       <button
                         type="button"
                         className={cn(
-                          "rounded-full border px-4 py-1.5 text-[20px] leading-none font-semibold transition-colors",
-                          selectedYear === year
-                            ? "border-transparent bg-[#141414] text-white"
-                            : uiTheme === "satellite"
-                              ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                              : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
+                          "timeline-chip rounded-full border px-4 py-1.5 text-[20px] leading-none font-semibold",
+                          selectedYear === "all" ? "timeline-chip--active" : "",
                         )}
-                        onClick={() => onYearChange(year)}
-                        aria-current={selectedYear === year ? "true" : undefined}
+                        onClick={() => onYearChange("all")}
                       >
-                        {year}
+                        Alle
                       </button>
                     </li>
-                  ))}
-                </ul>
+                    {availableYears.map((year) => (
+                      <li key={year}>
+                        <button
+                          type="button"
+                          className={cn(
+                            "timeline-chip rounded-full border px-4 py-1.5 text-[20px] leading-none font-semibold",
+                            selectedYear === year ? "timeline-chip--active" : "",
+                            selectedYear !== year && uiTheme === "satellite" && "timeline-chip--satellite",
+                          )}
+                          onClick={() => onYearChange(year)}
+                          aria-current={selectedYear === year ? "true" : undefined}
+                        >
+                          {year}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {isExpanded && showYearScrollHint ? (
-          <p
-            className={cn(
-              "flex items-center justify-center gap-1 text-center text-[11px]",
-              uiTheme === "satellite" ? "text-white/76" : "text-earth-700/85",
-            )}
-          >
-            <MoveHorizontal className="h-3.5 w-3.5" />
-            Sveip for flere år
-          </p>
-        ) : null}
+          {isExpanded && showYearScrollHint ? (
+            <p
+              className={cn(
+                "flex items-center justify-center gap-1 text-center text-[11px]",
+                uiTheme === "satellite" ? "text-[color:var(--fb-chip-satellite-text)]" : "text-fb-text-secondary",
+              )}
+            >
+              <MoveHorizontal className="h-3.5 w-3.5" />
+              Sveip for flere år
+            </p>
+          ) : null}
 
-        {isExpanded ? (
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="mx-auto flex w-fit flex-wrap items-center justify-center gap-1.5">
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-base font-medium transition-colors",
-                    selectedSeason === "all"
-                      ? "border-transparent bg-earth-900 text-white"
-                      : uiTheme === "satellite"
-                        ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                        : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
-                  )}
-                  onClick={() => onSeasonChange("all")}
-                >
-                  Hele året
-                </button>
-
-                {seasonButtons.map((item) => {
-                  const Icon = item.icon;
-                  const count = seasonCounts[item.key];
-                  const disabled = count === 0;
-                  const active = selectedSeason === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className={cn(
-                        "inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-base font-medium transition-colors",
-                        active
-                          ? "border-transparent bg-earth-900 text-white"
-                          : uiTheme === "satellite"
-                            ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                            : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
-                        disabled && "cursor-not-allowed opacity-40 hover:bg-paper/75",
-                      )}
-                      onClick={() => onSeasonChange(item.key)}
-                      disabled={disabled}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              {hasData ? (
-                <div className="mx-auto flex min-w-max w-fit items-center gap-2 pb-1 pt-0.5">
+          {isExpanded ? (
+            <Stack gap={2}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="mx-auto flex w-fit flex-wrap items-center justify-center gap-1.5">
                   <button
                     type="button"
                     className={cn(
-                      "h-7 shrink-0 rounded-full border px-3 text-xs font-semibold transition-colors",
-                      dayScope === "all"
-                        ? "border-transparent bg-[#141414] text-white"
+                      "timeline-chip inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-base font-medium",
+                      selectedSeason === "all"
+                        ? "timeline-chip--active"
                         : uiTheme === "satellite"
-                          ? "border-black/25 bg-black/24 text-white hover:bg-black/32"
-                          : "border-earth-500/30 bg-paper/75 text-earth-900 hover:bg-paper",
+                          ? "timeline-chip--satellite"
+                          : "",
                     )}
-                    onClick={() => onDayScopeChange("all")}
+                    onClick={() => onSeasonChange("all")}
                   >
-                    Alle dager
+                    Hele året
                   </button>
 
-                  <ul className="flex items-center gap-3">
-                    {filteredDates.map((entry) => {
-                      const active = entry.index === selectedIndex;
-                      const width = barWidth(entry, maxCount);
-                      return (
-                        <li key={entry.date} className="shrink-0">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="block h-2.5 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-earth-700"
-                                style={{
-                                  width: `${width}px`,
-                                  backgroundColor: active ? "#141414" : uiTheme === "satellite" ? "rgba(242, 230, 211, 0.62)" : "#d5d5d5",
-                                }}
-                                onClick={() => onSelectIndex(entry.index)}
-                                aria-label={`Velg ${formatDate(entry.date)}`}
-                                aria-current={active ? "date" : undefined}
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent side="top">
-                              {formatDate(entry.date)} · {entry.count} bilder · {seasonLabels[entry.season]}
-                            </TooltipContent>
-                          </Tooltip>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  {seasonButtons.map((item) => {
+                    const Icon = item.icon;
+                    const count = seasonCounts[item.key];
+                    const disabled = count === 0;
+                    const active = selectedSeason === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={cn(
+                          "timeline-chip inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-base font-medium",
+                          `timeline-chip--${item.key}`,
+                          active && "timeline-chip--active",
+                          !active && uiTheme === "satellite" && "timeline-chip--satellite",
+                          disabled && "cursor-not-allowed opacity-40",
+                        )}
+                        onClick={() => onSeasonChange(item.key)}
+                        disabled={disabled}
+                      >
+                        <Icon className="timeline-chip__icon h-4 w-4" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : (
-                <p className="py-1 text-xs text-earth-700">Ingen bilder for valgt år/sesong.</p>
-              )}
-            </div>
-          </>
-        ) : null}
+              </div>
+
+              <Divider className={cn(uiTheme === "satellite" ? "border-[color:var(--fb-chip-satellite-text)]" : "border-fb-border-subtle")} />
+
+              <div className="overflow-x-auto">
+                {hasData ? (
+                  <div className="mx-auto flex min-w-max w-fit items-center gap-2 pb-1 pt-0.5">
+                    <button
+                      type="button"
+                      className={cn(
+                        "timeline-chip h-7 shrink-0 rounded-full border px-3 text-xs font-semibold",
+                        dayScope === "all"
+                          ? "timeline-chip--active"
+                          : uiTheme === "satellite"
+                            ? "timeline-chip--satellite"
+                            : "",
+                      )}
+                      onClick={() => onDayScopeChange("all")}
+                    >
+                      Alle dager
+                    </button>
+
+                    <ul className="flex items-center gap-3">
+                      {filteredDates.map((entry) => {
+                        const active = entry.index === selectedIndex;
+                        const width = barWidth(entry, maxCount);
+                        return (
+                          <li key={entry.date} className="shrink-0">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "timeline-dot block h-2.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-timeline-focus)]",
+                                    active && "timeline-dot--active",
+                                    !active && uiTheme === "satellite" && "timeline-dot--satellite",
+                                  )}
+                                  style={{
+                                    width: `${width}px`,
+                                  }}
+                                  onClick={() => onSelectIndex(entry.index)}
+                                  aria-label={`Velg ${formatDate(entry.date)}`}
+                                  aria-current={active ? "date" : undefined}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                {formatDate(entry.date)} · {entry.count} bilder · {seasonLabels[entry.season]}
+                              </TooltipContent>
+                            </Tooltip>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                    <p className="py-1 text-xs text-fb-text-secondary">Ingen bilder for valgt år/sesong.</p>
+                )}
+              </div>
+            </Stack>
+          ) : null}
+        </Stack>
       </CardContent>
     </Card>
   );

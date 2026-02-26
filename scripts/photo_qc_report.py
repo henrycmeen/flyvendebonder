@@ -19,6 +19,7 @@ else:
 
 from app.services.geometry_utils import choose_geometry
 from app.services.metadata_utils import ExtractedMetadata, extract_metadata
+from app.services.qc_tags import derive_qc_tags
 from app.services.quality_metrics import (
     build_analysis_zone as build_shared_analysis_zone,
     derive_analysis_radius,
@@ -51,23 +52,6 @@ def _choose_pitch(metadata: ExtractedMetadata) -> tuple[float | None, str]:
     if metadata.camera_pitch_degree is not None:
         return metadata.camera_pitch_degree, "imu"
     return None, "unknown"
-
-
-def _derive_quality_tags(metadata_issues: list[str]) -> list[str]:
-    qc_tags: list[str] = []
-    for issue in metadata_issues:
-        normalized = issue.lower()
-        if "retning" in normalized:
-            qc_tags.append("qc:missing_heading")
-        elif "pitch" in normalized:
-            qc_tags.append("qc:missing_pitch")
-        elif "date" in normalized:
-            qc_tags.append("qc:missing_timestamp")
-        elif "gps" in normalized:
-            qc_tags.append("qc:missing_gps")
-        else:
-            qc_tags.append("qc:metadata_issue")
-    return sorted(set(qc_tags))
 
 
 def _build_analysis_zone(
@@ -121,7 +105,7 @@ def _derive_analysis_radius(location_uncertainty_m: float | None, view_distance_
 
 def _analyze_file(path: Path) -> dict[str, Any]:
     metadata = extract_metadata(path)
-    quality_flags = _derive_quality_tags(metadata.issues)
+    quality_flags = derive_qc_tags(metadata.issues)
     needs_manual_qc = bool(quality_flags)
 
     heading, heading_source = _choose_heading(metadata)

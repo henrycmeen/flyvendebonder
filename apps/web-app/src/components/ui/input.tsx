@@ -2,13 +2,21 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(({ className, ...props }, ref) => {
+interface InputProps extends React.ComponentProps<"input"> {
+  feedbackState?: "success" | "error";
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, feedbackState, ...props }, ref) => {
+  const isAriaInvalid = props["aria-invalid"] === true || props["aria-invalid"] === "true";
+  const computedState = isAriaInvalid ? "error" : feedbackState;
+
   return (
     <input
       className={cn(
-        "flex h-10 w-full rounded-md border border-earth-500/40 bg-paper px-3 py-2 text-sm text-earth-950 placeholder:text-earth-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-earth-700 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-10 w-full rounded-md border border-fb-border-subtle bg-fb-surface-base px-3 py-2 text-sm text-fb-text-primary placeholder:text-fb-text-muted transition-[border-color,box-shadow,background-color] duration-[var(--fb-motion-duration-small)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid aria-[invalid=true]:border-[color:var(--fb-accent-danger)] aria-[invalid=true]:focus-visible:ring-[color:var(--fb-accent-danger)] data-[state=success]:!border-[color:var(--fb-accent-emerald)] data-[state=success]:!focus-visible:ring-[color:var(--fb-accent-emerald)] data-[state=error]:!border-[color:var(--fb-accent-danger)] data-[state=error]:!focus-visible:ring-[color:var(--fb-accent-danger)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
+      data-state={computedState}
       ref={ref}
       {...props}
     />

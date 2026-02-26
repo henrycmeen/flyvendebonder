@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 
 import type { GardskartJob, PhotoFeature, Property } from "@/types";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
+import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
 interface MapCanvasProps {
   photos: PhotoFeature[];
@@ -29,8 +30,38 @@ const fallbackCenter: [number, number] = [59.1708, 9.6607];
 
 type LatLngPair = [number, number];
 type MediaKind = "drone" | "camera";
+type MarkerSeason = SeasonOrMixed;
 
 const mapCameraIconUrl = `${import.meta.env.BASE_URL}icon-marker-camera.svg`;
+
+interface ClusterLike {
+  getChildCount: () => number;
+  getAllChildMarkers: () => L.Marker[];
+}
+
+function resolvePhotoSeason(photo: PhotoFeature | null): MarkerSeason {
+  return seasonFromCapturedDate(photo?.captured_date);
+}
+
+function resolveClusterSeason(cluster: ClusterLike): MarkerSeason {
+  const seasons = new Set<MarkerSeason>();
+  const childMarkers = cluster.getAllChildMarkers() as Array<L.Marker & { _fbSeason?: MarkerSeason }>;
+  childMarkers.forEach((marker) => {
+    seasons.add(marker._fbSeason ?? "mixed");
+  });
+
+  if (seasons.size !== 1) {
+    return "mixed";
+  }
+  const first = childMarkers[0]?._fbSeason ?? "mixed";
+  return first;
+}
+
+function clusterSizeClass(count: number): "small" | "medium" | "large" {
+  if (count < 10) return "small";
+  if (count < 100) return "medium";
+  return "large";
+}
 
 function inferMediaKind(photo: PhotoFeature): MediaKind {
   const haystack = [photo.title, ...(photo.tags ?? [])].join(" ").toLowerCase();
@@ -121,6 +152,7 @@ function mapMediaPinIcon(
   photo: PhotoFeature | null,
 ): L.DivIcon {
   const className = buildPinClassName(active, photo);
+  const season = resolvePhotoSeason(photo);
   const pinVisual =
     kind === "drone"
       ? '<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>'
@@ -129,7 +161,7 @@ function mapMediaPinIcon(
     className: "fb-media-pin-shell",
     iconSize: [34, 34],
     iconAnchor: [17, 17],
-    html: `<span class="${className}" data-kind="${kind}" data-title="${buildPinTitle(photo)}">${pinVisual}</span>`,
+    html: `<span class="${className}" data-kind="${kind}" data-season="${season}" data-title="${buildPinTitle(photo)}">${pinVisual}</span>`,
   });
 }
 
@@ -225,11 +257,22 @@ export function MapCanvas({
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.MarkerClusterGroup | null>(null);
   const markersByIdRef = useRef<Map<string, L.Marker>>(new Map());
+  const photoByIdRef = useRef<Map<string, PhotoFeature>>(new Map());
+  const activeMarkerIdsRef = useRef<Set<string>>(new Set());
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const propertyLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
+
+  const setMarkerActiveState = useCallback((photoId: string, active: boolean) => {
+    const marker = markersByIdRef.current.get(photoId);
+    if (!marker) return;
+
+    const markerPhoto = photoByIdRef.current.get(photoId) ?? null;
+    const kind = markerPhoto ? inferMediaKind(markerPhoto) : "drone";
+    marker.setIcon(mapMediaPinIcon(kind, active, markerPhoto));
+  }, []);
 
   useEffect(() => {
     if (mapRef.current || !mapElementRef.current) return;
@@ -273,6 +316,17 @@ export function MapCanvas({
       chunkedLoading: true,
       chunkInterval: 90,
       chunkDelay: 20,
+      iconCreateFunction: (cluster) => {
+        const typedCluster = cluster as unknown as ClusterLike;
+        const count = typedCluster.getChildCount();
+        const season = resolveClusterSeason(typedCluster);
+        const sizeClass = clusterSizeClass(count);
+        return L.divIcon({
+          html: `<div><span>${count}</span></div>`,
+          className: `marker-cluster marker-cluster-${sizeClass} fb-season-cluster fb-season-cluster--${season}`,
+          iconSize: L.point(40, 40),
+        });
+      },
     });
     map.addLayer(clusterLayer);
     const viewLayer = L.layerGroup();
@@ -396,9 +450,9 @@ export function MapCanvas({
 
     const line = L.polyline([source, targetLatLng], {
       className: "fb-media-viewline",
-      color: "rgba(255, 172, 64, 0.95)",
+      color: "var(--fb-map-analysis-line)",
       weight: 2.3,
-      opacity: 0.98,
+      opacity: 0.95,
       dashArray: "6 10",
       lineCap: "round",
       interactive: false,
@@ -408,11 +462,11 @@ export function MapCanvas({
     const targetPoint = L.circleMarker(targetLatLng, {
       className: "fb-media-view-target",
       radius: 4.5,
-      color: "#8a5120",
-      fillColor: "#fff7ea",
+      color: "var(--fb-map-analysis-accent)",
+      fillColor: "var(--fb-map-analysis-fill)",
       fillOpacity: 1,
       weight: 1.8,
-      opacity: 0.96,
+      opacity: 0.94,
       interactive: false,
       pane: "laserPane",
     });
@@ -424,11 +478,11 @@ export function MapCanvas({
       const footprint = toPolygonLatLngs(selectedPhoto.analysis_zone.footprint_polygon.coordinates);
       if (footprint.length > 3) {
         const footprintLayer = L.polygon(footprint, {
-          color: "rgba(255, 172, 64, 0.6)",
-          fillColor: "rgba(255, 196, 102, 0.2)",
+          color: "var(--fb-map-analysis-line)",
+          fillColor: "var(--fb-map-analysis-line-soft)",
           fillOpacity: 0.2,
           weight: 1.4,
-          opacity: 0.86,
+          opacity: 0.8,
           dashArray: "3 7",
           interactive: false,
           pane: "laserPane",
@@ -441,9 +495,9 @@ export function MapCanvas({
       const radius = Math.max(1.4, Math.min(selectedPhoto.location_uncertainty_m, 50));
       const uncertaintyCircle = L.circle(targetLatLng, {
         radius,
-        color: "rgba(255, 172, 64, 0.26)",
-        fillColor: "rgba(255, 196, 102, 0.08)",
-        fillOpacity: 0.14,
+        color: "var(--fb-map-analysis-line)",
+        fillColor: "var(--fb-map-analysis-line-soft-strong)",
+        fillOpacity: 0.12,
         weight: 1.2,
         interactive: false,
         pane: "laserPane",
@@ -458,8 +512,8 @@ export function MapCanvas({
         viewLayerRef.current.addLayer(
           L.circleMarker(sampleLatLng, {
             radius: 2.4,
-            color: "#f4e7c7",
-            fillColor: "#ffdf9d",
+            color: "var(--fb-map-analysis-accent)",
+            fillColor: "var(--fb-map-analysis-fill)",
             fillOpacity: 0.95,
             weight: 1,
             opacity: 0.9,
@@ -478,6 +532,8 @@ export function MapCanvas({
 
     markersRef.current.clearLayers();
     markersByIdRef.current.clear();
+    photoByIdRef.current = new Map(photos.map((photo) => [photo.id, photo]));
+    activeMarkerIdsRef.current = new Set();
 
     const photosWithCoordinates = photos
       .map((photo) => ({
@@ -491,6 +547,7 @@ export function MapCanvas({
       const marker = L.marker(point, {
         icon: mapMediaPinIcon(mediaKind, false, photo),
       });
+      (marker as L.Marker & { _fbSeason?: MarkerSeason })._fbSeason = resolvePhotoSeason(photo);
 
       const openInFullscreen = () => {
         onOpenPhotoFullscreen(photo.id);
@@ -550,16 +607,17 @@ export function MapCanvas({
   }, [onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
 
   useEffect(() => {
-    const photoById = new Map(photos.map((photo) => [photo.id, photo]));
-    markersByIdRef.current.forEach((marker, id) => {
-      const markerPhoto = photoById.get(id) ?? null;
-      const kind = markerPhoto ? inferMediaKind(markerPhoto) : "drone";
-      const isSelected = id === selectedPhotoId;
-      const isHovered = id === hoveredPhotoId;
-      const active = isSelected || isHovered;
-      marker.setIcon(mapMediaPinIcon(kind, active, markerPhoto));
+    const nextActiveIds = new Set<string>();
+    if (selectedPhotoId) nextActiveIds.add(selectedPhotoId);
+    if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
+
+    const prevActiveIds = activeMarkerIdsRef.current;
+    const changedIds = new Set<string>([...prevActiveIds, ...nextActiveIds]);
+    changedIds.forEach((photoId) => {
+      setMarkerActiveState(photoId, nextActiveIds.has(photoId));
     });
-  }, [hoveredPhotoId, photos, selectedPhotoId]);
+    activeMarkerIdsRef.current = nextActiveIds;
+  }, [hoveredPhotoId, photos, selectedPhotoId, setMarkerActiveState]);
 
   useEffect(() => {
     if (!mapRef.current) return;

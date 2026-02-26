@@ -4,6 +4,7 @@ import { FolderKanban, Images, Map as MapIcon } from "lucide-react";
 import type { ProfileResponse } from "@/types";
 import { cn } from "@/lib/utils";
 import { BASE_MAP_STYLE_ORDER, BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
+import { TechnicalLogList } from "@/components/technical-log-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -16,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Divider, Section, Stack } from "@/components/ui/layout-primitives";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -236,14 +238,14 @@ export function SideRail({
       <Card
         className={cn(
           "side-rail pointer-events-auto fixed inset-y-0 left-0 z-[900] w-[62px] overflow-hidden rounded-none rounded-br-[28px] border-b-0 border-l-0 border-r border-t-0 shadow-none sm:w-[68px]",
-          uiTheme === "satellite" && "side-rail--satellite border-r-black/30",
+          uiTheme === "satellite" && "side-rail--satellite border-r-[color:var(--fb-border-strong)]",
         )}
       >
         <CardContent className="flex h-full flex-col items-center px-1.5 pb-3 pt-3">
           <a
             href={import.meta.env.BASE_URL}
             className={cn(
-              "logo-hover-spin inline-flex h-9 w-9 items-center justify-center text-earth-900",
+              "logo-hover-spin inline-flex h-9 w-9 items-center justify-center text-fb-text-primary",
               (isLoading || logoSpinActive) && "logo-loading",
             )}
             aria-label="Gå til start i appen"
@@ -253,18 +255,18 @@ export function SideRail({
 
           <div className="mt-6 flex min-h-0 flex-1 flex-col items-center">
             <div className="flex flex-col items-center gap-2">
-              <Tooltip>
+                <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-lg hover:bg-black/5",
-                      uiTheme === "satellite" ? "text-white hover:bg-white/10" : "text-[#111111]",
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                      "h-9 w-9 rounded-lg hover:bg-[color:var(--fb-surface-overlay)]",
+                      uiTheme === "satellite" ? "text-[color:var(--fb-chip-satellite-text)] hover:bg-[color:var(--fb-chip-satellite-bg)]" : "text-fb-text-primary",
                       activeView === "map" &&
                         (uiTheme === "satellite"
-                          ? "border border-black/35 bg-black/34 text-white hover:bg-black/44"
-                          : "border border-earth-500/40 bg-paper/75"),
+                          ? "border border-[color:var(--fb-chip-satellite-border)] bg-[color:var(--fb-surface-overlay)] text-[color:var(--fb-chip-satellite-text)] hover:bg-[color:var(--fb-chip-satellite-bg)]"
+                          : "border border-fb-border-subtle bg-fb-surface-ghost"),
                     )}
                     onClick={() => onChangeView("map")}
                     aria-label="Kartvisning"
@@ -277,16 +279,16 @@ export function SideRail({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-lg hover:bg-black/5",
-                      uiTheme === "satellite" ? "text-white hover:bg-white/10" : "text-[#111111]",
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                      "h-9 w-9 rounded-lg hover:bg-[color:var(--fb-surface-overlay)]",
+                      uiTheme === "satellite" ? "text-[color:var(--fb-chip-satellite-text)] hover:bg-[color:var(--fb-chip-satellite-bg)]" : "text-fb-text-primary",
                       activeView === "album" &&
                         (uiTheme === "satellite"
-                          ? "border border-black/35 bg-black/34 text-white hover:bg-black/44"
-                          : "border border-earth-500/40 bg-paper/75"),
+                          ? "border border-[color:var(--fb-chip-satellite-border)] bg-[color:var(--fb-surface-overlay)] text-[color:var(--fb-chip-satellite-text)] hover:bg-[color:var(--fb-chip-satellite-bg)]"
+                          : "border border-fb-border-subtle bg-fb-surface-ghost"),
                     )}
                     onClick={() => onChangeView("album")}
                     aria-label="Albumvisning"
@@ -297,14 +299,14 @@ export function SideRail({
                 <TooltipContent side="right">Album</TooltipContent>
               </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-lg border border-transparent hover:bg-black/5",
-                      uiTheme === "satellite" ? "text-white hover:bg-white/10" : "text-[#111111]",
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                      "h-9 w-9 rounded-lg border border-transparent hover:bg-[color:var(--fb-surface-overlay)]",
+                      uiTheme === "satellite" ? "text-[color:var(--fb-chip-satellite-text)] hover:bg-[color:var(--fb-chip-satellite-bg)]" : "text-fb-text-primary",
                     )}
                     onClick={() => {
                       window.location.href = "/";
@@ -323,7 +325,7 @@ export function SideRail({
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#d96505] text-xs font-medium text-white shadow-[0_8px_20px_rgba(217,101,5,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-earth-700"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--fb-season-solid)] text-xs font-medium text-[color:var(--fb-chip-active-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-season-solid)]"
                     aria-label="Åpne profilinnstillinger"
                   >
                     {initials}
@@ -344,9 +346,9 @@ export function SideRail({
                   </TabsList>
 
                   <TabsContent value="profile">
-                    <form className="grid gap-4" onSubmit={onSubmit}>
-                      <div className="grid gap-2 rounded-lg border border-earth-500/25 bg-paper/60 p-3">
-                        <h3 className="text-sm font-semibold text-earth-900">Kundeprofil</h3>
+                    <form className="w-full" onSubmit={onSubmit}>
+                      <Stack gap={4}>
+                    <Section compact title="Kundeprofil" className="rounded-lg border-fb-border-subtle bg-fb-surface-ghost">
                         <div className="grid gap-2 sm:grid-cols-2">
                           <div className="grid gap-1.5">
                             <Label htmlFor="full_name">Navn</Label>
@@ -382,11 +384,9 @@ export function SideRail({
                             />
                           </div>
                         </div>
-                      </div>
+                        </Section>
 
-                      <div className="grid gap-2 rounded-lg border border-earth-500/25 bg-paper/60 p-3">
-                        <h3 className="text-sm font-semibold text-earth-900">Meen gård</h3>
-                        <p className="text-xs text-earth-700">Aktiv: {propertyLabel}</p>
+                        <Section compact title="Meen gård" description={`Aktiv: ${propertyLabel}`} className="rounded-lg border-fb-border-subtle bg-fb-surface-ghost">
                         <div className="grid gap-2 sm:grid-cols-2">
                           <div className="grid gap-1.5">
                             <Label htmlFor="label">Navn på gård</Label>
@@ -423,21 +423,22 @@ export function SideRail({
                             />
                           </div>
                         </div>
-                      </div>
+                        </Section>
 
-                      <DialogFooter>
-                        <Button type="submit" disabled={saving}>
-                          {saving ? "Lagrer ..." : "Lagre"}
-                        </Button>
-                      </DialogFooter>
+                        <DialogFooter>
+                          <Button type="submit" disabled={saving}>
+                            {saving ? "Lagrer ..." : "Lagre"}
+                          </Button>
+                        </DialogFooter>
+                      </Stack>
                     </form>
                   </TabsContent>
 
                   <TabsContent value="layer">
-                    <div className="grid gap-4 rounded-lg border border-earth-500/25 bg-paper/60 p-3">
-                      <h3 className="text-sm font-semibold text-earth-900">Kartvisning</h3>
+                    <Stack gap={4} className="rounded-lg border border-fb-border-subtle bg-fb-surface-ghost p-3">
+                      <h3 className="text-sm font-semibold text-fb-text-primary">Kartvisning</h3>
                       <div className="grid gap-2">
-                        <Label className="text-xs text-earth-700">Bakgrunnskart</Label>
+                        <Label className="text-xs text-fb-text-secondary">Bakgrunnskart</Label>
                         <div className="flex flex-wrap gap-2">
                           {BASE_MAP_STYLE_ORDER.map((styleKey) => {
                             const selected = styleKey === baseMapStyle;
@@ -449,7 +450,7 @@ export function SideRail({
                                 variant={selected ? "default" : "outline"}
                                 className={cn(
                                   "h-8 rounded-full px-3",
-                                  selected ? "bg-earth-900 text-white hover:bg-earth-800" : "text-earth-900",
+                                  selected ? "bg-[color:var(--fb-chip-active-bg)] text-[color:var(--fb-chip-active-text)]" : "text-fb-text-primary",
                                 )}
                                 onClick={() => onChangeBaseMapStyle(styleKey)}
                               >
@@ -470,8 +471,9 @@ export function SideRail({
                         <Label htmlFor="map-grayscale">Vis kart i svart/hvitt</Label>
                       </div>
 
-                      <div className="grid gap-2 border-t border-earth-500/20 pt-3">
-                        <h3 className="text-sm font-semibold text-earth-900">Eiendomslag</h3>
+                      <Divider className="border-fb-border-subtle" />
+                      <div className="grid gap-2">
+                        <h3 className="text-sm font-semibold text-fb-text-primary">Eiendomslag</h3>
                         <div className="flex items-center gap-2">
                           <Switch id="show-property-layer" checked={showPropertyLayer} onCheckedChange={onTogglePropertyLayer} />
                           <Label htmlFor="show-property-layer">Vis eiendomsgrenser</Label>
@@ -479,12 +481,13 @@ export function SideRail({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <p className="text-xs text-earth-700">{propertyStatus}</p>
+                        <p className="text-xs text-fb-text-secondary">{propertyStatus}</p>
                       </div>
-                      <p className="text-xs text-earth-700">{statusText}</p>
+                      <p className="text-xs text-fb-text-secondary">{statusText}</p>
 
-                      <div className="grid gap-2 border-t border-earth-500/20 pt-3">
-                        <h3 className="text-sm font-semibold text-earth-900">Kvalitet</h3>
+                      <Divider className="border-fb-border-subtle" />
+                      <div className="grid gap-2">
+                        <h3 className="text-sm font-semibold text-fb-text-primary">Kvalitet</h3>
                         <div className="flex items-center gap-2">
                           <Switch
                             id="show-manual-qc"
@@ -503,9 +506,10 @@ export function SideRail({
                         </div>
                       </div>
 
-                      <div className="grid gap-2 border-t border-earth-500/20 pt-3">
-                        <h3 className="text-sm font-semibold text-earth-900">Pro tips</h3>
-                        <ul className="space-y-1 text-xs text-earth-700">
+                      <Divider className="border-fb-border-subtle" />
+                      <div className="grid gap-2">
+                        <h3 className="text-sm font-semibold text-fb-text-primary">Pro tips</h3>
+                        <ul className="space-y-1 text-xs text-fb-text-secondary">
                           <li className="flex items-center gap-2">
                             <span className="inline-flex items-center gap-1">
                               <kbd className="fb-kbd">←</kbd>
@@ -523,11 +527,11 @@ export function SideRail({
                           </li>
                         </ul>
                       </div>
-                    </div>
+                    </Stack>
                   </TabsContent>
 
                   <TabsContent value="log">
-                    <div className="space-y-2 rounded-lg border border-earth-500/25 bg-paper/60 p-3">
+                    <Stack gap={2} className="rounded-lg border border-fb-border-subtle bg-fb-surface-ghost p-3">
                       <div className="space-y-1">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -543,60 +547,42 @@ export function SideRail({
                             Tøm backendlogg
                           </Button>
                         </div>
-                        <div className="rounded border border-earth-500/25 bg-paper/70 px-2 py-1 text-xs text-earth-700">
+                        <div className="rounded border border-fb-border-subtle bg-fb-surface-ghost px-2 py-1 text-xs text-fb-text-secondary">
                           Viser siste linjer fra backend (begrenset til siste 120 i denne visningen).
                         </div>
-                        <ScrollArea className="h-52 rounded-md border border-earth-500/25 bg-paper/75 p-2">
-                          {backendLogs.length === 0 ? (
-                            <p className="px-2 py-1 text-xs text-earth-700">Ingen serverlogg lastet enda.</p>
-                          ) : (
-                            <ul className="space-y-1 px-1 py-1 text-xs">
-                              {backendLogs.map((entry) => {
-                                const requestId = entry.requestId ?? entry.request_id;
-                                const key = `${entry.timestamp}-${entry.raw.slice(0, 24)}`;
-                                return (
-                                  <li key={key} className="rounded border border-earth-500/20 bg-paper px-2 py-1">
-                                    <p className="font-mono text-[11px] text-earth-800">
-                                      {entry.timestamp} [{entry.level}] {entry.logger}: {entry.message}
-                                    </p>
-                                    {requestId ? <p className="font-mono text-[10px] text-earth-600">req: {requestId}</p> : null}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
+                        <ScrollArea className="h-52 rounded-md border border-fb-border-subtle bg-fb-surface-ghost p-2">
+                          <TechnicalLogList
+                            emptyText="Ingen serverlogg lastet enda."
+                            items={backendLogs.map((entry) => ({
+                              id: `${entry.timestamp}-${entry.raw.slice(0, 24)}`,
+                              main: `${entry.timestamp} [${entry.level}] ${entry.logger}: ${entry.message}`,
+                              requestId: entry.requestId ?? entry.request_id,
+                            }))}
+                          />
                         </ScrollArea>
                       </div>
 
                       <div className="space-y-1">
                         <div className="flex justify-between items-center">
-                          <p className="text-xs font-semibold text-earth-900">Teknisk logg (frontend)</p>
+                          <p className="text-xs font-semibold text-fb-text-primary">Teknisk logg (frontend)</p>
                           <Button type="button" variant="ghost" size="sm" onClick={onClearLogs}>
                             Tøm logg
                           </Button>
                         </div>
 
-                        <ScrollArea className="h-40 rounded-md border border-earth-500/25 bg-paper/75 p-2">
-                          {logs.length === 0 ? (
-                            <p className="px-2 py-1 text-xs text-earth-700">Ingen frontend logger enda.</p>
-                          ) : (
-                            <ul className="space-y-1 px-1 py-1 text-xs">
-                              {logs.map((entry) => (
-                                <li key={entry.id} className="rounded border border-earth-500/20 bg-paper px-2 py-1">
-                                  <p className="font-mono text-[11px] text-earth-800">
-                                    {entry.time} [{entry.level}] {entry.message}
-                                  </p>
-                                  {entry.requestId ? (
-                                    <p className="font-mono text-[10px] text-earth-600">req: {entry.requestId}</p>
-                                  ) : null}
-                                  {entry.details ? <p className="font-mono text-[10px] text-earth-600">{entry.details}</p> : null}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                        <ScrollArea className="h-40 rounded-md border border-fb-border-subtle bg-fb-surface-ghost p-2">
+                          <TechnicalLogList
+                            emptyText="Ingen frontend logger enda."
+                            items={logs.map((entry) => ({
+                              id: entry.id,
+                              main: `${entry.time} [${entry.level}] ${entry.message}`,
+                              requestId: entry.requestId,
+                              details: entry.details,
+                            }))}
+                          />
                         </ScrollArea>
                       </div>
-                    </div>
+                    </Stack>
                   </TabsContent>
                 </Tabs>
               </DialogContent>
@@ -610,8 +596,8 @@ export function SideRail({
         className={cn(
           "pointer-events-auto fixed left-[66px] top-3 z-[850] rounded-full px-3 py-1 text-xs shadow-soft sm:left-[74px]",
           uiTheme === "satellite"
-            ? "border border-black/25 bg-black/24 text-[#f4ebdd] backdrop-blur-xl"
-            : "border border-earth-500/30 bg-paper/84 text-earth-800",
+            ? "border border-[color:var(--fb-chip-satellite-border)] bg-[color:var(--fb-surface-overlay)] text-[color:var(--fb-chip-satellite-text)] backdrop-blur-xl"
+            : "border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary",
         )}
       >
         {profile?.property?.label ?? "Meen gård"}

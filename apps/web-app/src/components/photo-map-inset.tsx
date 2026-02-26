@@ -196,9 +196,9 @@ export function PhotoMapInset({
 
     L.circleMarker(source, {
       radius: 4.5,
-      color: "#fff7ea",
+      color: "var(--fb-map-analysis-accent)",
       weight: 1.3,
-      fillColor: "#3f2413",
+      fillColor: "var(--fb-map-analysis-fill)",
       fillOpacity: 0.94,
       opacity: 0.96,
       interactive: false,
@@ -209,7 +209,7 @@ export function PhotoMapInset({
       points.push(target);
 
       L.polyline([source, target], {
-        color: "rgba(255, 172, 64, 0.95)",
+        color: "var(--fb-map-analysis-line)",
         weight: 2.3,
         opacity: 0.98,
         dashArray: photo.view_mode === "estimated" && !manualTarget ? "4 6" : undefined,
@@ -234,9 +234,9 @@ export function PhotoMapInset({
       } else {
         L.circleMarker(target, {
           radius: 4,
-          color: "#5b3d0f",
+          color: "var(--fb-map-analysis-line)",
           weight: 1.1,
-          fillColor: "#fff2da",
+          fillColor: "var(--fb-map-analysis-fill)",
           fillOpacity: 0.97,
           opacity: 0.95,
           interactive: false,
@@ -247,8 +247,8 @@ export function PhotoMapInset({
         const radius = Math.max(1.4, Math.min(photo.location_uncertainty_m, 50));
         L.circle(target, {
           radius,
-          color: "rgba(255, 172, 64, 0.2)",
-          fillColor: "rgba(255, 196, 102, 0.12)",
+          color: "var(--fb-map-analysis-line-soft)",
+          fillColor: "var(--fb-map-analysis-line-soft)",
           fillOpacity: 0.2,
           weight: 1,
           opacity: 0.7,
@@ -261,8 +261,8 @@ export function PhotoMapInset({
         if (footprint.length > 3) {
           footprint.forEach((point) => points.push(L.latLng(point[0], point[1])));
           L.polygon(footprint, {
-            color: "rgba(255, 172, 64, 0.55)",
-            fillColor: "rgba(255, 196, 102, 0.14)",
+            color: "var(--fb-map-analysis-line)",
+            fillColor: "var(--fb-map-analysis-line-soft)",
             fillOpacity: 0.15,
             weight: 1.2,
             opacity: 0.85,
@@ -279,8 +279,8 @@ export function PhotoMapInset({
           points.push(L.latLng(sample[0], sample[1]));
           L.circleMarker(L.latLng(sample[0], sample[1]), {
             radius: 2.2,
-            color: "#f4e7c7",
-            fillColor: "#ffdf9d",
+            color: "var(--fb-map-analysis-accent)",
+            fillColor: "var(--fb-map-analysis-line)",
             fillOpacity: 0.94,
             weight: 0.9,
             opacity: 0.9,
@@ -293,7 +293,7 @@ export function PhotoMapInset({
       points.push(headingPoint);
 
       L.polyline([source, headingPoint], {
-        color: "rgba(255, 172, 64, 0.92)",
+        color: "var(--fb-map-analysis-line)",
         weight: 2,
         opacity: 0.9,
         dashArray: "3 6",

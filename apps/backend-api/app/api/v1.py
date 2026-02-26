@@ -43,11 +43,11 @@ from ..services.tag_utils import (
     extract_meta_float,
     normalize_user_tags,
     parse_tag_groups,
-    set_meta_value,
     set_quality_flag,
     serialize_tag_groups,
     merge_tag_groups,
 )
+from ..services.view_overrides import set_manual_view_override
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -105,24 +105,6 @@ def _validate_user_tags_payload(payload_tags: list[str]) -> list[str]:
         seen.add(key)
         normalized.append(tag[:72])
     return normalize_user_tags(normalized)
-
-
-def _set_manual_view_override(tags: list[str], lat: float | None, lng: float | None) -> list[str]:
-    if lat is None and lng is None:
-        cleared = set_meta_value(tags, "meta:manual_view_lat", None)
-        return set_meta_value(cleared, "meta:manual_view_lng", None)
-
-    if lat is None or lng is None:
-        raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må settes sammen")
-
-    if not math.isfinite(lat) or not math.isfinite(lng):
-        raise HTTPException(status_code=400, detail="Manuelt målpunkt må være gyldige tall")
-
-    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
-        raise HTTPException(status_code=400, detail="Manuelt målpunkt er utenfor gyldig koordinatområde")
-
-    with_lat = set_meta_value(tags, "meta:manual_view_lat", f"{lat:.6f}")
-    return set_meta_value(with_lat, "meta:manual_view_lng", f"{lng:.6f}")
 
 
 def _validate_numeric_override(
@@ -370,7 +352,10 @@ def patch_photo_metadata(
     if "manual_view_lat" in payload.model_fields_set or "manual_view_lng" in payload.model_fields_set:
         if "manual_view_lat" not in payload.model_fields_set or "manual_view_lng" not in payload.model_fields_set:
             raise HTTPException(status_code=400, detail="Både manual_view_lat og manual_view_lng må sendes sammen")
-        system_tags = _set_manual_view_override(system_tags, payload.manual_view_lat, payload.manual_view_lng)
+        try:
+            system_tags = set_manual_view_override(system_tags, payload.manual_view_lat, payload.manual_view_lng)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     if "altitude_m" in payload.model_fields_set:
         photo.altitude_m = _validate_numeric_override(

@@ -9,7 +9,7 @@ const Switch = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-earth-700 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-earth-700 data-[state=unchecked]:bg-earth-500/50",
+      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-[background-color,box-shadow] duration-[var(--fb-motion-duration-small)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-fb-interactive-default data-[state=unchecked]:bg-fb-interactive-disabled",
       className,
     )}
     {...props}
@@ -17,7 +17,7 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-4 w-4 rounded-full bg-paper shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
+        "pointer-events-none block h-4 w-4 rounded-full bg-fb-surface-base shadow-lg ring-0 transition-transform duration-[var(--fb-motion-duration-small)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
       )}
     />
   </SwitchPrimitives.Root>

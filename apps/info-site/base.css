@@ -1,11 +1,11 @@
 :root {
-  /* Fargepalett inspirert av bakkenbaeck/daylight-web */
-  --bg: #ffdc9c;
-  --line: rgba(0, 0, 0, 0.14);
-  --surface: rgba(255, 255, 255, 0.35);
+  --bg: var(--fb-surface-0, #ffffff);
+  --line: var(--fb-border-soft, #d7e0ea);
+  --surface: color-mix(in srgb, var(--fb-surface-1, #ffffff) 88%, transparent);
   --muted-opacity: 0.6;
   --logo-color: currentColor;
-  --brand-color: #191415;
+  --logo-stroke: 44px;
+  --brand-color: var(--fb-text-0, #1f2a37);
   --radius: 16px;
   --max: 980px;
   --pad: 28px;
@@ -18,11 +18,11 @@
   --video-t: 0;
   --mobile-t: 0;
   --header-space: 96px;
-  --header-bg: rgba(255, 220, 156, 0.92);
+  --header-bg: color-mix(in srgb, var(--bg, #ffffff) 85%, transparent);
 
   --tile-radius: 18px;
-  --tile-border: rgba(0, 0, 0, 0.14);
-  --tile-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+  --tile-border: var(--line, #d7e0ea);
+  --tile-shadow: var(--fb-shadow-0, 0 1px 2px rgb(17 24 39 / 0.06));
 }
 
 @media (max-width: 1650px) {
@@ -55,35 +55,16 @@ body {
 }
 
 html {
-  /* Light mode (default): samme farger som daylight-web "daylight" */
-  color: #ab4621;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    /* Dark mode: samme farger som daylight-web "night" */
-    color: #80d0f3;
-  }
-  /* Viktig: variablene er definert i `:root`, så vi må også overstyre i `:root` */
-  :root {
-    --bg: #031320;
-    --line: rgba(255, 255, 255, 0.18);
-    --surface: rgba(255, 255, 255, 0.07);
-    --muted-opacity: 0.75;
-    --logo-color: currentColor;
-    --brand-color: currentColor;
-    --tile-border: rgba(255, 255, 255, 0.18);
-    --tile-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-    --header-bg: rgba(3, 19, 32, 0.9);
-  }
+  color: var(--fb-text-0, #1f2a37);
 }
 
 body {
   margin: 0;
   background-color: var(--bg);
   color: inherit;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: "Noto Sans", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -143,6 +124,18 @@ a {
   opacity: 1;
 }
 
+.brand--logo-thin {
+  --logo-stroke: 34px;
+}
+
+.brand--logo-regular {
+  --logo-stroke: 44px;
+}
+
+.brand--logo-bold {
+  --logo-stroke: 56px;
+}
+
 .nav {
   display: none;
 }
@@ -159,17 +152,17 @@ a {
   width: 28px;
   height: 28px;
   color: var(--logo-color);
-  fill: currentColor;
   display: block;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
   transition: color 700ms var(--ease);
   will-change: transform;
 }
 
-/* I dark mode: input-bakgrunn justeres litt */
-@media (prefers-color-scheme: dark) {
-  .field__input {
-    background: rgba(255, 255, 255, 0.08);
-  }
+.brand__logo-ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--logo-stroke);
 }
 
 .brand__name {
@@ -179,6 +172,7 @@ a {
   opacity: 1;
   transition: opacity 120ms linear;
 }
+
 
 .nav {
   display: inline-flex;
@@ -233,7 +227,7 @@ a {
   border-radius: 28px;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--surface, #ffffff) 75%, transparent);
 }
 
 .showcase .media-card {
@@ -498,14 +492,14 @@ a {
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.35);
+  background: color-mix(in srgb, var(--surface, #ffffff) 78%, transparent);
   color: currentColor;
   font-size: 14px;
   outline: none;
 }
 
 .field__input:focus {
-  border-color: rgba(0, 0, 0, 0.22);
+  border-color: var(--line-strong, var(--line, #d7e0ea));
 }
 
 
@@ -600,50 +594,6 @@ a {
   line-height: 1.45;
 }
 
-.cta {
-  display: grid;
-  gap: 12px;
-  align-items: start;
-}
-
-.email {
-  text-decoration: none;
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 2px;
-}
-
-.email:hover {
-  opacity: 0.8;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: fit-content;
-  padding: 12px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: currentColor;
-  color: var(--bg);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  transition: transform 220ms var(--ease), opacity 200ms ease;
-}
-
-.button:hover {
-  transform: translateY(-1px);
-}
-
-.cta__note {
-  margin: 0;
-  font-size: 13px;
-  opacity: var(--muted-opacity);
-  line-height: 1.4;
-}
-
 .footer {
   border-top: 0;
   padding: 88px 0 0;
@@ -694,9 +644,6 @@ a {
   .page.is-loaded [data-animate="in"] {
     opacity: 1;
     transform: none;
-    transition: none;
-  }
-  .button {
     transition: none;
   }
 }

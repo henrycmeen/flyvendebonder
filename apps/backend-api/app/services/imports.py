@@ -20,6 +20,7 @@ from .metadata_utils import (
     extract_metadata as extract_image_metadata,
 )
 from .image_derivatives import write_derivatives
+from .qc_tags import derive_qc_tags
 from .tag_utils import serialize_tag_groups
 
 logger = logging.getLogger(__name__)
@@ -46,26 +47,6 @@ def _slugify(value: str) -> str:
 
 def _extract_metadata(path: Path) -> FileMetadata:
     return extract_image_metadata(path)
-
-
-def _derive_quality_tags(metadata_issues: list[str]) -> list[str]:
-    qc_tags: set[str] = set()
-    for issue in metadata_issues:
-        normalized = issue.lower()
-        if "retning" in normalized:
-            qc_tags.add("qc:missing_heading")
-        elif "pitch" in normalized:
-            qc_tags.add("qc:missing_pitch")
-        elif "date" in normalized:
-            qc_tags.add("qc:missing_timestamp")
-        elif "gps" in normalized:
-            qc_tags.add("qc:missing_gps")
-        elif "høyde" in normalized or "altitude" in normalized:
-            qc_tags.add("qc:missing_altitude")
-        else:
-            qc_tags.add("qc:metadata_issue")
-
-    return sorted(qc_tags)
 
 
 def _default_targets(db: Session) -> tuple[User, Property | None]:
@@ -111,7 +92,7 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
                 continue
 
             metadata = _extract_metadata(file_path)
-            quality_flags = _derive_quality_tags(metadata.issues)
+            quality_flags = derive_qc_tags(metadata.issues)
             heading_selection = select_heading_from_metadata(metadata)
             pitch_selection = select_pitch_from_metadata(metadata)
             quality_flags.extend([tag for tag in heading_selection.qc_tags if tag not in quality_flags])

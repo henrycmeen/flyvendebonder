@@ -18,11 +18,11 @@ from .quality_metrics import (
     build_analysis_zone as build_shared_analysis_zone,
 )
 from .tag_utils import (
-    extract_meta_float,
     extract_meta_value,
     merge_tag_groups,
     parse_tag_groups,
 )
+from .view_overrides import extract_manual_view_override
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def _offsets_from_positions(
 
 
 def _normalize_tag_inputs(photo: Photo) -> tuple[list[str], list[str]]:
-    return parse_tag_groups(photo.tags_json)
+    return parse_tag_groups(getattr(photo, "tags_json", None))
 
 
 def _project_forward_side(east_m: float, north_m: float, heading_deg: float | None) -> tuple[float, float]:
@@ -165,17 +165,6 @@ def _build_analysis_zone(
     )
 
 
-def _extract_manual_view_override(tags: list[str]) -> tuple[float, float] | None:
-    lat = extract_meta_float(tags, "meta:manual_view_lat")
-    lng = extract_meta_float(tags, "meta:manual_view_lng")
-    if lat is None or lng is None:
-        return None
-
-    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
-        return None
-    return lat, lng
-
-
 def _extract_quality_flags(system_tags: list[str]) -> list[str]:
     return [tag for tag in system_tags if tag.casefold().startswith("qc:")]
 
@@ -185,7 +174,7 @@ def _derive_camera_view(photo: Photo, tags: list[str] | None = None) -> tuple[fl
     if tag_list is None:
         user_tags, system_tags = _normalize_tag_inputs(photo)
         tag_list = merge_tag_groups(user_tags, system_tags)
-    manual_override = _extract_manual_view_override(tag_list)
+    manual_override = extract_manual_view_override(tag_list)
     if manual_override is not None:
         manual_lat, manual_lng = manual_override
         east_m, north_m = _offsets_from_positions(photo.lat, photo.lng, manual_lat, manual_lng)
@@ -224,8 +213,8 @@ def _serialize_photo(
     view_lat, view_lng, view_mode, view_distance_m, view_confidence = _derive_camera_view(photo, tags=tags)
     quality_flags = _extract_quality_flags(system_tags)
     needs_manual_qc = "qc:needs_manual_qc" in quality_flags
-    heading_source = _extract_meta_value(tags, "meta:heading_source")
-    pitch_source = _extract_meta_value(tags, "meta:pitch_source")
+    heading_source = extract_meta_value(tags, "meta:heading_source")
+    pitch_source = extract_meta_value(tags, "meta:pitch_source")
     confidence_score, confidence_reasons = derive_quality_confidence(
         altitude_m=photo.altitude_m,
         heading_deg=photo.heading_deg,

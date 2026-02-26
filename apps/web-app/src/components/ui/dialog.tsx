@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-earth-950/60 data-[state=open]:animate-in data-[state=closed]:animate-out",
+      "fixed inset-0 z-50 bg-[color:var(--fb-surface-overlay)] transition-opacity motion-reduce:transition-none data-[state=open]:opacity-100 data-[state=closed]:opacity-0 data-[state=open]:duration-[var(--fb-motion-duration-medium)] data-[state=open]:ease-[var(--fb-motion-easing-decelerate)] data-[state=closed]:duration-[var(--fb-motion-duration-small)] data-[state=closed]:ease-[var(--fb-motion-easing-accelerate)]",
       className,
     )}
     {...props}
@@ -36,13 +36,13 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-[95vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-earth-500/30 bg-paper p-6 shadow-soft duration-200",
+        "fixed left-1/2 top-1/2 z-50 grid w-[95vw] max-w-2xl gap-4 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-6 shadow-soft transition-[opacity,transform] motion-reduce:transition-none data-[state=open]:opacity-100 data-[state=closed]:opacity-0 data-[state=open]:[transform:translate(-50%,-50%)] data-[state=closed]:[transform:translate(-50%,calc(-50%+4px))] data-[state=open]:duration-[var(--fb-motion-duration-large)] data-[state=open]:ease-[var(--fb-motion-easing-decelerate)] data-[state=closed]:duration-[var(--fb-motion-duration-small)] data-[state=closed]:ease-[var(--fb-motion-easing-accelerate)]",
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-earth-700">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid">
         <X className="h-4 w-4" />
         <span className="sr-only">Lukk</span>
       </DialogPrimitive.Close>
@@ -71,7 +71,7 @@ const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description ref={ref} className={cn("text-sm text-earth-700", className)} {...props} />
+  <DialogPrimitive.Description ref={ref} className={cn("text-sm text-fb-text-secondary", className)} {...props} />
 ));
 DialogDescription.displayName = DialogPrimitive.Description.displayName;
 

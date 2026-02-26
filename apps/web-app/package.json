@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run motion:lint",
+    "motion:lint": "bash ./scripts/motion-lint.sh",
     "preview": "vite preview"
   },
   "dependencies": {

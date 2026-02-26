@@ -8,34 +8,25 @@
       name="description"
       content="Dronebilder gjort nyttige i en egen Flyvendebønder-app, med tidslinje, kart og enkel prosessering i pilot."
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
+    />
     <link rel="stylesheet" href="./base.css" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./theme.css" />
   </head>
 
   <body class="page">
-    <a class="brand brand--floating brand--icon-only" href="#top" aria-label="Flyvendebønder">
+    <a class="brand brand--floating brand--icon-only brand--logo-regular" href="#top" aria-label="Flyvendebønder">
       <span class="brand__logo-wrap" aria-hidden="true">
-        <svg class="brand__logo" viewBox="0 0 521 521" aria-hidden="true" focusable="false">
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M280.539 140.269C280.539 195.604 325.396 240.461 380.731 240.461C436.066 240.461 480.923 195.604 480.923 140.269C480.923 84.9346 436.066 40.0769 380.731 40.0769C325.396 40.0769 280.539 84.9346 280.539 140.269ZM380.731 0C303.262 0 240.461 62.8007 240.461 140.269C240.461 217.737 303.262 280.539 380.731 280.539C458.2 280.539 521 217.737 521 140.269C521 62.8007 458.2 0 380.731 0Z"
-          />
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M40.0769 140.269C40.0769 195.604 84.9346 240.461 140.269 240.461C195.604 240.461 240.461 195.604 240.461 140.269C240.461 84.9346 195.604 40.0769 140.269 40.0769C84.9346 40.0769 40.0769 84.9346 40.0769 140.269ZM140.269 0C62.8007 0 0 62.8007 0 140.269C0 217.737 62.8007 280.539 140.269 280.539C217.737 280.539 280.539 217.737 280.539 140.269C280.539 62.8007 217.737 0 140.269 0Z"
-          />
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M280.539 380.731C280.539 436.066 325.396 480.923 380.731 480.923C436.066 480.923 480.923 436.066 480.923 380.731C480.923 325.396 436.066 280.539 380.731 280.539C325.396 280.539 280.539 325.396 280.539 380.731ZM380.731 240.461C303.262 240.461 240.461 303.262 240.461 380.731C240.461 458.2 303.262 521 380.731 521C458.2 521 521 458.2 521 380.731C521 303.262 458.2 240.461 380.731 240.461Z"
-          />
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M40.0769 380.731C40.0769 436.066 84.9346 480.923 140.269 480.923C195.604 480.923 240.461 436.066 240.461 380.731C240.461 325.396 195.604 280.539 140.269 280.539C84.9346 280.539 40.0769 325.396 40.0769 380.731ZM140.269 240.461C62.8007 240.461 0 303.262 0 380.731C0 458.2 62.8007 521 140.269 521C217.737 521 280.539 458.2 280.539 380.731C280.539 303.262 217.737 240.461 140.269 240.461Z"
-          />
+        <svg class="brand__logo" viewBox="-12 -12 545 545" aria-hidden="true" focusable="false">
+          <circle class="brand__logo-ring" cx="140.269" cy="140.269" r="120.231" style="fill:none;stroke:currentColor;stroke-width:var(--logo-stroke,44px)" />
+          <circle class="brand__logo-ring" cx="380.731" cy="140.269" r="120.231" style="fill:none;stroke:currentColor;stroke-width:var(--logo-stroke,44px)" />
+          <circle class="brand__logo-ring" cx="140.269" cy="380.731" r="120.231" style="fill:none;stroke:currentColor;stroke-width:var(--logo-stroke,44px)" />
+          <circle class="brand__logo-ring" cx="380.731" cy="380.731" r="120.231" style="fill:none;stroke:currentColor;stroke-width:var(--logo-stroke,44px)" />
         </svg>
       </span>
       <span class="brand__name">Flyvendebønder</span>
@@ -56,8 +47,8 @@
         </div>
       </div>
 
-      <main id="top" class="main container proto-main">
-      <section id="plan" class="section" aria-labelledby="plan-title">
+      <main id="top" class="main container proto-main fb-shell">
+      <section id="plan" class="section section--hero fb-section fb-stack" aria-labelledby="plan-title">
         <h2 id="plan-title" class="section__title" data-animate="in" style="--d: 1800ms">Flyvendebønder</h2>
 
         <p class="copy" data-animate="in" style="--d: 1900ms">
@@ -67,7 +58,7 @@
         </p>
 
         <div class="case-grid" aria-label="Plan">
-          <div class="case" data-animate="in" style="--d: 2050ms">
+          <div class="case fb-card" data-animate="in" style="--d: 2050ms">
             <div class="case__kicker">Utgangspunkt</div>
             <div class="case__title">Hva vi skal finne ut</div>
             <p class="case__text">
@@ -75,7 +66,7 @@
               faktisk lønner seg å fly, og hva bonden i praksis får brukt dataene til i beslutninger gjennom sesongen.
             </p>
           </div>
-          <div class="case" data-animate="in" style="--d: 2150ms">
+          <div class="case fb-card" data-animate="in" style="--d: 2150ms">
             <div class="case__kicker">Gjennomføring</div>
             <div class="case__title">Slik planlegger vi 2026</div>
             <p class="case__text">
@@ -84,7 +75,7 @@
               senere.
             </p>
           </div>
-          <div class="case" data-animate="in" style="--d: 2250ms">
+          <div class="case fb-card" data-animate="in" style="--d: 2250ms">
             <div class="case__kicker">Leveranse</div>
             <div class="case__title">Hva vi publiserer her</div>
             <p class="case__text">
@@ -95,76 +86,50 @@
         </div>
       </section>
 
-      <section id="oppdateringer" class="section" aria-labelledby="oppdateringer-title">
+      <section id="oppdateringer" class="section fb-section fb-stack" aria-labelledby="oppdateringer-title">
         <h2 id="oppdateringer-title" class="section__title" data-animate="in" style="--d: 3300ms">Oppdateringer</h2>
         <p class="copy copy--secondary" data-animate="in" style="--d: 3450ms">
           Milepæler fra pilotløpet på Meen gård, fra oppstart til videre utvikling mot sesong.
         </p>
 
-        <div class="timeline" role="list">
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3600ms">
+        <div class="timeline fb-stack" role="list">
+          <article class="timeline__item fb-card" role="listitem" data-animate="in" style="--d: 3600ms">
             <div class="timeline__date">18. desember 2025</div>
             <div class="timeline__text">Vi gikk inn i et samarbeid med Meen gård og startet pilotløpet.</div>
           </article>
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3720ms">
+          <article class="timeline__item fb-card" role="listitem" data-animate="in" style="--d: 3720ms">
             <div class="timeline__date">Januar–februar 2026</div>
             <div class="timeline__text">Vi utforsket konsepter og avgrenset første versjon av løsningen.</div>
           </article>
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3840ms">
+          <article class="timeline__item fb-card" role="listitem" data-animate="in" style="--d: 3840ms">
             <div class="timeline__date">17. februar 2026</div>
             <div class="timeline__text">Vi startet utvikling av en egen Flyvendebønder-applikasjon.</div>
           </article>
-          <article class="timeline__item" role="listitem" data-animate="in" style="--d: 3960ms">
+          <article class="timeline__item fb-card" role="listitem" data-animate="in" style="--d: 3960ms">
             <div class="timeline__date">17. februar 2026</div>
             <div class="timeline__text">Appen gikk live med kart- og albumfunksjonalitet.</div>
           </article>
         </div>
       </section>
 
-      <section id="demo" class="section section--demo" aria-labelledby="demo-title">
-        <h2 id="demo-title" class="section__title" data-animate="in" style="--d: 4350ms">Appstatus</h2>
-        <p class="copy copy--secondary" data-animate="in" style="--d: 4480ms">
-          Vi bygger nå videre på egen applikasjon i pilotfasen, med fokus på enkel import, visning og tolkning av dronebilder direkte
-          i Flyvendebønder.
-        </p>
-        <p class="copy copy--secondary" data-animate="in" style="--d: 4540ms">
-          Vi utvikler underveis etter behov, og prioriterer først et solid fundament før vi bygger pipelines og starter med mer
-          avanserte analyser.
-        </p>
+      <section id="demo" class="section section--demo fb-section" aria-labelledby="demo-title">
+        <div class="appstatus-card fb-card fb-stack">
+          <h2 id="demo-title" class="section__title" data-animate="in" style="--d: 4350ms">Appstatus</h2>
+          <p class="copy copy--secondary" data-animate="in" style="--d: 4480ms">
+            Vi bygger nå videre på egen applikasjon i pilotfasen, med fokus på enkel import, visning og tolkning av dronebilder direkte
+            i Flyvendebønder.
+          </p>
+          <p class="copy copy--secondary" data-animate="in" style="--d: 4540ms">
+            Vi utvikler underveis etter behov, og prioriterer først et solid fundament før vi bygger pipelines og starter med mer
+            avanserte analyser.
+          </p>
+        </div>
       </section>
 
-      <footer id="app-link" class="footer footer--app" data-animate="in" style="--d: 3650ms">
+      <footer id="app-link" class="footer footer--app fb-stack" data-animate="in" style="--d: 3650ms">
         <p class="footer__label">Utforsk appen på</p>
         <p data-animate="in" style="--d: 4600ms">
-          <a class="demo-link demo-link--liquid" href="/app/" aria-label="Åpne Flyvendebønder-appen">
-            <span class="demo-link__track-text" aria-hidden="true">Flyvendebønder</span>
-            <span class="demo-link__thumb" aria-hidden="true">
-              <span class="demo-link__track-logo" aria-hidden="true">
-                <svg viewBox="0 0 521 521" aria-hidden="true">
-                  <path
-                    fill-rule="evenodd"
-                    clip-rule="evenodd"
-                    d="M280.539 140.269C280.539 195.604 325.396 240.461 380.731 240.461C436.066 240.461 480.923 195.604 480.923 140.269C480.923 84.9346 436.066 40.0769 380.731 40.0769C325.396 40.0769 280.539 84.9346 280.539 140.269ZM380.731 0C303.262 0 240.461 62.8007 240.461 140.269C240.461 217.737 303.262 280.539 380.731 280.539C458.2 280.539 521 217.737 521 140.269C521 62.8007 458.2 0 380.731 0Z"
-                  />
-                  <path
-                    fill-rule="evenodd"
-                    clip-rule="evenodd"
-                    d="M40.0769 140.269C40.0769 195.604 84.9346 240.461 140.269 240.461C195.604 240.461 240.461 195.604 240.461 140.269C240.461 84.9346 195.604 40.0769 140.269 40.0769C84.9346 40.0769 40.0769 84.9346 40.0769 140.269ZM140.269 0C62.8007 0 0 62.8007 0 140.269C0 217.737 62.8007 280.539 140.269 280.539C217.737 280.539 280.539 217.737 280.539 140.269C280.539 62.8007 217.737 0 140.269 0Z"
-                  />
-                  <path
-                    fill-rule="evenodd"
-                    clip-rule="evenodd"
-                    d="M280.539 380.731C280.539 436.066 325.396 480.923 380.731 480.923C436.066 480.923 480.923 436.066 480.923 380.731C480.923 325.396 436.066 280.539 380.731 280.539C325.396 280.539 280.539 325.396 280.539 380.731ZM380.731 240.461C303.262 240.461 240.461 303.262 240.461 380.731C240.461 458.2 303.262 521 380.731 521C458.2 521 521 458.2 521 380.731C521 303.262 458.2 240.461 380.731 240.461Z"
-                  />
-                  <path
-                    fill-rule="evenodd"
-                    clip-rule="evenodd"
-                    d="M40.0769 380.731C40.0769 436.066 84.9346 480.923 140.269 480.923C195.604 480.923 240.461 436.066 240.461 380.731C240.461 325.396 195.604 280.539 140.269 280.539C84.9346 280.539 40.0769 325.396 40.0769 380.731ZM140.269 240.461C62.8007 240.461 0 303.262 0 380.731C0 458.2 62.8007 521 140.269 521C217.737 521 280.539 458.2 280.539 380.731C280.539 303.262 217.737 240.461 140.269 240.461Z"
-                  />
-                </svg>
-              </span>
-            </span>
-          </a>
+          <a class="fb-btn" href="/app/" aria-label="Åpne Flyvendebønder-appen">Åpne Flyvendebønder-appen</a>
         </p>
       </footer>
       </main>

@@ -19,7 +19,8 @@ from .metadata_utils import (
     select_heading_from_metadata,
     select_pitch_from_metadata,
 )
-from .tag_utils import extract_meta_float, parse_tag_groups
+from .tag_utils import parse_tag_json
+from .view_overrides import extract_manual_view_override
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -73,22 +74,6 @@ _PHOTO_ANALYSIS_ESTIMATED_FALLBACK_SCORE_THRESHOLD = 1
 
 def _split_comma_values(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
-
-
-def _parse_tags(photo: Photo) -> list[str]:
-    user_tags, system_tags = parse_tag_groups(photo.tags_json)
-    return [*user_tags, *system_tags]
-
-
-def _extract_manual_view_override(photo: Photo) -> tuple[float, float] | None:
-    tags = _parse_tags(photo)
-    lat = extract_meta_float(tags, "meta:manual_view_lat")
-    lng = extract_meta_float(tags, "meta:manual_view_lng")
-    if lat is None or lng is None:
-        return None
-    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
-        return None
-    return lat, lng
 
 
 def _distance_m(from_lat: float, from_lng: float, to_lat: float, to_lng: float) -> float:
@@ -571,7 +556,7 @@ def _derive_geometry(
     if not settings.photo_analysis_enabled:
         return GeometryResult(lat=photo.lat, lng=photo.lng, geometry_method="manual", confidence=0.6)
 
-    manual_override = _extract_manual_view_override(photo)
+    manual_override = extract_manual_view_override(parse_tag_json(photo.tags_json))
     if manual_override is not None:
         manual_lat, manual_lng = manual_override
         return GeometryResult(

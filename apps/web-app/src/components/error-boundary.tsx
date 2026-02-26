@@ -46,25 +46,25 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#1d1b16] p-5 text-[#f2e8d8]">
-        <div className="w-full max-w-md rounded-xl border border-[#ccb38a]/50 bg-[#2d281f] p-5 shadow-2xl">
+      <div className="flex min-h-screen items-center justify-center bg-fb-surface-base p-5 text-fb-text-primary">
+        <div className="w-full max-w-md rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-5 shadow-2xl">
           <h1 className="text-xl font-semibold">Noe gikk galt i grensesnittet</h1>
-          <p className="mt-2 text-sm text-[#e5d8be]">En uventet feil stoppet visningen. Prøv å laste på nytt.</p>
-          <pre className="mt-3 max-h-40 overflow-auto rounded border border-[#bda67d]/40 bg-[#1f1b14] p-2 text-xs text-[#f7ecd5]">
+          <p className="mt-2 text-sm text-fb-text-secondary">En uventet feil stoppet visningen. Prøv å laste på nytt.</p>
+          <pre className="mt-3 max-h-40 overflow-auto rounded border border-[color:var(--fb-chip-border)] bg-[color:var(--fb-surface-page)] p-2 text-xs text-fb-text-primary">
             {this.state.error.message}
           </pre>
           <div className="mt-4 flex gap-2">
             <button
               type="button"
               onClick={this.handleRetry}
-              className="rounded-md bg-[#e3c58a] px-3 py-2 text-sm font-medium text-[#2e2414] transition hover:bg-[#f0d8a8]"
+              className="rounded-md bg-[color:var(--fb-accent-emerald)] px-3 py-2 text-sm font-medium text-fb-text-primary transition hover:bg-[color:var(--fb-accent-emerald)]/90"
             >
               Prøv på nytt
             </button>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-md border border-[#cab48b]/70 bg-transparent px-3 py-2 text-sm font-medium text-[#e8d8ba] transition hover:border-[#e0cb9d] hover:bg-[#3a3024]"
+              className="rounded-md border border-fb-border-subtle bg-transparent px-3 py-2 text-sm font-medium text-fb-text-primary transition hover:border-[color:var(--fb-focus-ring)] hover:bg-[color:var(--fb-surface-overlay)]"
             >
               Last siden på nytt
             </button>
