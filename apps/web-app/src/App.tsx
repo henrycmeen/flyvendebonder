@@ -1596,7 +1596,7 @@ export default function App() {
     }
 
     if (selectedDate) {
-      if (syncSelectionToUrl) {
+      if (syncSelectionToUrl && activeView === "map") {
         next.set("date", selectedDate);
       } else {
         next.delete("date");
