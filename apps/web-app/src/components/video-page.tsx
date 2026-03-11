@@ -813,7 +813,7 @@ export function VideoPage({
                   <Clapperboard className="h-5 w-5 text-fb-text-secondary" />
                   <h1 className="text-lg font-semibold text-fb-text-primary">Videoreview</h1>
                 </div>
-                <p className="text-sm text-fb-text-secondary">Samlet import skjer via `Legg til media`. Her følger du opp videoruter og steg.</p>
+                <p className="text-sm text-fb-text-secondary">Samlet import skjer via import-siden. Her følger du opp videoruter og steg.</p>
               </div>
             </Section>
             {queuedJobs.length === 0 ? (
@@ -829,7 +829,7 @@ export function VideoPage({
                   </p>
                   {onStartMediaImport ? (
                     <Button type="button" onClick={onStartMediaImport}>
-                      Legg til media
+                      Åpne import
                     </Button>
                   ) : null}
                 </div>

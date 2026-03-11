@@ -1,4 +1,5 @@
 import * as React from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,10 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
         <SheetContent side="left" className="bg-fb-surface-page">
+          <DialogPrimitive.Title className="sr-only">Hovedmeny</DialogPrimitive.Title>
+          <DialogPrimitive.Description className="sr-only">
+            Navigasjon og innstillinger for Flyvendebønder.
+          </DialogPrimitive.Description>
           {content}
         </SheetContent>
       </Sheet>

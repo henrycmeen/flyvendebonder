@@ -406,8 +406,8 @@ export function SettingsDialog({
                 <ScrollArea className="h-52 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
                   <TechnicalLogList
                     emptyText="Ingen serverlogg lastet enda."
-                    items={backendLogs.map((entry) => ({
-                      id: `${entry.timestamp}-${entry.raw.slice(0, 24)}`,
+                    items={backendLogs.map((entry, index) => ({
+                      id: `${entry.timestamp}-${entry.requestId ?? entry.request_id ?? entry.logger}-${index}`,
                       main: `${entry.timestamp} [${entry.level}] ${entry.logger}: ${entry.message}`,
                       requestId: entry.requestId ?? entry.request_id,
                     }))}

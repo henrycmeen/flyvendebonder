@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { CalendarDays, Clock3, Images, Loader2 } from "lucide-react";
+import { CalendarDays, Clock3, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Divider, Grid, PageShell, Section, Stack } from "@/components/ui/layout-primitives";
+import { Divider, Grid, PageShell } from "@/components/ui/layout-primitives";
 import type { PhotoFeature } from "@/types";
 
 interface AlbumPageProps {
@@ -68,9 +68,9 @@ export function AlbumPage({
 
   const sortedPhotos = useMemo(() => {
     return [...photos].sort((a, b) => {
-      const diff = toTimestamp(a.captured_at) - toTimestamp(b.captured_at);
+      const diff = toTimestamp(b.captured_at) - toTimestamp(a.captured_at);
       if (diff !== 0) return diff;
-      return a.id.localeCompare(b.id);
+      return b.id.localeCompare(a.id);
     });
   }, [photos]);
 
@@ -122,24 +122,9 @@ export function AlbumPage({
     >
       <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
-          <Stack
-            gap={5}
-            className="rounded-[24px] border border-fb-border-subtle bg-fb-surface-ghost p-3 shadow-fb-raised sm:p-4"
-          >
-            <Section compact className="shadow-fb-subtle">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex items-center gap-2">
-                  <Images className="h-5 w-5 text-fb-text-secondary" />
-                  <h1 className="text-lg font-semibold text-fb-text-primary">Album</h1>
-                </div>
-                <p className="text-sm text-fb-text-secondary">
-                  {sortedPhotos.length} bilder · kronologisk (eldst til nyest)
-                </p>
-              </div>
-            </Section>
-
+          <div className="space-y-5 pb-4">
             {loadFailed ? (
-            <section className="rounded-2xl border border-[color:var(--fb-accent-danger)]/45 bg-fb-surface-ghost px-4 py-3 text-sm text-fb-text-primary">
+            <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-fb-text-primary">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p>Kunne ikke laste albumdata akkurat nå.</p>
                 <Button type="button" size="sm" variant="outline" onClick={onLoadMore}>
@@ -160,16 +145,18 @@ export function AlbumPage({
             ) : null}
 
             {!isLoading && sortedPhotos.length === 0 && !loadFailed ? (
-              <Section className="py-6 text-center text-fb-text-secondary">Ingen bilder å vise i album enda.</Section>
+              <section className="py-6 text-center text-fb-text-secondary">Ingen bilder å vise i album enda.</section>
             ) : null}
 
-            {groupedPhotos.map((group) => (
-              <Section
+            {groupedPhotos.map((group, index) => (
+              <section
                 key={group.key}
-                title={<span className="capitalize">{group.label}</span>}
-                actions={<p className="text-xs text-fb-text-muted">{group.photos.length} bilder</p>}
-                className="space-y-2"
+                className={index === 0 ? "space-y-3" : "space-y-3 border-t border-fb-border-subtle/60 pt-5"}
               >
+                <header className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-base font-semibold capitalize text-fb-text-primary">{group.label}</h2>
+                  <p className="text-xs text-fb-text-muted">{group.photos.length} bilder</p>
+                </header>
                 <Grid cols={2} smCols={3} lgCols={4} xlCols={5} gap={3}>
                 {group.photos.map((photo) => (
                   <button
@@ -207,7 +194,7 @@ export function AlbumPage({
                   </button>
                 ))}
                 </Grid>
-              </Section>
+              </section>
             ))}
 
             <section className="pb-2 pt-1">
@@ -229,7 +216,7 @@ export function AlbumPage({
                 </div>
               ) : null}
             </section>
-          </Stack>
+          </div>
         </PageShell>
       </div>
     </div>

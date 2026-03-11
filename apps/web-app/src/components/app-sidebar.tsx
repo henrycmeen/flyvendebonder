@@ -17,7 +17,7 @@ import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { ProfileResponse } from "@/types";
 
-type AppView = "map" | "album" | "video";
+type AppView = "map" | "album" | "import" | "video";
 
 interface LogEntry {
   id: string;
@@ -116,7 +116,7 @@ function SidebarNavigation({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton closeOnClick onClick={() => onStartMediaImport?.()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport?.()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
               <Import className="h-4 w-4 shrink-0" />
             </span>

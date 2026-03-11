@@ -32,7 +32,7 @@ import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterPanel } from "@/components/filter-panel";
-import { MediaImportDialog, type MediaImportSelection } from "@/components/media-import-dialog";
+import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
 import { VideoPage } from "@/components/video-page";
@@ -78,7 +78,7 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "album" | "video";
+type AppView = "map" | "album" | "import" | "video";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
@@ -170,7 +170,7 @@ export default function App() {
   const initialPhoto = params.get("photo");
   const rawInitialView = params.get("view");
   const initialView: AppView =
-    rawInitialView === "album" || rawInitialView === "video" ? rawInitialView : "map";
+    rawInitialView === "album" || rawInitialView === "import" || rawInitialView === "video" ? rawInitialView : "map";
   const hasExplicitDeepLink = initialDate !== null || initialPhoto !== null;
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
@@ -224,7 +224,6 @@ export default function App() {
   const [metadataHeadingDraft, setMetadataHeadingDraft] = useState("");
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
-  const [isMediaImportDialogOpen, setIsMediaImportDialogOpen] = useState(false);
   const [mediaImportError, setMediaImportError] = useState("");
   const [isMediaImportSubmitting, setIsMediaImportSubmitting] = useState(false);
   const [initialVideoJobIds, setInitialVideoJobIds] = useState<string[]>(() => {
@@ -334,17 +333,6 @@ export default function App() {
       }),
     [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
   );
-  const albumPhotoFilter = useMemo(
-    () =>
-      makePhotoFilter({
-        selectedYear,
-        selectedSeason,
-        showOnlyManualQc,
-        showOnlyLowConfidence,
-        lowConfidenceThreshold: CONFIDENCE_FILTER_THRESHOLD,
-      }),
-    [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
-  );
   const selectedPhoto = useMemo(() => {
     if (!selectedPhotoId) return null;
     return (
@@ -353,6 +341,10 @@ export default function App() {
       null
     );
   }, [albumPhotos, photos, selectedPhotoId]);
+  const selectedPhotoExistsInMap = useMemo(() => {
+    if (!selectedPhotoId) return false;
+    return photos.some((photo) => photoIdKey(photo.id) === photoIdKey(selectedPhotoId));
+  }, [photos, selectedPhotoId]);
   const selectedPhotoManualViewTarget = useMemo(
     () => parseManualViewTarget(selectedPhoto?.tags),
     [selectedPhoto?.tags],
@@ -986,7 +978,10 @@ export default function App() {
 
   const handleClosePhotoViewer = useCallback(() => {
     setIsPhotoViewerOpen(false);
-  }, []);
+    if (activeView === "album") {
+      setSelectedPhotoId(null);
+    }
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView !== "map" && hoverPreviewPhotoId) {
@@ -1412,7 +1407,7 @@ export default function App() {
 
         if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
 
-        const pagePhotos = data.photos.filter((photo) => albumPhotoFilter(photo));
+        const pagePhotos = data.photos;
 
         setAlbumPhotos((previous) => {
           if (reset) return pagePhotos;
@@ -1443,7 +1438,7 @@ export default function App() {
             );
             if (seq !== albumLoadSeqRef.current || signal?.aborted) return;
 
-            const ordered = [...data.photos].filter((photo) => albumPhotoFilter(photo)).sort(compareByCapturedAtThenId);
+            const ordered = [...data.photos].sort(compareByCapturedAtThenId);
             setAlbumPhotos(ordered);
             setAlbumCursor(null);
             setAlbumHasMore(false);
@@ -1481,7 +1476,6 @@ export default function App() {
       albumHasMore,
       albumLoadingInitial,
       albumLoadingMore,
-      albumPhotoFilter,
       latestTimelineDate,
       trackRequest,
     ],
@@ -1495,7 +1489,7 @@ export default function App() {
     setAlbumLoadFailed(false);
     setAlbumLoadingInitial(false);
     setAlbumLoadingMore(false);
-}, [latestTimelineDate, showOnlyManualQc, showOnlyLowConfidence]);
+  }, [latestTimelineDate]);
 
   useEffect(() => {
     if (activeView !== "album") return;
@@ -1515,6 +1509,9 @@ export default function App() {
   }, [dayScope, latestFilteredDate, photos.length, photosLoadFailed, selectedDate, selectedSeason, selectedYear]);
 
   useEffect(() => {
+    if (activeView === "album") {
+      return;
+    }
     if (photos.length === 0) {
       setSelectedPhotoId(null);
       return;
@@ -1538,9 +1535,12 @@ export default function App() {
 
       return photos[photos.length - 1]?.id ?? null;
     });
-  }, [photos, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [activeView, photos, hasExplicitDeepLink, syncSelectionToUrl]);
 
   useEffect(() => {
+    if (activeView === "album") {
+      return;
+    }
     if (!selectedDate || photos.length === 0) return;
     if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
     const inSelectedDate = photos.filter((photo) => photo.captured_date === selectedDate);
@@ -1552,7 +1552,31 @@ export default function App() {
       }
       return inSelectedDate[inSelectedDate.length - 1].id;
     });
-  }, [photos, selectedDate, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [activeView, photos, selectedDate, hasExplicitDeepLink, syncSelectionToUrl]);
+
+  useEffect(() => {
+    if (activeView !== "album") return;
+    if (albumPhotos.length === 0) return;
+    if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
+
+    setSelectedPhotoId((previous) => {
+      if (
+        initialPhotoRef.current &&
+        albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))
+      ) {
+        const initialAlbumPhoto = initialPhotoRef.current;
+        initialPhotoRef.current = null;
+        return initialAlbumPhoto;
+      }
+      initialPhotoRef.current = null;
+
+      if (previous && albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(previous))) {
+        return previous;
+      }
+
+      return previous;
+    });
+  }, [activeView, albumPhotos, hasExplicitDeepLink, syncSelectionToUrl]);
 
   useEffect(() => {
     if (!profile?.property || !showPropertyLayer) {
@@ -1565,7 +1589,7 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album" || activeView === "video") {
+    if (activeView === "album" || activeView === "import" || activeView === "video") {
       next.set("view", activeView);
     } else {
       next.delete("view");
@@ -1581,7 +1605,12 @@ export default function App() {
       next.delete("date");
     }
 
-    if (!syncSelectionToUrl) {
+    const shouldPersistPhotoParam =
+      syncSelectionToUrl &&
+      Boolean(selectedPhotoId) &&
+      (isPhotoViewerOpen || (activeView === "map" && selectedPhotoExistsInMap));
+
+    if (!shouldPersistPhotoParam) {
       next.delete("photo");
     } else if (selectedPhotoId) {
       next.set("photo", selectedPhotoId);
@@ -1592,7 +1621,7 @@ export default function App() {
     const query = next.toString();
     const target = query ? `${window.location.pathname}?${query}` : window.location.pathname;
     window.history.replaceState({}, "", target);
-  }, [activeView, selectedDate, selectedPhotoId, syncSelectionToUrl]);
+  }, [activeView, isPhotoViewerOpen, selectedDate, selectedPhotoExistsInMap, selectedPhotoId, syncSelectionToUrl]);
 
   const handleSaveProfile = async (payload: {
     user: {
@@ -1631,15 +1660,17 @@ export default function App() {
   };
 
   const handleStartMediaImport = useCallback(() => {
+    setIsPhotoViewerOpen(false);
     setMediaImportError("");
-    setIsMediaImportDialogOpen(true);
-  }, []);
+    setActiveView("import");
+    addLog("info", "Import åpnet");
+  }, [addLog]);
 
   const handleSubmitMediaImport = useCallback(
-    async ({ images, videos }: MediaImportSelection) => {
+    async ({ images, videos }: MediaImportSelection): Promise<boolean> => {
       if (images.length === 0 && videos.length === 0) {
         setMediaImportError("Velg minst én bildefil eller videofil.");
-        return;
+        return false;
       }
 
       setIsMediaImportSubmitting(true);
@@ -1692,10 +1723,6 @@ export default function App() {
             setSelectedSeason("all");
           }
           setPhotoLoadRetryToken((current) => current + 1);
-
-          if (activeView === "album") {
-            void loadAlbumPage({ reset: true });
-          }
         }
 
         if (videos.length > 0) {
@@ -1750,17 +1777,18 @@ export default function App() {
         }
 
         setStatusText(statusParts.join(" · "));
-        setIsMediaImportDialogOpen(false);
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ukjent feil ved mediaimport.";
         setMediaImportError(message);
         setStatusText(`Mediaimport feilet: ${message}`);
         addLog("error", "Mediaimport feilet", null, { message });
+        return false;
       } finally {
         setIsMediaImportSubmitting(false);
       }
     },
-    [activeView, addLog, loadAlbumPage, loadTimeline, trackRequest],
+    [addLog, loadTimeline, trackRequest],
   );
 
   const handlePropertyTileError = useCallback(
@@ -2630,8 +2658,18 @@ export default function App() {
               addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
             }}
             onChangeView={(view) => {
+              setIsPhotoViewerOpen(false);
               setActiveView(view);
-              addLog("info", view === "album" ? "Album åpnet" : view === "video" ? "Video åpnet" : "Kart åpnet");
+              addLog(
+                "info",
+                view === "album"
+                  ? "Album åpnet"
+                  : view === "import"
+                    ? "Import åpnet"
+                    : view === "video"
+                      ? "Video åpnet"
+                      : "Kart åpnet",
+              );
             }}
             onTogglePropertyLayer={(next) => {
               setShowPropertyLayer(next);
@@ -2660,21 +2698,6 @@ export default function App() {
                   <Menu className="h-4 w-4" />
                 </SidebarTrigger>
               </div>
-
-              {isMediaImportDialogOpen ? (
-                <MediaImportDialog
-                  open={isMediaImportDialogOpen}
-                  busy={isMediaImportSubmitting}
-                  errorMessage={mediaImportError}
-                  onOpenChange={(nextOpen) => {
-                    if (!nextOpen) {
-                      setMediaImportError("");
-                    }
-                    setIsMediaImportDialogOpen(nextOpen);
-                  }}
-                  onImport={handleSubmitMediaImport}
-                />
-              ) : null}
 
               {activeView === "map" ? (
                 <FilterPanel
@@ -2734,6 +2757,12 @@ export default function App() {
                   onLoadMore={handleLoadMoreAlbum}
                   onOpenPhoto={handleOpenPhotoViewer}
                   onScrollActivity={handleAlbumScrollActivity}
+                />
+              ) : activeView === "import" ? (
+                <MediaImportPage
+                  busy={isMediaImportSubmitting}
+                  errorMessage={mediaImportError}
+                  onImport={handleSubmitMediaImport}
                 />
               ) : (
                 <VideoPage
