@@ -284,6 +284,25 @@ body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
 }
 
+.fb-map-overlay-trigger,
+.fb-map-overlay-preview,
+.fb-map-overlay-alert {
+  box-shadow: var(--fb-shadow-floating);
+}
+
+.fb-map-overlay-preview,
+.fb-map-overlay-alert {
+  background: color-mix(in srgb, var(--fb-surface-page) 96%, white);
+  backdrop-filter: blur(14px) saturate(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.04);
+}
+
+@media (max-width: 767px) {
+  .fb-liquid-filter {
+    max-width: min(320px, calc(100vw - 1.5rem));
+  }
+}
+
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-brand {
   display: inline-flex;
   flex: 0 0 auto;

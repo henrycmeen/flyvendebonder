@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, CloudSun, Flower2, Leaf, Snowflake, Sun } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ interface FilterPanelProps {
   };
   onYearChange: (year: string) => void;
   onSeasonChange: (season: SeasonFilter) => void;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 const seasonButtons: Array<{
@@ -39,8 +40,10 @@ export function FilterPanel({
   seasonCounts,
   onYearChange,
   onSeasonChange,
+  onExpandedChange,
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const seasonMeta = useMemo(() => {
     if (selectedSeason === "spring") return { label: "Vår", Icon: Flower2 };
@@ -52,19 +55,50 @@ export function FilterPanel({
 
   const years = useMemo(() => ["all", ...availableYears], [availableYears]);
   const yearLabel = selectedYear === "all" ? "Alle" : selectedYear;
+  const selectedChipClass =
+    "border-[color:color-mix(in_srgb,var(--fb-season-solid)_18%,rgba(255,255,255,0.4))] bg-[color:color-mix(in_srgb,var(--fb-season-solid)_14%,white)] text-fb-text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.42)]";
+  const idleChipClass =
+    "border-white/8 bg-white/[0.03] text-fb-text-primary hover:bg-white/[0.08] hover:border-white/14";
+
+  useEffect(() => {
+    if (!expanded) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setExpanded(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setExpanded(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [expanded]);
+
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
 
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-[860] sm:bottom-4 sm:left-4">
+    <div ref={rootRef} className="pointer-events-none absolute bottom-3 left-3 z-[860] max-w-[calc(100vw-1.5rem)] sm:bottom-4 sm:left-4">
       <Card
         className={cn(
-          "fb-liquid-filter pointer-events-auto overflow-hidden rounded-[26px] transition-[width,border-radius,box-shadow] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
-          expanded ? "w-[min(720px,calc(100vw-1.5rem))]" : "w-[272px] sm:w-[292px]",
+          "fb-liquid-filter pointer-events-auto overflow-hidden rounded-[24px] transition-[width,border-radius,box-shadow,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
+          expanded ? "w-[min(640px,calc(100vw-1.5rem))]" : "w-[236px] sm:w-[256px]",
         )}
       >
         <CardContent className="p-0">
           <button
             type="button"
-            className="fb-liquid-filter__bar flex w-full items-center gap-3 px-4 py-3 text-left"
+            className="fb-liquid-filter__bar flex w-full items-center gap-3 px-3.5 py-3 text-left"
             onClick={() => setExpanded((current) => !current)}
             aria-expanded={expanded}
             aria-label="Åpne filtre"
@@ -77,10 +111,10 @@ export function FilterPanel({
             </span>
 
             <span className="min-w-0 flex-1">
-              <span className="block text-[1.35rem] font-semibold leading-none tracking-[-0.05em] text-[color:var(--fb-season-solid)] transition-[font-size] duration-[var(--fb-motion-duration-medium)] sm:text-[1.5rem]">
+              <span className="block text-[1.2rem] font-semibold leading-none tracking-[-0.05em] text-[color:var(--fb-season-solid)] transition-[font-size] duration-[var(--fb-motion-duration-medium)] sm:text-[1.3rem]">
                 {yearLabel}
               </span>
-              <span className="mt-0.5 block text-[0.8rem] font-semibold uppercase tracking-[0.04em] text-fb-text-primary">
+              <span className="mt-0.5 block text-[0.76rem] font-semibold uppercase tracking-[0.05em] text-fb-text-primary">
                 {seasonMeta.label}
               </span>
             </span>
@@ -102,15 +136,15 @@ export function FilterPanel({
             )}
           >
             <div className="overflow-hidden">
-              <div className="fb-liquid-filter__panel px-4 pb-4 pt-3">
-                <div className="space-y-4">
+              <div className="fb-liquid-filter__panel px-4 pb-4 pt-2">
+                <div className="space-y-3">
                   <div
                     className={cn(
                       "space-y-2 transition-[opacity,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
                       expanded ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
                     )}
+                    style={{ transitionDelay: expanded ? "40ms" : "0ms" }}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Årstall</p>
                     <div className="flex flex-wrap gap-2">
                       {years.map((year) => {
                         const selected = selectedYear === year;
@@ -120,10 +154,8 @@ export function FilterPanel({
                             key={year}
                             type="button"
                             className={cn(
-                              "rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
-                              selected
-                                ? "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)] text-[color:var(--fb-chip-active-text)]"
-                                : "border-white/22 bg-white/10 text-fb-text-primary hover:bg-white/18",
+                              "rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              selected ? selectedChipClass : idleChipClass,
                             )}
                             onClick={() => onYearChange(year)}
                           >
@@ -139,8 +171,8 @@ export function FilterPanel({
                       "space-y-2 transition-[opacity,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
                       expanded ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
                     )}
+                    style={{ transitionDelay: expanded ? "90ms" : "0ms" }}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Årstid</p>
                     <div className="flex flex-wrap gap-2">
                       {seasonButtons.map((item) => {
                         const Icon = item.icon;
@@ -152,15 +184,19 @@ export function FilterPanel({
                             type="button"
                             disabled={disabled}
                             className={cn(
-                              "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
-                              selected
-                                ? "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)] text-[color:var(--fb-chip-active-text)]"
-                                : "border-white/22 bg-white/10 text-fb-text-primary hover:bg-white/18",
+                              "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              selected ? selectedChipClass : idleChipClass,
                               disabled && "cursor-not-allowed opacity-40",
                             )}
                             onClick={() => onSeasonChange(item.key)}
                           >
-                            <Icon className="h-4 w-4" strokeWidth={2.1} />
+                            <Icon
+                              className={cn(
+                                "h-4 w-4",
+                                selected ? "text-[color:color-mix(in_srgb,var(--fb-season-solid)_78%,var(--fb-text-primary))]" : "text-fb-text-secondary",
+                              )}
+                              strokeWidth={2.1}
+                            />
                             {item.label}
                           </button>
                         );

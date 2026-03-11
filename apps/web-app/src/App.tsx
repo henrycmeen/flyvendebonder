@@ -255,6 +255,7 @@ export default function App() {
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
     if (selectedSeason !== "all") return selectedSeason;
     const month = new Date().getMonth() + 1;
@@ -451,6 +452,15 @@ export default function App() {
       winter: source.filter((entry) => entry.season === "winter").length,
     };
   }, [selectedYear, timelineIndexed]);
+
+  const resolveSeasonForYearChange = useCallback(
+    (nextYear: string): SeasonFilter => {
+      if (selectedSeason === "all") return "all";
+      const source = nextYear === "all" ? timelineIndexed : timelineIndexed.filter((entry) => entry.year === nextYear);
+      return source.some((entry) => entry.season === selectedSeason) ? selectedSeason : "all";
+    },
+    [selectedSeason, timelineIndexed],
+  );
 
   const filteredTimeline = useMemo(
     () =>
@@ -2644,7 +2654,7 @@ export default function App() {
             <div className="relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
               <div className="pointer-events-none absolute left-3 top-3 z-[860] sm:left-4 sm:top-4">
                 <SidebarTrigger
-                  className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary shadow-fb-raised transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
+                  className="fb-map-overlay-trigger pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
                   aria-label="Åpne meny"
                 >
                   <Menu className="h-4 w-4" />
@@ -2672,13 +2682,15 @@ export default function App() {
                   selectedSeason={selectedSeason}
                   availableYears={availableYears}
                   seasonCounts={seasonCounts}
+                  onExpandedChange={setIsFilterExpanded}
                   onYearChange={(year) => {
+                    const nextSeason = resolveSeasonForYearChange(year);
                     setSyncSelectionToUrl(true);
                     setSelectedYear(year);
-                    setSelectedSeason("all");
+                    setSelectedSeason(nextSeason);
                     setDayScope("all");
                     setMapResetToken((value) => value + 1);
-                    addLog("info", "Årsfilter endret", null, { year });
+                    addLog("info", "Årsfilter endret", null, { year, season: nextSeason });
                   }}
                   onSeasonChange={(season) => {
                     setSyncSelectionToUrl(true);
@@ -2739,8 +2751,8 @@ export default function App() {
               )}
 
               {activeView === "map" && photosLoadFailed ? (
-                <div className="pointer-events-none absolute left-1/2 top-3 z-[660] -translate-x-1/2 px-3 md:top-4">
-                  <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary shadow-lg">
+                <div className="pointer-events-none absolute left-1/2 top-3 z-[980] -translate-x-1/2 px-3 md:top-4">
+                  <div className="fb-map-overlay-alert pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary">
                     <span>Kunne ikke laste bilder for valgt filter.</span>
                     <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
                       <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -2750,9 +2762,9 @@ export default function App() {
                 </div>
               ) : null}
 
-              {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen ? (
-                <div className="pointer-events-none absolute left-4 top-4 z-[640] hidden md:block">
-                  <div className="overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2 shadow-fb-floating">
+              {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen && !isFilterExpanded && !photosLoadFailed ? (
+                <div className="pointer-events-none absolute left-4 top-4 z-[760] hidden md:block">
+                  <div className="fb-map-overlay-preview overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2">
                     <img
                       src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
                       alt={hoverPreviewPhoto.title || "Forhåndsvisning"}

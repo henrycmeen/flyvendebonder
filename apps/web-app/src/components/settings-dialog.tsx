@@ -220,20 +220,20 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[28px] border-fb-border-subtle bg-fb-surface-page p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-4xl sm:p-6">
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6">
         <DialogHeader>
           <DialogTitle>Innstillinger</DialogTitle>
           <DialogDescription>Profil, kartlag og teknisk logg for Flyvendebønder.</DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-[22px] border border-fb-border-subtle bg-fb-surface-base px-4 py-4 shadow-fb-subtle">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
               <p className="text-base font-semibold text-fb-text-primary">{profile?.property?.label ?? "Meen gård"}</p>
               <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-fb-border-subtle bg-fb-surface-page px-3 py-1.5 text-xs text-fb-text-secondary">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ddd6c3] bg-[#fcfaf3] px-3 py-1.5 text-xs text-fb-text-secondary">
               <seasonMeta.Icon className="h-3.5 w-3.5" />
               {seasonMeta.label}
             </div>
@@ -241,16 +241,16 @@ export function SettingsDialog({
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-base p-1">
-            <TabsTrigger value="profile">Profil</TabsTrigger>
-            <TabsTrigger value="layer">Kartlag</TabsTrigger>
-            <TabsTrigger value="log">Teknisk logg</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-none border-0 bg-transparent p-0">
+            <TabsTrigger value="profile" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Profil</TabsTrigger>
+            <TabsTrigger value="layer" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Kartlag</TabsTrigger>
+            <TabsTrigger value="log" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Teknisk logg</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="mt-4">
             <form className="w-full" onSubmit={onSubmit}>
               <Stack gap={4}>
-                <Section compact title="Kundeprofil" className="rounded-[22px] border-fb-border-subtle bg-fb-surface-base shadow-fb-subtle">
+                <Section compact title="Kundeprofil" className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="full_name">Navn</Label>
@@ -280,7 +280,7 @@ export function SettingsDialog({
                   </div>
                 </Section>
 
-                <Section compact title="Eiendom" description={`Aktiv: ${propertyLabel}`} className="rounded-[22px] border-fb-border-subtle bg-fb-surface-base shadow-fb-subtle">
+                <Section compact title="Eiendom" description={`Aktiv: ${propertyLabel}`} className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="label">Navn på gård</Label>
@@ -311,7 +311,7 @@ export function SettingsDialog({
           </TabsContent>
 
           <TabsContent value="layer" className="mt-4">
-            <Stack gap={4} className="rounded-[22px] border border-fb-border-subtle bg-fb-surface-base p-4 shadow-fb-subtle">
+            <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
               <div className="grid gap-2">
                 <Label className="text-xs uppercase tracking-[0.08em] text-fb-text-secondary">Bakgrunnskart</Label>
                 <div className="flex flex-wrap gap-2">
@@ -333,7 +333,7 @@ export function SettingsDialog({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Vintage-kart</p>
                   <p className="text-xs text-fb-text-secondary">Papiraktig bakgrunn for roligere kartvisning.</p>
@@ -341,7 +341,7 @@ export function SettingsDialog({
                 <Switch id="map-vintage" checked={mapVintage} onCheckedChange={onChangeMapVintage} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Svart/hvitt</p>
                   <p className="text-xs text-fb-text-secondary">Demper bakgrunnskartet når bildene skal være i fokus.</p>
@@ -349,7 +349,7 @@ export function SettingsDialog({
                 <Switch id="map-grayscale" checked={mapGrayscale} onCheckedChange={onChangeMapGrayscale} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Vis zoomknapper</p>
                   <p className="text-xs text-fb-text-secondary">Vis pluss/minus-knappene i kartet.</p>
@@ -359,7 +359,7 @@ export function SettingsDialog({
 
               <Divider />
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Vis eiendomsgrenser</p>
                   <p className="text-xs text-fb-text-secondary">{propertyStatus}</p>
@@ -367,7 +367,7 @@ export function SettingsDialog({
                 <Switch id="show-property-layer" checked={showPropertyLayer} onCheckedChange={onTogglePropertyLayer} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Kun manuell QC</p>
                   <p className="text-xs text-fb-text-secondary">Vis bare bilder som trenger manuell vurdering.</p>
@@ -375,7 +375,7 @@ export function SettingsDialog({
                 <Switch id="show-manual-qc" checked={showOnlyManualQc} onCheckedChange={onToggleManualQcFilter} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <p className="text-sm text-fb-text-primary">Lav tillit</p>
                   <p className="text-xs text-fb-text-secondary">Sorter frem bilder med svakest posisjon først.</p>
@@ -383,14 +383,14 @@ export function SettingsDialog({
                 <Switch id="show-low-confidence" checked={showOnlyLowConfidence} onCheckedChange={onToggleLowConfidenceFilter} />
               </div>
 
-              <div className="rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-2 text-xs text-fb-text-secondary">
+              <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
                 {statusText}
               </div>
             </Stack>
           </TabsContent>
 
           <TabsContent value="log" className="mt-4">
-            <Stack gap={3} className="rounded-[22px] border border-fb-border-subtle bg-fb-surface-base p-4 shadow-fb-subtle">
+            <Stack gap={3} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
               <div className="space-y-2">
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button type="button" variant="default" size="sm" onClick={onFetchBackendLogs} disabled={backendLogsLoading}>
@@ -400,10 +400,10 @@ export function SettingsDialog({
                     Tøm backendlogg
                   </Button>
                 </div>
-                <div className="rounded-[18px] border border-fb-border-subtle bg-fb-surface-page px-3 py-2 text-xs text-fb-text-secondary">
+                <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
                   Viser siste linjer fra backend, begrenset til siste 120 i denne visningen.
                 </div>
-                <ScrollArea className="h-52 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page p-2">
+                <ScrollArea className="h-52 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
                   <TechnicalLogList
                     emptyText="Ingen serverlogg lastet enda."
                     items={backendLogs.map((entry) => ({
@@ -422,7 +422,7 @@ export function SettingsDialog({
                     Tøm logg
                   </Button>
                 </div>
-                <ScrollArea className="h-40 rounded-[18px] border border-fb-border-subtle bg-fb-surface-page p-2">
+                <ScrollArea className="h-40 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
                   <TechnicalLogList
                     emptyText="Ingen frontend logger enda."
                     items={logs.map((entry) => ({
