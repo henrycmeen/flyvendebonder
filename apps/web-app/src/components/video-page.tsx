@@ -634,8 +634,8 @@ export function VideoPage({
   useEffect(() => {
     if (initialJobIds.length === 0) return;
 
-    setJobIds((current) => mergeJobIds(current, initialJobIds));
-    setSelectedJobId((current) => current ?? initialJobIds[0] ?? null);
+    setJobIds((current) => mergeJobIds(initialJobIds, current));
+    setSelectedJobId(initialJobIds[0] ?? null);
   }, [initialJobIds]);
 
   useEffect(() => {

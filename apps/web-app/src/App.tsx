@@ -41,7 +41,6 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import type {
   GardskartJob,
   VideoMapArtifact,
-  VideoJobReview,
   PhotoAnalysis,
   PhotoAnalysisActionResponse,
   PhotoMetadataActionResponse,
@@ -86,6 +85,7 @@ const MAP_PHOTO_TIMEOUT_MS = 45_000;
 const MAP_PHOTO_MAX_PAGES = 80;
 const VIDEO_JOB_QUEUE_STORAGE_KEY = "fb-video-job-queue";
 const VIDEO_JOB_ARCHIVE_STORAGE_KEY = "fb-video-job-archive";
+const VIDEO_JOB_ARTIFACTS_STORAGE_KEY = "fb-video-job-artifacts";
 
 function mergeUniqueJobIds(current: string[], incoming: string[]): string[] {
   const seen = new Set<string>();
@@ -99,15 +99,37 @@ function mergeUniqueJobIds(current: string[], incoming: string[]): string[] {
   return merged;
 }
 
-function buildVideoArtifactResult(jobId: string, mode: string | null) {
-  return {
-    stitch_job_id: mode === "map3d" ? "job" : "frames",
-    preview_image: `/api/v1/video-jobs/${jobId}/preview.jpg`,
-    mesh_url: mode === "map3d" ? `/api/v1/video-jobs/${jobId}/mesh.glb` : null,
-    geodata_geojson: `/api/v1/video-jobs/${jobId}/geodata.geojson`,
-    metadata_json: `/api/v1/video-jobs/${jobId}/metadata.json`,
-    epsg: "EPSG:4326",
-  };
+function parseStoredVideoArtifacts(raw: string | null): VideoMapArtifact[] {
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.flatMap((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+      const artifact = entry as Partial<VideoMapArtifact>;
+      const jobId = typeof artifact.jobId === "string" ? artifact.jobId.trim() : "";
+      const createdAt = typeof artifact.createdAt === "string" ? artifact.createdAt : "";
+      const mode = typeof artifact.mode === "string" ? artifact.mode : "frames";
+      const reviewState = artifact.reviewState;
+      if (!jobId || !createdAt) return [];
+      if (reviewState !== "placed" && reviewState !== "kept" && reviewState !== "discarded") return [];
+
+      return [
+        {
+          jobId,
+          createdAt,
+          mode,
+          reviewState,
+          placement: artifact.placement ?? null,
+          map3dResult: artifact.map3dResult ?? null,
+        } satisfies VideoMapArtifact,
+      ];
+    });
+  } catch {
+    return [];
+  }
 }
 
 const isRequestAborted = (error: ApiError): boolean =>
@@ -202,7 +224,10 @@ export default function App() {
     setShowZoomControls,
   } = useMapPreferences();
   const [job, setJob] = useState<GardskartJob | null>(null);
-  const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>([]);
+  const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
+    if (typeof window === "undefined") return [];
+    return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
+  });
   const [showPropertyLayer, setShowPropertyLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
@@ -289,6 +314,17 @@ export default function App() {
       // Ignore storage errors in private mode or unsupported browsers.
     }
   }, [archivedVideoJobIds]);
+  useEffect(() => {
+    try {
+      if (videoMapArtifacts.length === 0) {
+        window.localStorage.removeItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY, JSON.stringify(videoMapArtifacts));
+    } catch {
+      // Ignore storage errors in private mode or unsupported browsers.
+    }
+  }, [videoMapArtifacts]);
   const [mapResetToken, setMapResetToken] = useState(0);
   const [syncSelectionToUrl, setSyncSelectionToUrl] = useState(() => Boolean(initialDate || initialPhoto));
   const uiTheme: UiTheme = baseMapStyle === "satellite" ? "satellite" : "standard";
@@ -362,7 +398,7 @@ export default function App() {
   }, [mapNavigationAnchorId, photos, selectedPhotoId]);
   const navigationPhotos = useMemo(() => {
     if (activeView === "album") {
-      return [...albumPhotos].sort(compareByCapturedAtThenId);
+      return [...albumPhotos].sort((a, b) => compareByCapturedAtThenId(b, a));
     }
 
     if (photos.length === 0) return [];
@@ -470,67 +506,6 @@ export default function App() {
     () => videoMapArtifacts.filter((artifact) => artifact.reviewState === "placed"),
     [videoMapArtifacts],
   );
-  useEffect(() => {
-    if (initialVideoJobIds.length === 0) return;
-
-    const abortController = new AbortController();
-    let active = true;
-
-    const loadVideoReviews = async () => {
-      const artifacts = await Promise.all(
-        initialVideoJobIds.map(async (jobId): Promise<VideoMapArtifact | null> => {
-          try {
-            const response = await fetch(`/api/v1/video-jobs/${encodeURIComponent(jobId)}/review`, {
-              method: "GET",
-              headers: {
-                Accept: "application/json",
-              },
-              signal: abortController.signal,
-            });
-            if (response.status === 404) {
-              return null;
-            }
-            const payload = await readResponsePayload(response);
-            if (!response.ok) {
-              return null;
-            }
-
-            const review = payload as VideoJobReview;
-            if (!review?.job_id) {
-              return null;
-            }
-
-            return {
-              jobId: review.job_id,
-              createdAt: review.created_at ?? review.reviewed_at,
-              mode: review.mode ?? "frames",
-              reviewState: review.review_state,
-              placement: review.placement,
-              map3dResult: buildVideoArtifactResult(review.job_id, review.mode),
-            } satisfies VideoMapArtifact;
-          } catch {
-            return null;
-          }
-        }),
-      );
-
-      if (!active) return;
-      const nextArtifacts = artifacts.filter((artifact): artifact is VideoMapArtifact => artifact !== null);
-      if (nextArtifacts.length === 0) return;
-
-      setVideoMapArtifacts((previous) => [
-        ...previous.filter((entry) => !nextArtifacts.some((artifact) => artifact.jobId === entry.jobId)),
-        ...nextArtifacts,
-      ]);
-    };
-
-    void loadVideoReviews();
-
-    return () => {
-      active = false;
-      abortController.abort();
-    };
-  }, [initialVideoJobIds]);
 
   const trackRequest = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
     setPendingRequests((count) => count + 1);
@@ -1364,6 +1339,12 @@ export default function App() {
         return;
       }
 
+      if (reset) {
+        if (albumLoadingInitial) return;
+      } else if (albumLoadingMore || !albumHasMore) {
+        return;
+      }
+
       const seq = ++albumLoadSeqRef.current;
       const requestController = options?.signal
         ? null
@@ -1376,11 +1357,8 @@ export default function App() {
       const signal = requestController?.signal ?? options?.signal;
 
       if (reset) {
-        if (albumLoadingInitial) return;
         setAlbumLoadingInitial(true);
-        setAlbumLoadedDate(latestTimelineDate);
       } else {
-        if (albumLoadingMore || !albumHasMore) return;
         setAlbumLoadingMore(true);
       }
       setAlbumLoadFailed(false);
@@ -1416,6 +1394,9 @@ export default function App() {
         setAlbumCursor(data.next_cursor ?? null);
         setAlbumHasMore(Boolean(data.next_cursor));
         setAlbumLoadFailed(false);
+        if (reset) {
+          setAlbumLoadedDate(latestTimelineDate);
+        }
         addLog("info", reset ? "Album side 1 lastet" : "Albumside lastet", requestId, {
           count: data.count,
           nextCursor: Boolean(data.next_cursor),
@@ -1494,11 +1475,12 @@ export default function App() {
   useEffect(() => {
     if (activeView !== "album") return;
     if (!latestTimelineDate) return;
+    if (albumLoadFailed) return;
 
     if (albumLoadedDate !== latestTimelineDate) {
       void loadAlbumPage({ reset: true });
     }
-  }, [activeView, albumLoadedDate, latestTimelineDate, loadAlbumPage]);
+  }, [activeView, albumLoadFailed, albumLoadedDate, latestTimelineDate, loadAlbumPage]);
 
   useEffect(() => {
     if (photosLoadFailed || !latestFilteredDate) {
@@ -1660,11 +1642,11 @@ export default function App() {
   };
 
   const handleStartMediaImport = useCallback(() => {
-    setIsPhotoViewerOpen(false);
+    handleClosePhotoViewer();
     setMediaImportError("");
     setActiveView("import");
     addLog("info", "Import åpnet");
-  }, [addLog]);
+  }, [addLog, handleClosePhotoViewer]);
 
   const handleSubmitMediaImport = useCallback(
     async ({ images, videos }: MediaImportSelection): Promise<boolean> => {
@@ -1767,7 +1749,7 @@ export default function App() {
             });
           }
 
-          setInitialVideoJobIds((current) => mergeUniqueJobIds(current, startedJobIds));
+          setInitialVideoJobIds((current) => mergeUniqueJobIds(startedJobIds, current));
           setActiveView("video");
           statusParts.push(
             videos.length === 1
@@ -2658,7 +2640,7 @@ export default function App() {
               addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
             }}
             onChangeView={(view) => {
-              setIsPhotoViewerOpen(false);
+              handleClosePhotoViewer();
               setActiveView(view);
               addLog(
                 "info",
