@@ -166,6 +166,68 @@ export interface GardskartJob {
   is_expired: boolean;
 }
 
+export interface VideoMap3dResultInfo {
+  stitch_job_id: string | null;
+  preview_image: string | null;
+  mesh_url: string | null;
+  geodata_geojson: string | null;
+  metadata_json: string | null;
+  epsg: string | null;
+}
+
+export interface VideoFrameResultInfo {
+  index: number;
+  timestamp_ms: number;
+  image_url: string;
+}
+
+export interface VideoFramesResultInfo {
+  frame_count: number;
+  fps: number;
+  selected_frame_count: number;
+  route_distance_m: number | null;
+  step_distance_m: number | null;
+  sample_frames: VideoFrameResultInfo[];
+  archive_url: string | null;
+}
+
+export type VideoMapArtifactReviewState = "placed" | "kept" | "discarded";
+
+export interface VideoMapPlacement {
+  lat: number;
+  lng: number;
+}
+
+export interface VideoMapArtifact {
+  jobId: string;
+  createdAt: string;
+  mode: string;
+  reviewState: VideoMapArtifactReviewState;
+  placement: VideoMapPlacement | null;
+  map3dResult: VideoMap3dResultInfo | null;
+}
+
+export type VideoMapReviewDecision = "place_on_map" | "keep" | "discard";
+export type VideoJobReviewState = "placed" | "kept" | "discarded";
+
+export interface VideoMapReviewPayload {
+  jobId: string;
+  createdAt: string;
+  mode: string;
+  decision: VideoMapReviewDecision;
+  placement: VideoMapPlacement | null;
+  map3dResult: VideoMap3dResultInfo | null;
+}
+
+export interface VideoJobReview {
+  job_id: string;
+  created_at: string | null;
+  mode: string | null;
+  review_state: VideoJobReviewState;
+  placement: VideoMapPlacement | null;
+  reviewed_at: string;
+}
+
 export interface ImportRun {
   id: number;
   started_at: string;

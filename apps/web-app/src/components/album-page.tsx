@@ -120,7 +120,7 @@ export function AlbumPage({
         onScrollActivity?.();
       }}
     >
-      <div className="min-h-full bg-fb-surface-base pb-8 pl-[74px] pr-3 pt-3 sm:pl-[86px] sm:pr-6 sm:pt-4">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
           <Stack
             gap={5}

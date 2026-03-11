@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw, X } from "lucide-react";
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
@@ -30,13 +30,18 @@ import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKe
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
+import { AppSidebar } from "@/components/app-sidebar";
+import { FilterPanel } from "@/components/filter-panel";
+import { MediaImportDialog, type MediaImportSelection } from "@/components/media-import-dialog";
 import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
-import { SideRail } from "@/components/side-rail";
-import { TimelineBottom } from "@/components/timeline-bottom";
+import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
   GardskartJob,
+  VideoMapArtifact,
+  VideoJobReview,
   PhotoAnalysis,
   PhotoAnalysisActionResponse,
   PhotoMetadataActionResponse,
@@ -44,8 +49,10 @@ import type {
   PhotosPageResponse,
   PhotosResponse,
   ProfileResponse,
+  ImportRun,
   TimelineDate,
   TimelineResponse,
+  VideoMapReviewPayload,
 } from "@/types";
 
 interface LogEntry {
@@ -71,12 +78,37 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "album";
+type AppView = "map" | "album" | "video";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
 const MAP_PHOTO_TIMEOUT_MS = 45_000;
 const MAP_PHOTO_MAX_PAGES = 80;
+const VIDEO_JOB_QUEUE_STORAGE_KEY = "fb-video-job-queue";
+const VIDEO_JOB_ARCHIVE_STORAGE_KEY = "fb-video-job-archive";
+
+function mergeUniqueJobIds(current: string[], incoming: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  [...current, ...incoming].forEach((jobId) => {
+    const value = String(jobId).trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    merged.push(value);
+  });
+  return merged;
+}
+
+function buildVideoArtifactResult(jobId: string, mode: string | null) {
+  return {
+    stitch_job_id: mode === "map3d" ? "job" : "frames",
+    preview_image: `/api/v1/video-jobs/${jobId}/preview.jpg`,
+    mesh_url: mode === "map3d" ? `/api/v1/video-jobs/${jobId}/mesh.glb` : null,
+    geodata_geojson: `/api/v1/video-jobs/${jobId}/geodata.geojson`,
+    metadata_json: `/api/v1/video-jobs/${jobId}/metadata.json`,
+    epsg: "EPSG:4326",
+  };
+}
 
 const isRequestAborted = (error: ApiError): boolean =>
   error.status === 0 && error.message === "Request avbrutt";
@@ -94,11 +126,51 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
 }
 
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function responseErrorText(payload: unknown, response: Response): string {
+  if (typeof payload === "string" && payload.trim().length > 0) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    const detail = (payload as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim().length > 0) {
+      return detail;
+    }
+    const message = (payload as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return `Request feilet med status ${response.status}`;
+}
+
 export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
   const initialPhoto = params.get("photo");
-  const initialView: AppView = params.get("view") === "album" ? "album" : "map";
+  const rawInitialView = params.get("view");
+  const initialView: AppView =
+    rawInitialView === "album" || rawInitialView === "video" ? rawInitialView : "map";
   const hasExplicitDeepLink = initialDate !== null || initialPhoto !== null;
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
@@ -123,12 +195,14 @@ export default function App() {
     baseMapStyle,
     mapGrayscale,
     mapVintage,
+    showZoomControls,
     setBaseMapStyle,
     setMapGrayscale,
     setMapVintage,
-    markMapStyleAsManual,
+    setShowZoomControls,
   } = useMapPreferences();
   const [job, setJob] = useState<GardskartJob | null>(null);
+  const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>([]);
   const [showPropertyLayer, setShowPropertyLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
@@ -150,13 +224,37 @@ export default function App() {
   const [metadataHeadingDraft, setMetadataHeadingDraft] = useState("");
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
+  const [isMediaImportDialogOpen, setIsMediaImportDialogOpen] = useState(false);
+  const [mediaImportError, setMediaImportError] = useState("");
+  const [isMediaImportSubmitting, setIsMediaImportSubmitting] = useState(false);
+  const [initialVideoJobIds, setInitialVideoJobIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(VIDEO_JOB_QUEUE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.map((item) => String(item)).filter((item) => item.length > 0) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [archivedVideoJobIds, setArchivedVideoJobIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(VIDEO_JOB_ARCHIVE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.map((item) => String(item)).filter((item) => item.length > 0) : [];
+    } catch {
+      return [];
+    }
+  });
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
   const [isMapPhotosLoading, setIsMapPhotosLoading] = useState(false);
   const [photoLoadRetryToken, setPhotoLoadRetryToken] = useState(0);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
-
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
     if (selectedSeason !== "all") return selectedSeason;
     const month = new Date().getMonth() + 1;
@@ -169,6 +267,28 @@ export default function App() {
       document.documentElement.removeAttribute("data-season");
     };
   }, [activeUiSeason]);
+  useEffect(() => {
+    try {
+      if (initialVideoJobIds.length === 0) {
+        window.localStorage.removeItem(VIDEO_JOB_QUEUE_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(VIDEO_JOB_QUEUE_STORAGE_KEY, JSON.stringify(initialVideoJobIds));
+    } catch {
+      // Ignore storage errors in private mode or unsupported browsers.
+    }
+  }, [initialVideoJobIds]);
+  useEffect(() => {
+    try {
+      if (archivedVideoJobIds.length === 0) {
+        window.localStorage.removeItem(VIDEO_JOB_ARCHIVE_STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(VIDEO_JOB_ARCHIVE_STORAGE_KEY, JSON.stringify(archivedVideoJobIds));
+    } catch {
+      // Ignore storage errors in private mode or unsupported browsers.
+    }
+  }, [archivedVideoJobIds]);
   const [mapResetToken, setMapResetToken] = useState(0);
   const [syncSelectionToUrl, setSyncSelectionToUrl] = useState(() => Boolean(initialDate || initialPhoto));
   const uiTheme: UiTheme = baseMapStyle === "satellite" ? "satellite" : "standard";
@@ -216,13 +336,13 @@ export default function App() {
   const albumPhotoFilter = useMemo(
     () =>
       makePhotoFilter({
-        selectedYear: "all",
-        selectedSeason: "all",
+        selectedYear,
+        selectedSeason,
         showOnlyManualQc,
         showOnlyLowConfidence,
         lowConfidenceThreshold: CONFIDENCE_FILTER_THRESHOLD,
       }),
-    [showOnlyLowConfidence, showOnlyManualQc],
+    [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
   );
   const selectedPhoto = useMemo(() => {
     if (!selectedPhotoId) return null;
@@ -344,6 +464,71 @@ export default function App() {
   const latestFilteredDate = filteredTimeline[filteredTimeline.length - 1]?.date ?? null;
   const latestTimelineDate = timeline[timeline.length - 1]?.date ?? null;
   const filteredTimelineHasData = filteredTimeline.length > 0;
+  const activeVideoMapArtifacts = useMemo(
+    () => videoMapArtifacts.filter((artifact) => artifact.reviewState === "placed"),
+    [videoMapArtifacts],
+  );
+  useEffect(() => {
+    if (initialVideoJobIds.length === 0) return;
+
+    const abortController = new AbortController();
+    let active = true;
+
+    const loadVideoReviews = async () => {
+      const artifacts = await Promise.all(
+        initialVideoJobIds.map(async (jobId): Promise<VideoMapArtifact | null> => {
+          try {
+            const response = await fetch(`/api/v1/video-jobs/${encodeURIComponent(jobId)}/review`, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+              },
+              signal: abortController.signal,
+            });
+            if (response.status === 404) {
+              return null;
+            }
+            const payload = await readResponsePayload(response);
+            if (!response.ok) {
+              return null;
+            }
+
+            const review = payload as VideoJobReview;
+            if (!review?.job_id) {
+              return null;
+            }
+
+            return {
+              jobId: review.job_id,
+              createdAt: review.created_at ?? review.reviewed_at,
+              mode: review.mode ?? "frames",
+              reviewState: review.review_state,
+              placement: review.placement,
+              map3dResult: buildVideoArtifactResult(review.job_id, review.mode),
+            } satisfies VideoMapArtifact;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (!active) return;
+      const nextArtifacts = artifacts.filter((artifact): artifact is VideoMapArtifact => artifact !== null);
+      if (nextArtifacts.length === 0) return;
+
+      setVideoMapArtifacts((previous) => [
+        ...previous.filter((entry) => !nextArtifacts.some((artifact) => artifact.jobId === entry.jobId)),
+        ...nextArtifacts,
+      ]);
+    };
+
+    void loadVideoReviews();
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [initialVideoJobIds]);
 
   const trackRequest = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
     setPendingRequests((count) => count + 1);
@@ -1370,8 +1555,8 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album") {
-      next.set("view", "album");
+    if (activeView === "album" || activeView === "video") {
+      next.set("view", activeView);
     } else {
       next.delete("view");
     }
@@ -1435,6 +1620,139 @@ export default function App() {
     }
   };
 
+  const handleStartMediaImport = useCallback(() => {
+    setMediaImportError("");
+    setIsMediaImportDialogOpen(true);
+  }, []);
+
+  const handleSubmitMediaImport = useCallback(
+    async ({ images, videos }: MediaImportSelection) => {
+      if (images.length === 0 && videos.length === 0) {
+        setMediaImportError("Velg minst én bildefil eller videofil.");
+        return;
+      }
+
+      setIsMediaImportSubmitting(true);
+      setMediaImportError("");
+
+      try {
+        const statusParts: string[] = [];
+
+        if (images.length > 0) {
+          const formData = new FormData();
+          images.forEach(({ file, relativePath }) => {
+            formData.append("files", file, file.name);
+            formData.append("relative_paths", relativePath ?? file.name);
+          });
+
+          const response = await trackRequest(() =>
+            fetch("/api/v1/imports/photos/upload", {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+              },
+              body: formData,
+            }),
+          );
+          const payload = await readResponsePayload(response);
+          if (!response.ok) {
+            throw new Error(responseErrorText(payload, response));
+          }
+
+          const run = (payload as { import_run?: ImportRun } | null)?.import_run;
+          if (!run) {
+            throw new Error("Backend returnerte ikke import-run for bilder.");
+          }
+
+          addLog("info", `Bildeimport ferdig (run ${run.id})`, response.headers.get("X-Request-ID"), {
+            filesSeen: run.files_seen,
+            filesImported: run.files_imported,
+            filesSkipped: run.files_skipped,
+          });
+          statusParts.push(`${run.files_imported} bilder importert`);
+
+          const timelineData = await loadTimeline();
+          if (timelineData.dates.length > 0) {
+            const latestIndex = timelineData.dates.length - 1;
+            const latestDate = timelineData.dates[latestIndex]?.date ?? null;
+            setSelectedIndex(latestIndex);
+            if (latestDate) {
+              setSelectedYear(latestDate.slice(0, 4));
+            }
+            setSelectedSeason("all");
+          }
+          setPhotoLoadRetryToken((current) => current + 1);
+
+          if (activeView === "album") {
+            void loadAlbumPage({ reset: true });
+          }
+        }
+
+        if (videos.length > 0) {
+          const startedJobIds: string[] = [];
+
+          for (const { file } of videos) {
+            const formData = new FormData();
+            formData.append("file", file, file.name);
+            formData.append("mode", "frames");
+            formData.append(
+              "config",
+              JSON.stringify({
+                process: "frames",
+                interval_seconds: 4.0,
+                map_display_mode: "overlay_existing",
+              }),
+            );
+
+            const response = await trackRequest(() =>
+              fetch("/api/v1/video-jobs", {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                },
+                body: formData,
+              }),
+            );
+            const payload = await readResponsePayload(response);
+            if (!response.ok) {
+              throw new Error(responseErrorText(payload, response));
+            }
+
+            const jobId = (payload as { job?: { job_id?: string } } | null)?.job?.job_id ?? null;
+            if (!jobId) {
+              throw new Error("Backend returnerte ikke jobb-id for video.");
+            }
+
+            startedJobIds.push(jobId);
+            addLog("info", "Videosteg startet", response.headers.get("X-Request-ID"), {
+              jobId,
+              filename: file.name,
+            });
+          }
+
+          setInitialVideoJobIds((current) => mergeUniqueJobIds(current, startedJobIds));
+          setActiveView("video");
+          statusParts.push(
+            videos.length === 1
+              ? `videojobben ${startedJobIds[0]?.slice(0, 8)} startet`
+              : `${startedJobIds.length} videojobber startet`,
+          );
+        }
+
+        setStatusText(statusParts.join(" · "));
+        setIsMediaImportDialogOpen(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Ukjent feil ved mediaimport.";
+        setMediaImportError(message);
+        setStatusText(`Mediaimport feilet: ${message}`);
+        addLog("error", "Mediaimport feilet", null, { message });
+      } finally {
+        setIsMediaImportSubmitting(false);
+      }
+    },
+    [activeView, addLog, loadAlbumPage, loadTimeline, trackRequest],
+  );
+
   const handlePropertyTileError = useCallback(
     (jobId: string) => {
       if (tileRetryJobRef.current === jobId) {
@@ -1462,6 +1780,85 @@ export default function App() {
     },
     [addLog],
   );
+
+  const handleVideoReview = useCallback(async (payload: VideoMapReviewPayload) => {
+    if (!payload.jobId) return;
+    if (payload.decision === "place_on_map" && !payload.map3dResult) {
+      addLog("warn", "Kan ikke plassere videoresultat uten 3D-data", null, { jobId: payload.jobId });
+      return;
+    }
+
+    const reviewState = payload.decision === "place_on_map" ? "placed" : payload.decision === "keep" ? "kept" : "discarded";
+    const reviewResponse = await trackRequest(() =>
+      fetch(`/api/v1/video-jobs/${encodeURIComponent(payload.jobId)}/review`, {
+        method: "PUT",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          created_at: payload.createdAt,
+          mode: payload.mode,
+          review_state: reviewState,
+          placement: payload.decision === "place_on_map" ? payload.placement : null,
+        }),
+      }),
+    );
+    const reviewPayload = await readResponsePayload(reviewResponse);
+    if (!reviewResponse.ok) {
+      throw new Error(responseErrorText(reviewPayload, reviewResponse));
+    }
+
+    const artifact: VideoMapArtifact = {
+      jobId: payload.jobId,
+      createdAt: payload.createdAt,
+      mode: payload.mode,
+      reviewState,
+      placement: payload.decision === "place_on_map" ? payload.placement : null,
+      map3dResult: payload.map3dResult,
+    };
+
+    setVideoMapArtifacts((previous) => [
+      ...previous.filter((entry) => entry.jobId !== payload.jobId),
+      artifact,
+    ]);
+    const storesRouteOnly = payload.mode === "frames" || !payload.map3dResult?.mesh_url;
+    addLog(
+      "info",
+      payload.decision === "discard"
+        ? "Videojobb kastet"
+        : payload.decision === "place_on_map"
+        ? storesRouteOnly
+          ? "Videoløype lagt i kart"
+          : "3D-resultat lagt ut"
+        : storesRouteOnly
+          ? "Videoløype lagret"
+          : "3D-resultat lagret",
+      null,
+      {
+        jobId: payload.jobId,
+        decision: payload.decision,
+      },
+    );
+  }, [addLog, trackRequest]);
+
+  const handleArchiveVideoJob = useCallback((jobId: string) => {
+    setArchivedVideoJobIds((current) => mergeUniqueJobIds(current, [jobId]));
+    addLog("info", "Videojobb arkivert i køvisning", null, { jobId });
+  }, [addLog]);
+
+  const handleArchiveReviewedVideoJobs = useCallback((jobIds: string[]) => {
+    if (jobIds.length === 0) return;
+    setArchivedVideoJobIds((current) => mergeUniqueJobIds(current, jobIds));
+    addLog("info", "Ferdigbehandlede videojobber arkivert i køvisning", null, {
+      count: jobIds.length,
+    });
+  }, [addLog]);
+
+  const handleRestoreArchivedVideoJobs = useCallback(() => {
+    setArchivedVideoJobIds([]);
+    addLog("info", "Arkiverte videojobber vist igjen");
+  }, [addLog]);
 
   const handleLoadMoreAlbum = useCallback(() => {
     if (!latestTimelineDate) return;
@@ -2183,157 +2580,193 @@ export default function App() {
         </div>
       ) : null}
 
-      {activeView === "map" ? (
-        <MapCanvas
-          photos={photos}
-          selectedPhotoId={selectedPhotoId}
-          hoveredPhotoId={hoverPreviewPhotoId}
-          focusToken={mapFocusToken}
-          resetViewToken={mapResetToken}
-          property={profile?.property ?? null}
-          job={job}
-          baseMapStyle={baseMapStyle}
-          mapGrayscale={mapGrayscale}
-          mapVintage={mapVintage}
-          showPropertyLayer={showPropertyLayer}
-          onSelectPhoto={handleSelectPhoto}
-          onHoverPhoto={handleHoverPhoto}
-          onOpenPhotoFullscreen={handleOpenPhotoViewer}
-          onPropertyStatus={setPropertyStatus}
-          onPropertyTileError={handlePropertyTileError}
-          onBaseMapTileError={handleBaseMapTileError}
-        />
-      ) : (
-        <AlbumPage
-          photos={albumPhotos}
-          isLoading={albumLoadingInitial}
-          isLoadingMore={albumLoadingMore}
-          hasMore={albumHasMore}
-          loadFailed={albumLoadFailed}
-          onLoadMore={handleLoadMoreAlbum}
-          onOpenPhoto={handleOpenPhotoViewer}
-          onScrollActivity={handleAlbumScrollActivity}
-        />
-      )}
-
-      {activeView === "map" && photosLoadFailed ? (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-[660] -translate-x-1/2 px-3">
-          <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary shadow-lg">
-            <span>Kunne ikke laste bilder for valgt filter.</span>
-            <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Prøv igjen
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen ? (
-        <div className="pointer-events-none absolute left-1/2 top-4 z-[640] hidden -translate-x-1/2 md:block">
-          <div className="overflow-hidden rounded-2xl border border-fb-chip-satellite-border bg-fb-chip-satellite-bg p-2 shadow-fb-floating backdrop-blur-xl">
-            <img
-              src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
-              alt={hoverPreviewPhoto.title || "Forhåndsvisning"}
-              className="block h-auto max-h-[34vh] w-[min(52vw,760px)] min-w-[320px] rounded-xl object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        </div>
-      ) : null}
-
-      <div className="pointer-events-none absolute inset-0 z-[700] flex flex-col">
-        <SideRail
-          profile={profile}
-          activeView={activeView}
-          uiTheme={uiTheme}
-          statusText={statusText}
-          propertyStatus={propertyStatus}
-          showPropertyLayer={showPropertyLayer}
-          baseMapStyle={baseMapStyle}
-          mapGrayscale={mapGrayscale}
-          mapVintage={mapVintage}
-          showOnlyManualQc={showOnlyManualQc}
-          showOnlyLowConfidence={showOnlyLowConfidence}
-          onToggleManualQcFilter={handleToggleManualQcFilter}
-          onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
-          isLoading={isLoading}
-          logoSpinActive={albumScrollSpin || isMapPhotosLoading}
-          logs={logs}
-          onClearLogs={() => setLogs([])}
-          backendLogs={backendLogs}
-          backendLogsLoading={isBackendLogsLoading}
-          onClearBackendLogs={() => setBackendLogs([])}
-          onFetchBackendLogs={loadBackendLogs}
-          onChangeBaseMapStyle={(style) => {
-            baseMapTileErrorRef.current = null;
-            setBaseMapStyle(style);
-            markMapStyleAsManual();
-            addLog("info", "Bakgrunnskart endret", null, { style });
-          }}
-          onChangeMapGrayscale={(next) => {
-            setMapGrayscale(next);
-            addLog("info", next ? "Svart/hvitt aktivert" : "Svart/hvitt deaktivert");
-          }}
-          onChangeMapVintage={(next) => {
-            setMapVintage(next);
-            addLog("info", next ? "Vintage-kart aktivert" : "Vintage-kart deaktivert");
-          }}
-          onChangeView={(view) => {
-            setActiveView(view);
-            addLog("info", view === "album" ? "Album åpnet" : "Kart åpnet");
-          }}
-          onTogglePropertyLayer={(next) => {
-            setShowPropertyLayer(next);
-            if (!next) {
-              setJob(null);
-              setPropertyStatus("Eiendomslag er skrudd av.");
-              addLog("info", "Eiendomslag skrudd av av bruker");
-            } else {
-              tileRetryJobRef.current = null;
-              addLog("info", "Eiendomslag skrudd på av bruker");
-            }
-          }}
-          onSaveProfile={handleSaveProfile}
-        />
-
-        {activeView === "map" ? (
-          <TimelineBottom
-            filteredDates={filteredTimeline}
-            uiTheme={uiTheme}
-            selectedIndex={selectedIndex}
-            selectedYear={selectedYear}
-            selectedSeason={selectedSeason}
-            dayScope={dayScope}
-            availableYears={availableYears}
-            seasonCounts={seasonCounts}
-            onSelectIndex={(index) => {
-              setSyncSelectionToUrl(true);
-              setSelectedIndex(index);
-              setDayScope("selected");
-              setMapResetToken((value) => value + 1);
+      <SidebarProvider>
+        <div className="flex h-full overflow-hidden">
+          <AppSidebar
+            profile={profile}
+            activeView={activeView}
+            statusText={statusText}
+            propertyStatus={propertyStatus}
+            showPropertyLayer={showPropertyLayer}
+            showOnlyManualQc={showOnlyManualQc}
+            showOnlyLowConfidence={showOnlyLowConfidence}
+            baseMapStyle={baseMapStyle}
+            mapGrayscale={mapGrayscale}
+            mapVintage={mapVintage}
+            showZoomControls={showZoomControls}
+            isLoading={isLoading}
+            logoSpinActive={albumScrollSpin || isMapPhotosLoading}
+            logs={logs}
+            onClearLogs={() => setLogs([])}
+            backendLogs={backendLogs}
+            backendLogsLoading={isBackendLogsLoading}
+            onClearBackendLogs={() => setBackendLogs([])}
+            onFetchBackendLogs={loadBackendLogs}
+            onChangeBaseMapStyle={(style) => {
+              baseMapTileErrorRef.current = null;
+              setBaseMapStyle(style);
+              addLog("info", "Bakgrunnskart endret", null, { style });
             }}
-            onYearChange={(year) => {
-              setSyncSelectionToUrl(true);
-              setSelectedYear(year);
-              setSelectedSeason("all");
-              setDayScope("all");
-              setMapResetToken((value) => value + 1);
+            onChangeMapGrayscale={(next) => {
+              setMapGrayscale(next);
+              addLog("info", next ? "Svart/hvitt aktivert" : "Svart/hvitt deaktivert");
             }}
-            onSeasonChange={(season) => {
-              setSyncSelectionToUrl(true);
-              setSelectedSeason(season);
-              setDayScope("all");
-              setMapResetToken((value) => value + 1);
+            onChangeMapVintage={(next) => {
+              setMapVintage(next);
+              addLog("info", next ? "Vintage-kart aktivert" : "Vintage-kart deaktivert");
             }}
-            onDayScopeChange={(scope) => {
-              setSyncSelectionToUrl(true);
-              setDayScope(scope);
-              setMapResetToken((value) => value + 1);
+            onChangeShowZoomControls={(next) => {
+              setShowZoomControls(next);
+              addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
             }}
+            onChangeView={(view) => {
+              setActiveView(view);
+              addLog("info", view === "album" ? "Album åpnet" : view === "video" ? "Video åpnet" : "Kart åpnet");
+            }}
+            onTogglePropertyLayer={(next) => {
+              setShowPropertyLayer(next);
+              if (!next) {
+                setJob(null);
+                setPropertyStatus("Eiendomslag er skrudd av.");
+                addLog("info", "Eiendomslag skrudd av av bruker");
+              } else {
+                tileRetryJobRef.current = null;
+                addLog("info", "Eiendomslag skrudd på av bruker");
+              }
+            }}
+            onSaveProfile={handleSaveProfile}
+            onStartMediaImport={handleStartMediaImport}
+            onToggleManualQcFilter={handleToggleManualQcFilter}
+            onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           />
-        ) : null}
-      </div>
+
+          <SidebarInset className="bg-canvas md:p-3 md:pl-0">
+            <div className="relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
+              <div className="pointer-events-none absolute left-3 top-3 z-[860] sm:left-4 sm:top-4">
+                <SidebarTrigger
+                  className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary shadow-fb-raised transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
+                  aria-label="Åpne meny"
+                >
+                  <Menu className="h-4 w-4" />
+                </SidebarTrigger>
+              </div>
+
+              {isMediaImportDialogOpen ? (
+                <MediaImportDialog
+                  open={isMediaImportDialogOpen}
+                  busy={isMediaImportSubmitting}
+                  errorMessage={mediaImportError}
+                  onOpenChange={(nextOpen) => {
+                    if (!nextOpen) {
+                      setMediaImportError("");
+                    }
+                    setIsMediaImportDialogOpen(nextOpen);
+                  }}
+                  onImport={handleSubmitMediaImport}
+                />
+              ) : null}
+
+              {activeView === "map" ? (
+                <FilterPanel
+                  selectedYear={selectedYear}
+                  selectedSeason={selectedSeason}
+                  availableYears={availableYears}
+                  seasonCounts={seasonCounts}
+                  onYearChange={(year) => {
+                    setSyncSelectionToUrl(true);
+                    setSelectedYear(year);
+                    setSelectedSeason("all");
+                    setDayScope("all");
+                    setMapResetToken((value) => value + 1);
+                    addLog("info", "Årsfilter endret", null, { year });
+                  }}
+                  onSeasonChange={(season) => {
+                    setSyncSelectionToUrl(true);
+                    setSelectedSeason(season);
+                    setDayScope("all");
+                    setMapResetToken((value) => value + 1);
+                    addLog("info", "Sesongfilter endret", null, { season });
+                  }}
+                />
+              ) : null}
+
+              {activeView === "map" ? (
+                <MapCanvas
+                  photos={photos}
+                  selectedPhotoId={selectedPhotoId}
+                  hoveredPhotoId={hoverPreviewPhotoId}
+                  focusToken={mapFocusToken}
+                  resetViewToken={mapResetToken}
+                  property={profile?.property ?? null}
+                  job={job}
+                  videoMapArtifacts={activeVideoMapArtifacts}
+                  baseMapStyle={baseMapStyle}
+                  mapGrayscale={mapGrayscale}
+                  mapVintage={mapVintage}
+                  showZoomControls={showZoomControls}
+                  showPropertyLayer={showPropertyLayer}
+                  onSelectPhoto={handleSelectPhoto}
+                  onHoverPhoto={handleHoverPhoto}
+                  onOpenPhotoFullscreen={handleOpenPhotoViewer}
+                  onPropertyStatus={setPropertyStatus}
+                  onPropertyTileError={handlePropertyTileError}
+                  onBaseMapTileError={handleBaseMapTileError}
+                />
+              ) : activeView === "album" ? (
+                <AlbumPage
+                  photos={albumPhotos}
+                  isLoading={albumLoadingInitial}
+                  isLoadingMore={albumLoadingMore}
+                  hasMore={albumHasMore}
+                  loadFailed={albumLoadFailed}
+                  onLoadMore={handleLoadMoreAlbum}
+                  onOpenPhoto={handleOpenPhotoViewer}
+                  onScrollActivity={handleAlbumScrollActivity}
+                />
+              ) : (
+                <VideoPage
+                  baseMapStyle={baseMapStyle}
+                  showZoomControls={showZoomControls}
+                  onVideoReview={handleVideoReview}
+                  initialJobIds={initialVideoJobIds}
+                  reviewedArtifacts={videoMapArtifacts}
+                  archivedJobIds={archivedVideoJobIds}
+                  onArchiveJob={handleArchiveVideoJob}
+                  onArchiveReviewedJobs={handleArchiveReviewedVideoJobs}
+                  onRestoreArchivedJobs={handleRestoreArchivedVideoJobs}
+                  onStartMediaImport={handleStartMediaImport}
+                />
+              )}
+
+              {activeView === "map" && photosLoadFailed ? (
+                <div className="pointer-events-none absolute left-1/2 top-3 z-[660] -translate-x-1/2 px-3 md:top-4">
+                  <div className="pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary shadow-lg">
+                    <span>Kunne ikke laste bilder for valgt filter.</span>
+                    <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Prøv igjen
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen ? (
+                <div className="pointer-events-none absolute left-4 top-4 z-[640] hidden md:block">
+                  <div className="overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2 shadow-fb-floating">
+                    <img
+                      src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
+                      alt={hoverPreviewPhoto.title || "Forhåndsvisning"}
+                      className="block h-[min(32vw,320px)] w-[min(32vw,320px)] min-h-[220px] min-w-[220px] rounded-xl object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
     </div>
   );
 }

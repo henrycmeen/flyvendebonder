@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 
-import type { GardskartJob, PhotoFeature, Property } from "@/types";
+import type { GardskartJob, PhotoFeature, Property, VideoMapArtifact } from "@/types";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
@@ -14,9 +14,11 @@ interface MapCanvasProps {
   resetViewToken: number;
   property: Property | null;
   job: GardskartJob | null;
+  videoMapArtifacts: VideoMapArtifact[];
   baseMapStyle: BaseMapStyle;
   mapGrayscale: boolean;
   mapVintage: boolean;
+  showZoomControls: boolean;
   showPropertyLayer: boolean;
   onSelectPhoto: (photoId: string) => void;
   onHoverPhoto: (photoId: string | null) => void;
@@ -209,6 +211,129 @@ function createPopupContent(photo: PhotoFeature, onOpenFullscreen: () => void): 
   return popupContent;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function toStringValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const next = value.trim();
+    return next.length > 0 ? next : null;
+  }
+  return null;
+}
+
+function collectLatLngPairs(raw: unknown): LatLngPair[] {
+  const coordinates: LatLngPair[] = [];
+  const walk = (node: unknown): void => {
+    if (!Array.isArray(node)) return;
+
+    if (node.length >= 2 && isFiniteNumber(node[0]) && isFiniteNumber(node[1])) {
+      const lat = node[1];
+      const lng = node[0];
+      coordinates.push([lat, lng]);
+      return;
+    }
+
+    for (const child of node) {
+      walk(child);
+    }
+  };
+  walk(raw);
+  return coordinates;
+}
+
+function extractGeojsonSegments(raw: unknown): LatLngPair[][] {
+  const record = asRecord(raw);
+  if (!record) return [];
+
+  if (toStringValue(record.type)?.toLowerCase() === "featurecollection" && Array.isArray(record.features)) {
+    return record.features
+      .map((feature) => {
+        const featureRecord = asRecord(feature);
+        const geometry = asRecord(featureRecord?.geometry);
+        return collectLatLngPairs(geometry?.coordinates);
+      })
+      .filter((segment) => segment.length > 0);
+  }
+
+  const geometry = asRecord(record.geometry);
+  if (geometry) {
+    return [collectLatLngPairs(geometry.coordinates)];
+  }
+
+  if (record.coordinates) {
+    return [collectLatLngPairs(record.coordinates)];
+  }
+
+  return [];
+}
+
+function firstSegmentPoint(segments: LatLngPair[][]): LatLngPair | null {
+  for (const segment of segments) {
+    if (segment.length > 0) {
+      return segment[0];
+    }
+  }
+  return null;
+}
+
+function lastSegmentPoint(segments: LatLngPair[][]): LatLngPair | null {
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index];
+    if (segment && segment.length > 0) {
+      return segment[segment.length - 1] ?? null;
+    }
+  }
+  return null;
+}
+
+function flattenSegments(segments: LatLngPair[][]): LatLngPair[] {
+  const points: LatLngPair[] = [];
+  segments.forEach((segment) => {
+    segment.forEach((point, pointIndex) => {
+      if (pointIndex === 0 && points.length > 0) {
+        const previous = points[points.length - 1];
+        if (previous && previous[0] === point[0] && previous[1] === point[1]) {
+          return;
+        }
+      }
+      points.push(point);
+    });
+  });
+  return points;
+}
+
+function shiftSegments(segments: LatLngPair[][], from: LatLngPair, to: LatLngPair): LatLngPair[][] {
+  const deltaLat = to[0] - from[0];
+  const deltaLng = to[1] - from[1];
+  return segments.map((segment) => segment.map(([lat, lng]) => [lat + deltaLat, lng + deltaLng]));
+}
+
+function hashStringToHue(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) % 360;
+  }
+  return ((hash % 360) + 360) % 360;
+}
+
+function videoArtifactColor(seed: string, fallback: number): string {
+  const hue = (hashStringToHue(seed) + fallback * 47) % 360;
+  return `hsl(${hue}, 75%, 50%)`;
+}
+
+function appendPointsToBounds(bounds: L.LatLngBounds, points: LatLngPair[]): void {
+  points.forEach(([lat, lng]) => {
+    bounds.extend(L.latLng(lat, lng));
+  });
+}
+
 const FALLBACK_MAX_ZOOM = 20;
 
 function isNIBIOStatusOk(statusCode: number | null, statusDesc: string | null): boolean {
@@ -242,9 +367,11 @@ export function MapCanvas({
   resetViewToken,
   property,
   job,
+  videoMapArtifacts,
   baseMapStyle,
   mapGrayscale,
   mapVintage,
+  showZoomControls,
   showPropertyLayer,
   onSelectPhoto,
   onHoverPhoto,
@@ -262,7 +389,9 @@ export function MapCanvas({
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const propertyLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
+  const videoLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
+  const hasVideoFitRef = useRef(false);
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
 
   const setMarkerActiveState = useCallback((photoId: string, active: boolean) => {
@@ -286,7 +415,7 @@ export function MapCanvas({
     let map: L.Map;
     try {
       map = L.map(mapElementRef.current, {
-        zoomControl: true,
+        zoomControl: showZoomControls,
         attributionControl: true,
         maxZoom: FALLBACK_MAX_ZOOM,
       }).setView(fallbackCenter, 13);
@@ -332,6 +461,9 @@ export function MapCanvas({
     const viewLayer = L.layerGroup();
     viewLayer.addTo(map);
     viewLayerRef.current = viewLayer;
+    const videoLayer = L.layerGroup();
+    videoLayer.addTo(map);
+    videoLayerRef.current = videoLayer;
 
     mapRef.current = map;
     markersRef.current = clusterLayer;
@@ -361,8 +493,22 @@ export function MapCanvas({
         viewLayerRef.current.remove();
         viewLayerRef.current = null;
       }
+      if (videoLayerRef.current) {
+        videoLayerRef.current.remove();
+        videoLayerRef.current = null;
+      }
     };
-  }, []);
+  }, [showZoomControls]);
+
+  useEffect(() => {
+    const map = mapRef.current as (L.Map & { zoomControl?: L.Control.Zoom }) | null;
+    if (!map?.zoomControl) return;
+    if (showZoomControls) {
+      map.zoomControl.addTo(map);
+    } else {
+      map.zoomControl.remove();
+    }
+  }, [showZoomControls]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -714,6 +860,192 @@ export function MapCanvas({
       }
     };
   }, [job, onPropertyStatus, onPropertyTileError, property, showPropertyLayer, baseMapStyle]);
+
+  useEffect(() => {
+    if (!mapRef.current || !videoLayerRef.current) return;
+
+    videoLayerRef.current.clearLayers();
+    hasVideoFitRef.current = false;
+
+    if (videoMapArtifacts.length === 0) {
+      return;
+    }
+
+    const abortControllers: AbortController[] = [];
+    const hoverTimeouts: number[] = [];
+    let cancelled = false;
+    const bounds = L.latLngBounds([]);
+
+    const loadArtifact = async (artifact: VideoMapArtifact, index: number): Promise<void> => {
+      const geodataUrl = artifact.map3dResult?.geodata_geojson;
+      if (!geodataUrl) return;
+
+      const controller = new AbortController();
+      abortControllers.push(controller);
+
+      const response = await fetch(geodataUrl, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Kunne ikke hente geodata for ${artifact.jobId}`);
+      }
+
+      const payload = (await response.json()) as unknown;
+      const segments = extractGeojsonSegments(payload);
+      if (!segments.length) return;
+
+      const startPoint = firstSegmentPoint(segments);
+      const placedSegments =
+        artifact.placement && startPoint
+          ? shiftSegments(segments, startPoint, [artifact.placement.lat, artifact.placement.lng])
+          : segments;
+
+      const color = videoArtifactColor(artifact.jobId, index);
+      const text = `Videoløype ${artifact.jobId.slice(0, 8)}`;
+      const segmentGroup = L.layerGroup();
+      const hoverOnly = supportsHoverPointer();
+      const routeSegments = placedSegments.filter((segment) => segment.length >= 2);
+      const flattenedRoute = flattenSegments(routeSegments.length > 0 ? routeSegments : placedSegments);
+      const routeStart = flattenedRoute[0] ?? firstSegmentPoint(placedSegments);
+      const routeEnd = lastSegmentPoint(routeSegments.length > 0 ? routeSegments : placedSegments);
+
+      if (!routeStart) return;
+
+      const routeLayers: L.Polyline[] = [];
+      let endMarker: L.CircleMarker | null = null;
+      let startMarker: L.CircleMarker | null = null;
+      let hideTimer: number | null = null;
+
+      const clearHideTimer = () => {
+        if (hideTimer !== null) {
+          window.clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+      };
+
+      const setHoverVisibility = (visible: boolean) => {
+        const routeOpacity = hoverOnly ? (visible ? 0.95 : 0) : 0.95;
+        const endOpacity = hoverOnly ? (visible ? 0.98 : 0) : 0.98;
+
+        routeLayers.forEach((line) => {
+          line.setStyle({
+            opacity: routeOpacity,
+            weight: visible ? 3.8 : 3,
+          });
+        });
+        if (endMarker) {
+          endMarker.setStyle({
+            opacity: endOpacity,
+            fillOpacity: hoverOnly ? (visible ? 0.88 : 0) : 0.88,
+            radius: visible ? 5.5 : 4.5,
+          });
+        }
+        if (startMarker) {
+          startMarker.setStyle({
+            radius: visible ? 7 : 6,
+            weight: visible ? 2.8 : 2.2,
+            fillOpacity: 1,
+          });
+        }
+      };
+
+      const showRoute = () => {
+        clearHideTimer();
+        setHoverVisibility(true);
+      };
+
+      const hideRoute = () => {
+        if (!hoverOnly) return;
+        clearHideTimer();
+        hideTimer = window.setTimeout(() => {
+          setHoverVisibility(false);
+        }, 120);
+        hoverTimeouts.push(hideTimer);
+      };
+
+      const bindHoverHandlers = (layer: L.Layer) => {
+        layer.on("mouseover", showRoute);
+        layer.on("mouseout", hideRoute);
+      };
+
+      routeSegments.forEach((segment) => {
+        const line = L.polyline(segment, {
+          color,
+          weight: 3,
+          opacity: hoverOnly ? 0 : 0.95,
+          dashArray: "8 8",
+          interactive: hoverOnly,
+        });
+        line.bindTooltip(`${text} • rute`);
+        bindHoverHandlers(line);
+        routeLayers.push(line);
+        segmentGroup.addLayer(line);
+        appendPointsToBounds(bounds, segment);
+      });
+
+      startMarker = L.circleMarker(routeStart, {
+        radius: 6,
+        color,
+        fillColor: color,
+        fillOpacity: 0.95,
+        weight: 2.2,
+        opacity: 1,
+      });
+      startMarker.bindTooltip(`${text} • start`);
+      bindHoverHandlers(startMarker);
+      startMarker.on("click", showRoute);
+      segmentGroup.addLayer(startMarker);
+      appendPointsToBounds(bounds, [routeStart]);
+
+      if (routeEnd && (routeEnd[0] !== routeStart[0] || routeEnd[1] !== routeStart[1])) {
+        endMarker = L.circleMarker(routeEnd, {
+          radius: 4.5,
+          color,
+          fillColor: color,
+          fillOpacity: hoverOnly ? 0 : 0.88,
+          weight: 1.5,
+          opacity: hoverOnly ? 0 : 0.98,
+        });
+        endMarker.bindTooltip(`${text} • slutt`);
+        bindHoverHandlers(endMarker);
+        segmentGroup.addLayer(endMarker);
+        appendPointsToBounds(bounds, [routeEnd]);
+      }
+
+      setHoverVisibility(!hoverOnly);
+      videoLayerRef.current?.addLayer(segmentGroup);
+    };
+
+    const run = async () => {
+      for (let index = 0; index < videoMapArtifacts.length; index += 1) {
+        try {
+          await loadArtifact(videoMapArtifacts[index], index);
+        } catch (error) {
+          if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
+            return;
+          }
+          if (!cancelled) {
+            console.error("Kunne ikke laste video-geodata", error);
+          }
+        }
+      }
+
+      if (!cancelled && bounds.isValid()) {
+        mapRef.current?.fitBounds(bounds.pad(0.18), { animate: true });
+        hasVideoFitRef.current = true;
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      abortControllers.forEach((controller) => {
+        controller.abort();
+      });
+      hoverTimeouts.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+    };
+  }, [videoMapArtifacts]);
 
   return (
     <div className="absolute inset-0 z-0">

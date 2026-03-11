@@ -1,0 +1,238 @@
+import { Images, Import, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings2 } from "lucide-react";
+
+import { SettingsDialog } from "@/components/settings-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Sidebar,
+  SidebarCollapseTrigger,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import type { BaseMapStyle } from "@/lib/map-styles";
+import { cn } from "@/lib/utils";
+import type { ProfileResponse } from "@/types";
+
+type AppView = "map" | "album" | "video";
+
+interface LogEntry {
+  id: string;
+  time: string;
+  level: "info" | "warn" | "error";
+  message: string;
+  requestId?: string | null;
+  details?: string;
+}
+
+interface BackendLogEntry {
+  timestamp: string;
+  level: string;
+  logger: string;
+  requestId?: string | null;
+  request_id?: string | null;
+  message: string;
+  raw: string;
+}
+
+interface SavePayload {
+  user: {
+    full_name?: string;
+    phone?: string;
+    email?: string;
+    address_line1?: string;
+    postal_code?: string;
+    city?: string;
+    municipality_code?: string;
+    municipality_name?: string;
+  };
+  property: {
+    komm?: string;
+    gnr?: number;
+    bnr?: number;
+    fnr?: number;
+    label?: string;
+  };
+}
+
+interface AppSidebarProps {
+  profile: ProfileResponse | null;
+  activeView: AppView;
+  statusText: string;
+  propertyStatus: string;
+  showPropertyLayer: boolean;
+  showOnlyManualQc: boolean;
+  showOnlyLowConfidence: boolean;
+  baseMapStyle: BaseMapStyle;
+  mapGrayscale: boolean;
+  mapVintage: boolean;
+  showZoomControls: boolean;
+  isLoading: boolean;
+  logoSpinActive?: boolean;
+  logs: LogEntry[];
+  onClearLogs: () => void;
+  backendLogs: BackendLogEntry[];
+  backendLogsLoading: boolean;
+  onFetchBackendLogs: () => void;
+  onClearBackendLogs: () => void;
+  onTogglePropertyLayer: (next: boolean) => void;
+  onToggleManualQcFilter: (next: boolean) => void;
+  onToggleLowConfidenceFilter: (next: boolean) => void;
+  onChangeBaseMapStyle: (style: BaseMapStyle) => void;
+  onChangeMapGrayscale: (next: boolean) => void;
+  onChangeMapVintage: (next: boolean) => void;
+  onChangeShowZoomControls: (next: boolean) => void;
+  onChangeView: (view: AppView) => void;
+  onStartMediaImport?: () => void;
+  onSaveProfile: (payload: SavePayload) => Promise<void>;
+}
+
+function SidebarNavigation({
+  activeView,
+  onChangeView,
+  onStartMediaImport,
+}: Pick<AppSidebarProps, "activeView" | "onChangeView" | "onStartMediaImport">) {
+  return (
+    <>
+      <SidebarGroupLabel className="fb-sidebar-group-label pb-4 text-[11px] tracking-[0.12em]">Arbeidsflate</SidebarGroupLabel>
+      <SidebarMenu className="gap-2">
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "map"} closeOnClick onClick={() => onChangeView("map")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <MapIcon className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Kart</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "album"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Images className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Album</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton closeOnClick onClick={() => onStartMediaImport?.()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Import className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Import</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </>
+  );
+}
+
+export function AppSidebar({
+  profile,
+  activeView,
+  statusText,
+  propertyStatus,
+  showPropertyLayer,
+  showOnlyManualQc,
+  showOnlyLowConfidence,
+  baseMapStyle,
+  mapGrayscale,
+  mapVintage,
+  showZoomControls,
+  isLoading,
+  logoSpinActive = false,
+  logs,
+  onClearLogs,
+  backendLogs,
+  backendLogsLoading,
+  onFetchBackendLogs,
+  onClearBackendLogs,
+  onTogglePropertyLayer,
+  onToggleManualQcFilter,
+  onToggleLowConfidenceFilter,
+  onChangeBaseMapStyle,
+  onChangeMapGrayscale,
+  onChangeMapVintage,
+  onChangeShowZoomControls,
+  onChangeView,
+  onStartMediaImport,
+  onSaveProfile,
+}: AppSidebarProps) {
+  const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
+
+  return (
+    <Sidebar>
+      <SidebarHeader className="fb-sidebar-header">
+        <div className="flex items-center justify-between gap-2">
+          <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 px-1 py-1 text-fb-text-primary">
+            <span
+              className={cn(
+                "logo-hover-spin inline-flex h-9 w-9 items-center justify-center",
+                (isLoading || logoSpinActive) && "logo-loading",
+              )}
+            >
+              <img src={logoUrl} alt="" className="h-7 w-7" />
+            </span>
+            <span className="fb-sidebar-brand-text min-w-0 text-[15px] font-semibold leading-none tracking-[-0.01em]">
+              Flyvendebønder
+            </span>
+          </a>
+          <span
+            className="hidden md:inline-flex"
+          >
+            <SidebarCollapseTrigger
+              className="fb-sidebar-collapse-trigger inline-flex h-9 w-9 items-center justify-center rounded-lg text-fb-text-secondary transition-colors hover:bg-fb-surface-ghost hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid"
+              aria-label="Minimer meny"
+              title="Minimer meny"
+            >
+              <PanelLeftClose className="fb-sidebar-collapse-icon-open h-4 w-4" />
+              <PanelLeftOpen className="fb-sidebar-collapse-icon-closed hidden h-4 w-4" />
+            </SidebarCollapseTrigger>
+          </span>
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-6 px-5 py-6">
+        <SidebarNavigation activeView={activeView} onChangeView={onChangeView} onStartMediaImport={onStartMediaImport} />
+      </SidebarContent>
+
+      <SidebarFooter className="space-y-3">
+        <SettingsDialog
+          profile={profile}
+          statusText={statusText}
+          propertyStatus={propertyStatus}
+          showPropertyLayer={showPropertyLayer}
+          showOnlyManualQc={showOnlyManualQc}
+          showOnlyLowConfidence={showOnlyLowConfidence}
+          baseMapStyle={baseMapStyle}
+          mapGrayscale={mapGrayscale}
+          mapVintage={mapVintage}
+          showZoomControls={showZoomControls}
+          logs={logs}
+          onClearLogs={onClearLogs}
+          backendLogs={backendLogs}
+          backendLogsLoading={backendLogsLoading}
+          onFetchBackendLogs={onFetchBackendLogs}
+          onClearBackendLogs={onClearBackendLogs}
+          onTogglePropertyLayer={onTogglePropertyLayer}
+          onToggleManualQcFilter={onToggleManualQcFilter}
+          onToggleLowConfidenceFilter={onToggleLowConfidenceFilter}
+          onChangeBaseMapStyle={onChangeBaseMapStyle}
+          onChangeMapGrayscale={onChangeMapGrayscale}
+          onChangeMapVintage={onChangeMapVintage}
+          onChangeShowZoomControls={onChangeShowZoomControls}
+          onSaveProfile={onSaveProfile}
+          trigger={
+            <Button type="button" variant="ghost" className="fb-sidebar-settings-trigger h-12 w-full justify-start rounded-2xl px-3.5 text-[14px] font-medium text-fb-text-primary">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+                <Settings2 className="h-4 w-4 shrink-0" />
+              </span>
+              <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
+            </Button>
+          }
+        />
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
