@@ -376,7 +376,10 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90vh] gap-3 overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-h-[90vh] gap-3 overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6"
+      >
         <DialogHeader className="space-y-0">
           <DialogTitle>Innstillinger</DialogTitle>
         </DialogHeader>
