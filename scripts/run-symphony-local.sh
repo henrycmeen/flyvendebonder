@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SYMPHONY_ROOT="${SYMPHONY_ROOT:-$HOME/code/openai-symphony}"
 WORKFLOW_FILE="$ROOT_DIR/WORKFLOW.md"
 SOURCE_REPO_URL="${SYMPHONY_SOURCE_REPO_URL:-$(git -C "$ROOT_DIR" remote get-url origin)}"
+SYMPHONY_LOGS_ROOT="${SYMPHONY_LOGS_ROOT:-$ROOT_DIR/.symphony-log}"
+SYMPHONY_PORT="${SYMPHONY_PORT:-}"
 
 : "${LINEAR_API_KEY:?Set LINEAR_API_KEY before starting Symphony.}"
 
@@ -21,9 +23,22 @@ fi
 
 export SYMPHONY_SOURCE_REPO_URL="$SOURCE_REPO_URL"
 
+mkdir -p "$SYMPHONY_LOGS_ROOT"
+
 cd "$SYMPHONY_ROOT/elixir"
 mise trust
 mise install
 mise exec -- mix setup
 mise exec -- mix build
-exec mise exec -- ./bin/symphony "$WORKFLOW_FILE" "$@"
+
+ARGS=( "$WORKFLOW_FILE" --logs-root "$SYMPHONY_LOGS_ROOT" )
+
+if [[ -n "$SYMPHONY_PORT" ]]; then
+  ARGS+=( --port "$SYMPHONY_PORT" )
+fi
+
+if [[ "$#" -gt 0 ]]; then
+  ARGS+=( "$@" )
+fi
+
+exec mise exec -- ./bin/symphony "${ARGS[@]}"

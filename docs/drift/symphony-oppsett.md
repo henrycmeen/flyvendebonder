@@ -55,12 +55,25 @@ Det skriptet:
 1. kloner eller oppdaterer `openai/symphony`
 2. bygger Elixir-implementasjonen
 3. starter Symphony med dette repoets `WORKFLOW.md`
+4. skriver lokale Symphony-logger til `.symphony-log/`
 
 Hvis du vil ha dashboard på egen port:
 
 ```bash
-./scripts/run-symphony-local.sh --port 4060
+SYMPHONY_PORT=4060 ./scripts/run-symphony-local.sh
 ```
+
+Anbefalt ved feilsøking:
+
+```bash
+SYMPHONY_PORT=4060 ./scripts/run-symphony-local.sh --i-understand-that-this-will-be-running-without-the-usual-guardrails
+```
+
+Da kan du følge dashboard/API lokalt samtidig:
+
+- `http://127.0.0.1:4060/`
+- `http://127.0.0.1:4060/api/v1/state`
+- `http://127.0.0.1:4060/api/v1/HEN-6`
 
 ## Anbefalt første pilot
 
@@ -75,6 +88,7 @@ Anbefalt driftsregel i første fase:
 
 - bare saker i `Todo` skal plukkes aktivt
 - behold `max_concurrent_agents: 1`
+- behold `max_turns` lavt i pilot, slik at dårlige løp stopper tidligere
 - flytt saker til `Rework` manuelt når review ber om endringer
 - flytt til `Merging` bare når du faktisk vil at merge-løpet skal kjøres
 
@@ -91,3 +105,9 @@ Anbefalt driftsregel i første fase:
 ## Kommentar
 
 OpenAI beskriver fortsatt Symphony Elixir som prototypeprogramvare for evaluering. Dette oppsettet er derfor bevisst konservativt: ett repo, én agent om gangen, og manuell kontroll på review og merge-overganger.
+
+## Feilsøking fra pilot 12. mars 2026
+
+- Utløpt Codex-auth ga først `401 Unauthorized` og tomme turns.
+- Etter ny innlogging startet worker normalt, men HEN-6 brukte svært mange tokens før første kodeendring.
+- Viktigste læring så langt: piloten må styres strammere enn standard Symphony-oppsett. Repoets `WORKFLOW.md` er derfor strammet inn for å redusere bred git-analyse, unødvendig repo-scanning og bruk av sub-agenter i små tickets.

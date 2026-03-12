@@ -23,7 +23,7 @@ hooks:
     ./scripts/symphony-bootstrap.sh
 agent:
   max_concurrent_agents: 1
-  max_turns: 16
+  max_turns: 8
 codex:
   command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=high app-server
   approval_policy: never
@@ -58,6 +58,7 @@ No description provided.
 6. Do not merge or deploy while the ticket is in `Todo`, `In Progress`, `Human Review`, or `Rework`.
 7. Pilot guard: unattended implementation work is limited to tickets labeled `Agent Safe` and not labeled `Trenger avklaring`.
 8. If a ticket in `Todo` or `In Progress` fails that pilot guard, record the reason in the workpad, move the ticket back to `Backlog`, and stop without coding.
+9. Do not use sub-agents during this pilot. Work directly in the current workspace instead of using `spawn_agent`, `wait`, or similar delegation patterns.
 
 ## Required repo validation
 
@@ -120,6 +121,14 @@ No description provided.
 - Keep the PR title aligned with the actual shipped outcome.
 - Sweep all open PR comments before moving to `Human Review`.
 - Treat reviewer comments as blocking until they are fixed or explicitly pushed back with a concrete reason.
+
+## Pilot efficiency rules
+
+- Prefer repo-local skills under `.codex/skills/` when they exist. Do not open shared/global skill docs unless the repo-local skill is missing or the task explicitly needs broader workspace management.
+- Keep branch setup short. If the issue branch does not already exist on `origin`, create it from `refs/remotes/origin/main` and continue. Do not spend more than a handful of git inspection commands proving the same thing.
+- Keep initial code reconnaissance narrow: identify the likely target files plus at most one reusable comparison pattern, then move to editing or document a concrete blocker.
+- Avoid broad repo-wide scans after the likely files are known.
+- Update the workpad after pull/reproduction and again only when there is meaningful implementation or validation progress.
 
 ## Final message discipline
 
