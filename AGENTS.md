@@ -16,17 +16,26 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 ## Standard arbeidsflyt
 1. Legg ny arbeid i en GitHub-issue først (`https://github.com/henrycmeen/flyvendebonder/issues/new`)
 2. Løs med små, målbare steg
-3. Valider med lokal sjekk (frontend build / backend lint om tilgjengelig)
-4. Merge til `main` når endringen er klar for live
-5. Oppdater status i `docs/status/`
+3. Kjør `./scripts/validate-agent-worktree.sh`
+4. Kjør `./scripts/run-stack-smoke.sh` når endringen treffer frontend, routing eller API-overflate
+5. Merge til `main` når PR-validering og review er grønt
+6. Oppdater status i `docs/status/`
 
 ## Lokale kommandoer
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
 - `cd apps/web-app && npm run dev -- --host 127.0.0.1 --port 5173` – kun frontend
+- `./scripts/validate-agent-worktree.sh` – standard backend + frontend-validering
+- `./scripts/run-stack-smoke.sh` – start lokal backend + preview og kjør smoke-test
 - `cd apps/web-app && npm run build` – frontend build
 - `./scripts/prepare-webroot.sh` – bygg staging webroot
 - `./scripts/deploy-flyvendebonder.sh --dry-run` – valider deploy
 - `./scripts/deploy-flyvendebonder.sh` – faktisk deploy
+
+## Agentpilot
+- `WORKFLOW.md` er styrende for autonome eller semi-autonome agentløp.
+- GitHub Issues er fortsatt backlog, men issue-malen `Agentklar oppgave` skal brukes for små, reviewbare oppgaver.
+- Ikke merge eller deploy automatisk i pilotfasen.
+- Unngå endringer i deploy og live-drift uten eksplisitt issue.
 
 ## SSH og deploy-tilgang (Mac mini)
 - SSH alias `macmini` skal brukes for deploy-kommandoer.

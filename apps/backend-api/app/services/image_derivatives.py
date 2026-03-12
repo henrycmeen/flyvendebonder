@@ -18,8 +18,9 @@ SUPPORTED_ORIGINAL_EXTS = {".jpg", ".jpeg", ".tif", ".tiff"}
 
 
 def ensure_photo_dirs() -> None:
+    photos_root = settings.app_data_root / "photos"
     for sub in ("original", "web", "thumb"):
-        (settings.photos_root / sub).mkdir(parents=True, exist_ok=True)
+        (photos_root / sub).mkdir(parents=True, exist_ok=True)
 
 
 def _normalized_original_ext(source: Path) -> str:

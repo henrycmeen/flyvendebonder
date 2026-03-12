@@ -4,6 +4,7 @@
 - SSH alias `macmini` fungerer.
 - Remote webroot finnes: `/Users/henrymeen/srv/www/flyvendebonder/`.
 - Backend API kjører separat på Mac mini (`127.0.0.1:8787`) bak Caddy `/api/*`.
+- Pull requests skal valideres via `.github/workflows/pull-request-validate.yml` før merge til `main`.
 
 ## Staging
 Bygg en lokal staging-kopi med riktig URL-struktur:
@@ -129,10 +130,9 @@ python rebuild_derivatives.py --workers 1
 ## Smoke-check før deploy
 1. Kjør backend-smoketest:
 ```bash
-cd apps/backend-api
-python3 -m pytest -q tests/test_smoke.py
+./scripts/validate-agent-worktree.sh
 ```
 2. Kjør end-to-end sjekk av API og frontend:
 ```bash
-./scripts/smoke-flyvendebonder.sh
+./scripts/run-stack-smoke.sh
 ```

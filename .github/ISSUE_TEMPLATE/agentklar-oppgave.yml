@@ -1,0 +1,68 @@
+name: Agentklar oppgave
+description: Bruk for små, reviewbare oppgaver som skal kunne løses i én PR.
+title: "[oppgave] "
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Område
+      description: Velg det området som eier endringen.
+      options:
+        - Frontend
+        - Backend
+        - Full stack
+        - Drift/docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: maal
+    attributes:
+      label: Mål
+      description: Beskriv ønsket resultat, ikke bare symptomet.
+      placeholder: Hva skal være annerledes når oppgaven er ferdig?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Akseptansekriterier
+      description: Skriv 2-5 konkrete kriterier som kan verifiseres i PR.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Utenfor scope
+      description: List ting agenten ikke skal utvide oppgaven med.
+      placeholder: Ingen backend-migreringer, ingen deploy-endringer, ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validering
+      description: Hvilke kommandoer eller scenarier må være grønne?
+      placeholder: |
+        ./scripts/validate-agent-worktree.sh
+        ./scripts/run-stack-smoke.sh
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: agent_ready
+    attributes:
+      label: Agentklar sjekk
+      options:
+        - label: Oppgaven kan løses i én reviewbar PR.
+          required: true
+        - label: Oppgaven krever ikke nye secrets eller ny infrastruktur.
+          required: true
+        - label: Akseptansekriteriene over er konkrete nok til at en agent kan validere dem.
+          required: true

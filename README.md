@@ -40,13 +40,14 @@ Manuelt:
 ## Smoke-check før deploy
 1. Backend API:
 ```bash
-cd apps/backend-api
-python3 -m pytest -q tests/test_smoke.py
+./scripts/validate-agent-worktree.sh
 ```
 2. API + frontend-endepunkter:
 ```bash
-./scripts/smoke-flyvendebonder.sh
+./scripts/run-stack-smoke.sh
 ```
+
+Dette er også standardløypen for agentarbeid og PR-validering.
 
 ## Staging/deploy
 1. Bygg staging webroot:
@@ -73,6 +74,12 @@ python3 -m pytest -q tests/test_smoke.py
   ```
 
 API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ved første oppstart.
+
+## GitHub og agentarbeid
+- PR-validering ligger i `.github/workflows/pull-request-validate.yml`
+- Agentregler ligger i `WORKFLOW.md`
+- GitHub Issues brukes fortsatt som backlog
+- Praktisk oppsett for pilotfasen er dokumentert i `docs/drift/agentarbeid-flyt.md`
 
 ## Bildedata og analyse
 - Regenerer demo-data fra dronebilder:
