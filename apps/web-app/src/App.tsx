@@ -94,6 +94,27 @@ const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av mens /api/v1/video-jobs-kontrakten bygges opp igjen i backend. Dette hindrer at UI-et peker til manglende endepunkter.";
 
+function resolveInitialView(rawView: string | null): AppView {
+  if (rawView === "album") return "album";
+  if (rawView === "import") {
+    return BROWSER_MEDIA_IMPORT_ENABLED ? "import" : "map";
+  }
+  if (rawView === "video") {
+    return VIDEO_WORKFLOW_ENABLED ? "video" : "map";
+  }
+  return "map";
+}
+
+function getInitialViewBlockReason(rawView: string | null): string | null {
+  if (rawView === "import" && !BROWSER_MEDIA_IMPORT_ENABLED) {
+    return BROWSER_MEDIA_IMPORT_DISABLED_REASON;
+  }
+  if (rawView === "video" && !VIDEO_WORKFLOW_ENABLED) {
+    return VIDEO_WORKFLOW_DISABLED_REASON;
+  }
+  return null;
+}
+
 function mergeUniqueJobIds(current: string[], incoming: string[]): string[] {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -212,9 +233,9 @@ export default function App() {
   const initialDate = params.get("date");
   const initialPhoto = params.get("photo");
   const rawInitialView = params.get("view");
-  const initialView: AppView =
-    rawInitialView === "album" || rawInitialView === "import" || rawInitialView === "video" ? rawInitialView : "map";
+  const initialView = resolveInitialView(rawInitialView);
   const hasExplicitDeepLink = initialDate !== null || initialPhoto !== null;
+  const blockedInitialViewReasonRef = useRef<string | null>(getInitialViewBlockReason(rawInitialView));
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
@@ -560,6 +581,17 @@ export default function App() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const blockedReason = blockedInitialViewReasonRef.current;
+    if (!blockedReason) return;
+
+    setStatusText(blockedReason);
+    addLog("warn", "Deaktivert view i URL ble ignorert", null, {
+      requestedView: rawInitialView,
+    });
+    blockedInitialViewReasonRef.current = null;
+  }, [addLog, rawInitialView]);
 
   useEffect(() => {
     const unsubscribe = subscribeClientLogs((entry) => {
@@ -1200,10 +1232,12 @@ export default function App() {
       return;
     }
     setMetadataEditMode(false);
-    if (activeView === "import" && adminSession !== null) {
+    if ((activeView === "import" || activeView === "video") && adminSession !== null) {
       setActiveView("map");
+      setStatusText("Admin-tilgang kreves for denne visningen.");
+      addLog("warn", "Beskyttet visning lukket uten admin-tilgang", null, { view: activeView });
     }
-  }, [activeView, adminSession]);
+  }, [activeView, addLog, adminSession]);
 
   useEffect(() => {
     if (selectedYear !== "all" && !availableYears.includes(selectedYear)) {
@@ -1813,7 +1847,7 @@ export default function App() {
       setAdminSession(data);
       setBackendLogs([]);
       setMetadataEditMode(false);
-      setActiveView((current) => (current === "import" ? "map" : current));
+      setActiveView((current) => (current === "import" || current === "video" ? "map" : current));
       addLog("info", "Admin-tilgang slått av", requestId);
       setStatusText("Admin-tilgang slått av.");
     } catch (error) {
