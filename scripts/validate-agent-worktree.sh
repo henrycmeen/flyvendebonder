@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_STACK_SMOKE=0
+BACKEND_PYTHON="$ROOT_DIR/apps/backend-api/.venv/bin/python"
+
+if [[ ! -x "$BACKEND_PYTHON" ]]; then
+  BACKEND_PYTHON="python3"
+fi
 
 while (($#)); do
   case "$1" in
@@ -21,7 +26,7 @@ done
 echo "[1/3] Backend tests"
 (
   cd "$ROOT_DIR/apps/backend-api"
-  python3 -m pytest -q
+  "$BACKEND_PYTHON" -m pytest -q
 )
 
 echo "[2/3] Frontend lint"

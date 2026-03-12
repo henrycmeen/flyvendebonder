@@ -8,7 +8,8 @@
 - `apps/shared-assets/`: felles assets (logo/video)
 - `docs/`: innsikt, brand og driftsdokumentasjon
 - `docs/status/`: samlet status på siste funksjoner/arbeid
-- `GitHub Issues`: opprettet i repoet (`https://github.com/henrycmeen/flyvendebonder/issues`)
+- `Linear`: operativ arbeidsflate i prosjektet `Flyvendebønder`
+- `GitHub Issues`: historisk backlog og referanser i repoet (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `archive/`: historiske versjoner av tidligere sideoppsett
 - `scripts/`: staging og deploy scripts
 
@@ -78,8 +79,9 @@ API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ve
 ## GitHub og agentarbeid
 - PR-validering ligger i `.github/workflows/pull-request-validate.yml`
 - Agentregler ligger i `WORKFLOW.md`
-- GitHub Issues brukes fortsatt som backlog
-- Praktisk oppsett for pilotfasen er dokumentert i `docs/drift/agentarbeid-flyt.md`
+- Linear-prosjektet `Flyvendebønder` er nå kontrollflate for agentarbeid
+- Praktisk pilotflyt er dokumentert i `docs/drift/agentarbeid-flyt.md`
+- Symphony-oppsett ligger i `docs/drift/symphony-oppsett.md`
 
 ## Bildedata og analyse
 - Regenerer demo-data fra dronebilder:

@@ -11,10 +11,11 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `scripts/` – deploy-steg, import og vedlikehold
 - `docs/` – dokumentasjon, drift og planlegging
 - `docs/status/` – prosjektstatus og ukentlige notater
-- `GitHub Issues` – operativ backlog for alt videre arbeid (`https://github.com/henrycmeen/flyvendebonder/issues`)
+- `Linear` – operativ backlog og kontrollflate for agentarbeid
+- `GitHub Issues` – historisk backlog og referanser (`https://github.com/henrycmeen/flyvendebonder/issues`)
 
 ## Standard arbeidsflyt
-1. Legg ny arbeid i en GitHub-issue først (`https://github.com/henrycmeen/flyvendebonder/issues/new`)
+1. Legg nytt arbeid i Linear-prosjektet `Flyvendebønder`
 2. Løs med små, målbare steg
 3. Kjør `./scripts/validate-agent-worktree.sh`
 4. Kjør `./scripts/run-stack-smoke.sh` når endringen treffer frontend, routing eller API-overflate
@@ -33,7 +34,7 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 
 ## Agentpilot
 - `WORKFLOW.md` er styrende for autonome eller semi-autonome agentløp.
-- GitHub Issues er fortsatt backlog, men issue-malen `Agentklar oppgave` skal brukes for små, reviewbare oppgaver.
+- Linear er nå primær backlog for agentløp, og prosjektet `Flyvendebønder` er kontrollflaten.
 - Ikke merge eller deploy automatisk i pilotfasen.
 - Unngå endringer i deploy og live-drift uten eksplisitt issue.
 

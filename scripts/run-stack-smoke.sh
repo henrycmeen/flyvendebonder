@@ -27,6 +27,11 @@ WEB_LOG="${WEB_LOG:-$SMOKE_STATE_DIR/web-preview.log}"
 LOG_FILE_PATH="${LOG_FILE_PATH:-$SMOKE_STATE_DIR/backend-app.log}"
 DATABASE_URL="${DATABASE_URL:-sqlite:///$SMOKE_STATE_DIR/flyvendebonder-smoke.db}"
 APP_DATA_ROOT="${APP_DATA_ROOT:-$SMOKE_STATE_DIR/storage}"
+BACKEND_PYTHON="$BACKEND_DIR/.venv/bin/python"
+
+if [[ ! -x "$BACKEND_PYTHON" ]]; then
+  BACKEND_PYTHON="python3"
+fi
 
 fail() {
   echo "$1" >&2
@@ -104,7 +109,7 @@ echo "Starting backend on $BACKEND_URL ..."
   PHOTO_SOIL_WFS_URL="" \
   PHOTO_SOIL_WFS_LAYERS="" \
   PYTHONUNBUFFERED=1 \
-  python3 server.py
+  "$BACKEND_PYTHON" server.py
 ) >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 

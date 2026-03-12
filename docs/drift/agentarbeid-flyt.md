@@ -1,6 +1,6 @@
 # Agentarbeid i Flyvendebønder
 
-Dette dokumentet beskriver hvordan repoet brukes som pilot for agentassistert utvikling før eventuell Symphony-vurdering.
+Dette dokumentet beskriver hvordan repoet brukes som pilot for agentassistert utvikling med Linear som kontrollflate og Symphony som neste steg.
 
 ## Mål
 - Gjøre små GitHub-issues om til reviewbare PR-er.
@@ -15,6 +15,7 @@ Dette dokumentet beskriver hvordan repoet brukes som pilot for agentassistert ut
 - GitHub issue- og PR-maler under `.github/`
 - GitHub label-sync i `scripts/sync-github-labels.sh`
 - Enkel listevisning for agentklare issues i `scripts/list-agent-ready-issues.sh`
+- Linear-prosjektet `Flyvendebønder`
 
 ## Standard valideringsløype
 1. Installer avhengigheter:
@@ -49,15 +50,15 @@ Agentklare saker kan listes med:
 ```
 
 ## Arbeidsmåte i pilotfasen
-- Start med små issues som kan løses i én PR.
-- Bruk issue-malen `Agentklar oppgave`.
+- Hold Linear som kontrollflate og GitHub som kode- og PR-system.
+- Start med små saker som kan løses i én PR.
 - Be agenten følge `WORKFLOW.md`.
 - Hold deploy til `main` manuell via vanlig review og merge.
-- Opprett oppfølgingsissues når agenten finner sidearbeid. Ikke utvid PR-en ukontrollert.
+- Opprett oppfølgingsissues i Linear når agenten finner sidearbeid. Ikke utvid PR-en ukontrollert.
 
 ## Hva som fortsatt ikke er automatisert
 - Backend deploy og restart på Mac mini
 - Valgfri GitHub branch protection
-- Linear/Symphony-orkestrering
+- Full Symphony-kjøring før ekstra Linear-states er på plass
 
-Det er bevisst. Repoet skal først tåle agentiske PR-løp trygt via GitHub Issues.
+Se `docs/drift/symphony-oppsett.md` for faktisk Symphony-oppsett.
