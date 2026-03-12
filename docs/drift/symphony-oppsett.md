@@ -35,13 +35,28 @@ Repoets `WORKFLOW.md` forventer disse statusene. Uten dem vil agenten stoppe nå
 - `gh` er installert og autentisert mot `henrycmeen/flyvendebonder`
 - `mise` er installert
 - Git-tilgang til repoet fungerer
-- `LINEAR_API_KEY` er satt
+- `LINEAR_API_KEY` er tilgjengelig enten i shellen eller i en repo-lokal env-fil
 
-Eksempel:
+Anbefalt i dette repoet:
 
 ```bash
-export LINEAR_API_KEY="lin_api_..."
+cp .env.example .env.local
 ```
+
+Og legg inn:
+
+```bash
+LINEAR_API_KEY="lin_api_..."
+```
+
+`run-symphony-local.sh` leser automatisk disse filene hvis `LINEAR_API_KEY` ikke allerede er eksportert i shellen:
+
+- `.env`
+- `.env.local`
+- `.env.symphony`
+- `.env.symphony.local`
+
+`.env.local` er anbefalt for lokale hemmeligheter siden filen er ignorert i git.
 
 ## Start Symphony lokalt
 
@@ -56,6 +71,7 @@ Det skriptet:
 2. bygger Elixir-implementasjonen
 3. starter Symphony med dette repoets `WORKFLOW.md`
 4. skriver lokale Symphony-logger til `.symphony-log/`
+5. kloner som standard samme git-branch som du står på i Flyvendebønder-repoet
 
 Hvis du vil ha dashboard på egen port:
 
@@ -110,4 +126,5 @@ OpenAI beskriver fortsatt Symphony Elixir som prototypeprogramvare for evaluerin
 
 - Utløpt Codex-auth ga først `401 Unauthorized` og tomme turns.
 - Etter ny innlogging startet worker normalt, men HEN-6 brukte svært mange tokens før første kodeendring.
-- Viktigste læring så langt: piloten må styres strammere enn standard Symphony-oppsett. Repoets `WORKFLOW.md` er derfor strammet inn for å redusere bred git-analyse, unødvendig repo-scanning og bruk av sub-agenter i små tickets.
+- Viktigste læring så langt: piloten må styres strammere enn standard Symphony-oppsett. Repoets `WORKFLOW.md` er derfor strammet inn for å redusere bred git-analyse, unødvendig repo-scanning og bare tillate én kontrollert explorer-subagent på feature-saker.
+- Senere pilotkjøring viste også at workspaces må opprettes fra faktisk test-branch, ikke bare GitHub `main`, ellers mangler repo-lokale Symphony-filer i worker-klonen.

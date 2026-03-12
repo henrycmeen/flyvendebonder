@@ -3,6 +3,11 @@
 *.swp
 *.swo
 .vscode/
+.env
+.env.local
+.env.symphony
+.env.symphony.local
+.symphony-log/
 node_modules/
 dist/
 build/
