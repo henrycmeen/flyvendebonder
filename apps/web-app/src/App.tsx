@@ -649,6 +649,9 @@ export default function App() {
       if (seq !== adminSessionLoadSeqRef.current) return data;
 
       setAdminSession(data);
+      if (!data.authenticated) {
+        setBackendLogs([]);
+      }
       if (!options?.silent && data.authenticated) {
         addLog("info", "Admin-sesjon bekreftet", requestId, {
           expiresAt: data.expires_at,
@@ -708,6 +711,9 @@ export default function App() {
       const apiError = error as ApiError;
       if (seq !== backendLogLoadSeqRef.current) return;
       if (isRequestAborted(apiError)) return;
+      if (apiError.status === 401) {
+        setBackendLogs([]);
+      }
       addLog("error", "Kunne ikke hente backendlogg", apiError.requestId, apiError.detail);
     } finally {
       setIsBackendLogsLoading(false);
@@ -1799,6 +1805,7 @@ export default function App() {
         apiPost<AdminSessionStatus>("/api/v1/admin/logout"),
       );
       setAdminSession(data);
+      setBackendLogs([]);
       setMetadataEditMode(false);
       setActiveView((current) => (current === "import" ? "map" : current));
       addLog("info", "Admin-tilgang slått av", requestId);
