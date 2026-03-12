@@ -2041,36 +2041,39 @@ export default function App() {
                     </div>
 
                     <aside className="photo-viewer-meta-column">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
-                          <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            variant={metadataEditMode ? "default" : "ghost"}
-                            size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                            onClick={() => setMetadataEditMode((value) => !value)}
-                            aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
-                            aria-pressed={metadataEditMode}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                            onClick={handleClosePhotoViewer}
-                            aria-label="Lukk bildevisning"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                      <div className="photo-viewer-meta-header">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                            <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant={metadataEditMode ? "default" : "ghost"}
+                              size="icon"
+                              className="photo-viewer-meta-action h-8 w-8 shrink-0"
+                              onClick={() => setMetadataEditMode((value) => !value)}
+                              aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
+                              aria-pressed={metadataEditMode}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="photo-viewer-meta-action h-8 w-8 shrink-0"
+                              onClick={handleClosePhotoViewer}
+                              aria-label="Lukk bildevisning"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-3 space-y-2.5">
-                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                      <div className="photo-viewer-meta-body">
+                        <div className="space-y-2.5">
+                          <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
                           <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-muted">Analyse</p>
                           <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
                             <div className="flex items-start justify-between gap-2">
@@ -2508,7 +2511,8 @@ export default function App() {
                             </dl>
                           ) : null}
                         </div>
-                      </div>
+                        </div>
+                        </div>
                     </aside>
                   </>
                 ) : (
@@ -2576,20 +2580,22 @@ export default function App() {
                     </div>
 
                     <aside className="photo-viewer-meta-column">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
-                          <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
-                        </div>
+                      <div className="photo-viewer-meta-header">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                            <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                          onClick={handleClosePhotoViewer}
-                          aria-label="Lukk bildevisning"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                            className="photo-viewer-meta-action h-8 w-8 shrink-0"
+                            onClick={handleClosePhotoViewer}
+                            aria-label="Lukk bildevisning"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </aside>
                   </>
