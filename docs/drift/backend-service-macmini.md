@@ -55,6 +55,13 @@ curl -s http://127.0.0.1:8787/api/v1/logs?limit=120 | jq
 - `limit`: antall linjer (1–1000)
 - `level`: `DEBUG|INFO|WARNING|ERROR|CRITICAL` (valgfritt)
 
+Følge live-logger fra utviklingsmaskinen:
+```bash
+./scripts/watch-live-logs.sh
+```
+
+For kombinert frontend/backend-feilsøking med Playwright, se `docs/debug/stabilisering-med-playwright-og-logger.md`.
+
 ## 6) Backup (SQLite)
 Eksempel daglig snapshot:
 ```bash

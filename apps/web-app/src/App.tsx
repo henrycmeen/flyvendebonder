@@ -228,10 +228,10 @@ export default function App() {
     if (typeof window === "undefined") return [];
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
   });
-  const [showPropertyLayer, setShowPropertyLayer] = useState(false);
+  const [showPropertyLayer, setShowPropertyLayer] = useState(true);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
-  const [propertyStatus, setPropertyStatus] = useState("Eiendomslag er skrudd av.");
+  const [propertyStatus, setPropertyStatus] = useState("Laster eiendomslag ...");
   const [statusText, setStatusText] = useState("Laster data ...");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([]);

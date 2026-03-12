@@ -1,3 +1,5 @@
+import { logToClient } from "@/lib/client-logger";
+
 export interface ApiResponse<T> {
   data: T;
   requestId: string | null;
@@ -49,6 +51,7 @@ const DEFAULT_RETRIES = 1;
 const DEFAULT_RETRY_DELAY_MS = 320;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const RETRIABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+const SLOW_REQUEST_WARN_MS = 1_200;
 
 const inFlightMap = new Map<string, Promise<ApiResponse<unknown>>>();
 const cacheMap = new Map<string, { expiresAt: number; payload: ApiResponse<unknown> }>();
@@ -225,6 +228,15 @@ function sanitizeRequestBody(body: unknown): string | undefined {
   return JSON.stringify(body);
 }
 
+function summarizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
 export function clearApiCache(): void {
   cacheMap.clear();
 }
@@ -262,6 +274,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
       let attempt = 0;
       let lastError: Error | null = null;
       while (attempt <= maxRetries) {
+        const attemptStartedAt = performance.now();
         try {
           const response = await fetch(url, {
             method,
@@ -276,8 +289,16 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
 
           const requestId = response.headers.get("X-Request-ID");
           const parsed = await parseResponse<T>(response);
+          const durationMs = Math.round(performance.now() - attemptStartedAt);
 
           if (response.ok) {
+            if (durationMs >= SLOW_REQUEST_WARN_MS) {
+              logToClient("warn", `Treg API-respons: ${method} ${summarizeUrl(url)}`, requestId, {
+                durationMs,
+                status: response.status,
+                retryAttempt: attempt,
+              });
+            }
             const envelope: ApiResponse<T> = {
               data: parsed as T,
               requestId,
@@ -294,6 +315,12 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
 
           const apiError = await parseApiError(response);
           if (RETRIABLE_STATUS.has(response.status) && attempt < maxRetries) {
+            logToClient("warn", `API retry: ${method} ${summarizeUrl(url)}`, apiError.requestId, {
+              durationMs,
+              status: response.status,
+              retryAttempt: attempt + 1,
+              maxRetries,
+            });
             lastError = apiError;
             await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
             attempt += 1;
@@ -308,6 +335,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
 
           if (error instanceof DOMException && error.name === "AbortError") {
             const timeoutAbort = didTimeout();
+            const durationMs = Math.round(performance.now() - attemptStartedAt);
             const abortError = new ApiError({
               message: timeoutAbort ? "Request timeout" : "Request avbrutt",
               status: timeoutAbort ? 408 : 0,
@@ -315,22 +343,46 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
               detail: error.message,
             });
             if (timeoutAbort && attempt < maxRetries) {
+              logToClient("warn", `API timeout, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
+                durationMs,
+                timeoutMs,
+                retryAttempt: attempt + 1,
+                maxRetries,
+              });
               lastError = abortError;
               await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
               attempt += 1;
               continue;
             }
+            if (timeoutAbort) {
+              logToClient("error", `API timeout: ${method} ${summarizeUrl(url)}`, null, {
+                durationMs,
+                timeoutMs,
+                retryAttempt: attempt,
+              });
+            }
             throw abortError;
           }
 
           const fallback = error instanceof Error ? error : new Error(String(error));
+          const durationMs = Math.round(performance.now() - attemptStartedAt);
           if (attempt < maxRetries) {
+            logToClient("warn", `Nettverksfeil, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
+              durationMs,
+              retryAttempt: attempt + 1,
+              maxRetries,
+              message: fallback.message,
+            });
             lastError = fallback;
             await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
             attempt += 1;
             continue;
           }
 
+          logToClient("error", `Nettverksfeil: ${method} ${summarizeUrl(url)}`, null, {
+            durationMs,
+            message: fallback.message,
+          });
           throw new ApiError({
             message: fallback.message || "Nettverksfeil",
             status: 0,

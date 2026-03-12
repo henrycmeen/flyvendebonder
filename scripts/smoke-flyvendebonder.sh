@@ -86,6 +86,8 @@ require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('statu
 echo "[2/5] Profile og timeline"
 require_json_field "Profile payload" "$BACKEND_URL/api/v1/profile/current" "obj.get('user', {}).get('full_name') == 'Roar Meen'"
 require_json_field "Timeline payload" "$BACKEND_URL/api/v1/timeline/dates" "len(obj.get('dates', [])) >= 1"
+require_json_field "Property payload" "$BACKEND_URL/api/v1/properties/current" "obj.get('property', {}).get('komm') == '4003' and obj.get('property', {}).get('gnr') == 70 and obj.get('property', {}).get('bnr') == 17"
+require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id'))"
 
 echo "[3/5] Photo-feed og paginering"
 DATE="$(extract_json_field "$BACKEND_URL/api/v1/timeline/dates" "obj.get('dates')[-1]['date']")"

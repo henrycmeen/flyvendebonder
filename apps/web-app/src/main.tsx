@@ -9,6 +9,9 @@ import { TooltipProvider } from './components/ui/tooltip.tsx'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { logToClient } from '@/lib/client-logger'
 import { ApiError } from '@/lib/api'
+import { setupBrowserDiagnostics } from '@/lib/browser-diagnostics'
+
+setupBrowserDiagnostics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
