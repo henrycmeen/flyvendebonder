@@ -3040,6 +3040,7 @@ export default function App() {
                 />
               ) : activeView === "album" ? (
                 <AlbumPage
+                  availableYears={availableYears}
                   photos={albumPhotos}
                   isLoading={albumLoadingInitial}
                   isLoadingMore={albumLoadingMore}
