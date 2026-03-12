@@ -56,6 +56,8 @@ No description provided.
 4. Use Norwegian in user-facing text, workpad notes, and PR descriptions.
 5. Do not touch `apps/demo-fotokart/`, deploy scripts, GitHub live deploy workflow, or Mac mini drift unless the ticket explicitly requires it.
 6. Do not merge or deploy while the ticket is in `Todo`, `In Progress`, `Human Review`, or `Rework`.
+7. Pilot guard: unattended implementation work is limited to tickets labeled `Agent Safe` and not labeled `Trenger avklaring`.
+8. If a ticket in `Todo` or `In Progress` fails that pilot guard, record the reason in the workpad, move the ticket back to `Backlog`, and stop without coding.
 
 ## Required repo validation
 
