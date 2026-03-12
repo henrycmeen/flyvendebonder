@@ -297,6 +297,11 @@ body {
   -webkit-backdrop-filter: blur(14px) saturate(1.04);
 }
 
+.fb-map-hover-preview-anchor {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(3.75rem, calc(env(safe-area-inset-bottom) + 1rem));
+}
+
 @media (max-width: 767px) {
   .fb-liquid-filter {
     max-width: min(320px, calc(100vw - 1.5rem));

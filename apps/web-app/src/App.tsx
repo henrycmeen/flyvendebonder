@@ -3085,7 +3085,7 @@ export default function App() {
               ) : null}
 
               {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen && !isFilterExpanded && !photosLoadFailed ? (
-                <div className="pointer-events-none absolute left-4 top-4 z-[760] hidden md:block">
+                <div className="fb-map-hover-preview-anchor pointer-events-none absolute z-[760] hidden md:block">
                   <div className="fb-map-overlay-preview overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2">
                     <img
                       src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
