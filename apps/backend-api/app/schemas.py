@@ -67,6 +67,16 @@ class ProfilePatchRequest(BaseModel):
     property: PropertyPatch = Field(default_factory=PropertyPatch)
 
 
+class AdminLoginRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
+
+
+class AdminSessionStatusResponse(BaseModel):
+    configured: bool
+    authenticated: bool
+    expires_at: datetime | None = None
+
+
 class TimelineDateEntry(BaseModel):
     date: date
     count: int

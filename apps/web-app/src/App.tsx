@@ -39,6 +39,7 @@ import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
+  AdminSessionStatus,
   GardskartJob,
   VideoMapArtifact,
   PhotoAnalysis,
@@ -186,6 +187,20 @@ function responseErrorText(payload: unknown, response: Response): string {
   return `Request feilet med status ${response.status}`;
 }
 
+function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
+  if (!session?.authenticated) {
+    return false;
+  }
+  if (!session.expires_at) {
+    return true;
+  }
+  const expiresAt = Date.parse(session.expires_at);
+  if (Number.isNaN(expiresAt)) {
+    return true;
+  }
+  return expiresAt > Date.now();
+}
+
 export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
@@ -197,6 +212,7 @@ export default function App() {
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [adminSession, setAdminSession] = useState<AdminSessionStatus | null>(null);
   const [timeline, setTimeline] = useState<TimelineDate[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -236,6 +252,7 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([]);
   const [isBackendLogsLoading, setIsBackendLogsLoading] = useState(false);
+  const [isAdminSessionBusy, setIsAdminSessionBusy] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [analysisBusyPhotoId, setAnalysisBusyPhotoId] = useState<string | null>(null);
   const [metadataBusyPhotoId, setMetadataBusyPhotoId] = useState<string | null>(null);
@@ -335,6 +352,7 @@ export default function App() {
   const albumScrollSpinTimeoutRef = useRef<number | null>(null);
   const bootstrapAbortRef = useRef<AbortController | null>(null);
   const profileAbortRef = useRef<AbortController | null>(null);
+  const adminSessionAbortRef = useRef<AbortController | null>(null);
   const timelineAbortRef = useRef<AbortController | null>(null);
   const photosAbortRef = useRef<AbortController | null>(null);
   const backendLogAbortRef = useRef<AbortController | null>(null);
@@ -343,6 +361,7 @@ export default function App() {
   const photoLoadSeqRef = useRef(0);
   const albumLoadSeqRef = useRef(0);
   const profileLoadSeqRef = useRef(0);
+  const adminSessionLoadSeqRef = useRef(0);
   const timelineLoadSeqRef = useRef(0);
   const backendLogLoadSeqRef = useRef(0);
   const gardskartJobLoadSeqRef = useRef(0);
@@ -350,6 +369,7 @@ export default function App() {
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const isLoading = pendingRequests > 0;
+  const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
     if (dayScope === "selected") {
       if (!selectedDate) return [];
@@ -606,6 +626,50 @@ export default function App() {
     });
   }, [addLog, trackRequest]);
 
+  const loadAdminSession = useCallback(async (options?: { signal?: AbortSignal; silent?: boolean }): Promise<AdminSessionStatus | null> => {
+    const seq = ++adminSessionLoadSeqRef.current;
+    const requestController = options?.signal
+      ? null
+      : (() => {
+          adminSessionAbortRef.current?.abort();
+          const next = new AbortController();
+          adminSessionAbortRef.current = next;
+          return next;
+        })();
+
+    try {
+      const { data, requestId } = await trackRequest(() =>
+        apiGet<AdminSessionStatus>("/api/v1/admin/session", {
+          signal: requestController?.signal ?? options?.signal,
+          cache: false,
+          dedupe: false,
+        }),
+      );
+
+      if (seq !== adminSessionLoadSeqRef.current) return data;
+
+      setAdminSession(data);
+      if (!options?.silent && data.authenticated) {
+        addLog("info", "Admin-sesjon bekreftet", requestId, {
+          expiresAt: data.expires_at,
+        });
+      }
+      return data;
+    } catch (error) {
+      const apiError = error as ApiError;
+      if (seq !== adminSessionLoadSeqRef.current) return null;
+      if (isRequestAborted(apiError)) return null;
+
+      setAdminSession({
+        configured: false,
+        authenticated: false,
+        expires_at: null,
+      });
+      addLog("warn", "Kunne ikke hente admin-status", apiError.requestId, apiError.detail);
+      return null;
+    }
+  }, [addLog, trackRequest]);
+
   const loadBackendLogs = useCallback(async (options?: { signal?: AbortSignal }) => {
     const seq = ++backendLogLoadSeqRef.current;
     const requestController = options?.signal
@@ -707,6 +771,44 @@ export default function App() {
     [],
   );
 
+  const ensureAdminAccess = useCallback((actionLabel: string): boolean => {
+    if (hasActiveAdminSession(adminSession)) {
+      return true;
+    }
+
+    const sessionExpired =
+      adminSession?.authenticated &&
+      Boolean(adminSession.expires_at) &&
+      !hasActiveAdminSession(adminSession);
+
+    if (sessionExpired) {
+      setAdminSession((current) =>
+        current
+          ? {
+              ...current,
+              authenticated: false,
+            }
+          : current,
+      );
+    }
+
+    const message =
+      adminSession === null
+        ? "Sjekker admin-status ... prøv igjen om et øyeblikk."
+        : sessionExpired
+          ? "Admin-sesjonen er utløpt. Åpne Innstillinger → Admin og logg inn på nytt."
+        : !adminSession.configured
+          ? "Admin-kode er ikke konfigurert i backend ennå."
+          : `Admin-tilgang kreves for ${actionLabel}. Åpne Innstillinger → Admin.`;
+
+    setStatusText(message);
+    addLog("warn", `${actionLabel} blokkert uten admin`, null, {
+      configured: adminSession?.configured ?? null,
+      authenticated: adminSession?.authenticated ?? null,
+    });
+    return false;
+  }, [addLog, adminSession]);
+
   const loadGardskartJob = useCallback(
     async (forceRefresh: boolean, options?: { signal?: AbortSignal }) => {
       if (!profile?.property || !showPropertyLayer) {
@@ -777,6 +879,7 @@ export default function App() {
   const handlePhotoAnalysisAction = useCallback(
     async (photoId: string, action: "approve" | "recompute") => {
       if (analysisBusyPhotoId === photoId) return;
+      if (!ensureAdminAccess(action === "approve" ? "godkjenning av posisjon" : "analyseberegning")) return;
 
       setAnalysisBusyPhotoId(photoId);
       try {
@@ -810,12 +913,13 @@ export default function App() {
         setAnalysisBusyPhotoId(null);
       }
     },
-    [addLog, analysisBusyPhotoId, trackRequest, updatePhotoAnalysisState],
+    [addLog, analysisBusyPhotoId, ensureAdminAccess, trackRequest, updatePhotoAnalysisState],
   );
 
   const handleSavePhotoMetadata = useCallback(async () => {
     if (!selectedPhoto) return;
     if (metadataBusyPhotoId === selectedPhoto.id) return;
+    if (!ensureAdminAccess("metadataendring")) return;
 
     const nextTags = normalizeTagsInput(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
@@ -894,6 +998,7 @@ export default function App() {
     metadataTagsDraft,
     selectedPhoto,
     selectedPhotoManualViewTarget,
+    ensureAdminAccess,
     trackRequest,
     updatePhotoMetadataState,
     metadataNeedsManualQcDraft,
@@ -1069,6 +1174,24 @@ export default function App() {
       abortController.abort();
     };
   }, [addLog, initialDate, loadProfile, loadTimeline]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    void loadAdminSession({ signal: abortController.signal, silent: true });
+    return () => {
+      abortController.abort();
+    };
+  }, [loadAdminSession]);
+
+  useEffect(() => {
+    if (adminSession?.authenticated) {
+      return;
+    }
+    setMetadataEditMode(false);
+    if (activeView === "import" && adminSession !== null) {
+      setActiveView("map");
+    }
+  }, [activeView, adminSession]);
 
   useEffect(() => {
     if (selectedYear !== "all" && !availableYears.includes(selectedYear)) {
@@ -1624,6 +1747,8 @@ export default function App() {
       label?: string;
     };
   }) => {
+    if (!ensureAdminAccess("profilendringer")) return;
+
     const { data, requestId } = await trackRequest(() =>
       apiPatch<ProfileResponse>("/api/v1/profile/current", payload),
     );
@@ -1641,15 +1766,68 @@ export default function App() {
     }
   };
 
+  const handleAdminLogin = useCallback(async (code: string) => {
+    setIsAdminSessionBusy(true);
+    try {
+      const { data, requestId } = await trackRequest(() =>
+        apiPost<AdminSessionStatus>("/api/v1/admin/login", { code }),
+      );
+      setAdminSession(data);
+      addLog("info", "Admin-tilgang aktivert", requestId, {
+        expiresAt: data.expires_at,
+      });
+      setStatusText("Admin-tilgang aktiv.");
+    } catch (error) {
+      const apiError = error as ApiError;
+      setAdminSession((current) => current ?? {
+        configured: true,
+        authenticated: false,
+        expires_at: null,
+      });
+      addLog("error", "Admin-innlogging feilet", apiError.requestId, apiError.detail);
+      setStatusText(`Admin-innlogging feilet: ${apiError.message}`);
+      throw apiError;
+    } finally {
+      setIsAdminSessionBusy(false);
+    }
+  }, [addLog, trackRequest]);
+
+  const handleAdminLogout = useCallback(async () => {
+    setIsAdminSessionBusy(true);
+    try {
+      const { data, requestId } = await trackRequest(() =>
+        apiPost<AdminSessionStatus>("/api/v1/admin/logout"),
+      );
+      setAdminSession(data);
+      setMetadataEditMode(false);
+      setActiveView((current) => (current === "import" ? "map" : current));
+      addLog("info", "Admin-tilgang slått av", requestId);
+      setStatusText("Admin-tilgang slått av.");
+    } catch (error) {
+      const apiError = error as ApiError;
+      addLog("error", "Kunne ikke logge ut admin", apiError.requestId, apiError.detail);
+      setStatusText(`Kunne ikke logge ut admin: ${apiError.message}`);
+      throw apiError;
+    } finally {
+      setIsAdminSessionBusy(false);
+    }
+  }, [addLog, trackRequest]);
+
   const handleStartMediaImport = useCallback(() => {
+    if (!ensureAdminAccess("import")) return;
     handleClosePhotoViewer();
     setMediaImportError("");
     setActiveView("import");
     addLog("info", "Import åpnet");
-  }, [addLog, handleClosePhotoViewer]);
+  }, [addLog, ensureAdminAccess, handleClosePhotoViewer]);
 
   const handleSubmitMediaImport = useCallback(
     async ({ images, videos }: MediaImportSelection): Promise<boolean> => {
+      if (!ensureAdminAccess("import")) {
+        setMediaImportError("Admin-tilgang kreves for import.");
+        return false;
+      }
+
       if (images.length === 0 && videos.length === 0) {
         setMediaImportError("Velg minst én bildefil eller videofil.");
         return false;
@@ -1770,7 +1948,7 @@ export default function App() {
         setIsMediaImportSubmitting(false);
       }
     },
-    [addLog, loadTimeline, trackRequest],
+    [addLog, ensureAdminAccess, loadTimeline, trackRequest],
   );
 
   const handlePropertyTileError = useCallback(
@@ -1803,6 +1981,7 @@ export default function App() {
 
   const handleVideoReview = useCallback(async (payload: VideoMapReviewPayload) => {
     if (!payload.jobId) return;
+    if (!ensureAdminAccess("video-review")) return;
     if (payload.decision === "place_on_map" && !payload.map3dResult) {
       addLog("warn", "Kan ikke plassere videoresultat uten 3D-data", null, { jobId: payload.jobId });
       return;
@@ -1860,7 +2039,7 @@ export default function App() {
         decision: payload.decision,
       },
     );
-  }, [addLog, trackRequest]);
+  }, [addLog, ensureAdminAccess, trackRequest]);
 
   const handleArchiveVideoJob = useCallback((jobId: string) => {
     setArchivedVideoJobIds((current) => mergeUniqueJobIds(current, [jobId]));
@@ -2054,6 +2233,7 @@ export default function App() {
                             onClick={() => setMetadataEditMode((value) => !value)}
                             aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
                             aria-pressed={metadataEditMode}
+                            disabled={!isAdminAuthenticated}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -2106,6 +2286,7 @@ export default function App() {
                               onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "approve")}
                               disabled={
                                 analysisBusyPhotoId === selectedPhoto.id ||
+                                !isAdminAuthenticated ||
                                 !selectedPhoto.analysis ||
                                 Boolean(selectedPhoto.analysis?.approved)
                               }
@@ -2119,7 +2300,7 @@ export default function App() {
                               size="sm"
                               variant="outline"
                               onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "recompute")}
-                              disabled={analysisBusyPhotoId === selectedPhoto.id}
+                              disabled={analysisBusyPhotoId === selectedPhoto.id || !isAdminAuthenticated}
                               className="h-8"
                             >
                               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -2388,7 +2569,7 @@ export default function App() {
                                 variant="default"
                                 className="h-8"
                                 onClick={() => void handleSavePhotoMetadata()}
-                                disabled={!hasMetadataChanges || metadataBusyPhotoId === selectedPhoto.id}
+                                disabled={!hasMetadataChanges || metadataBusyPhotoId === selectedPhoto.id || !isAdminAuthenticated}
                               >
                                 Lagre metadata
                               </Button>
@@ -2604,6 +2785,8 @@ export default function App() {
         <div className="flex h-full overflow-hidden">
           <AppSidebar
             profile={profile}
+            adminStatus={adminSession}
+            adminBusy={isAdminSessionBusy}
             activeView={activeView}
             statusText={statusText}
             propertyStatus={propertyStatus}
@@ -2665,7 +2848,9 @@ export default function App() {
               }
             }}
             onSaveProfile={handleSaveProfile}
-            onStartMediaImport={handleStartMediaImport}
+            onAdminLogin={handleAdminLogin}
+            onAdminLogout={handleAdminLogout}
+            onStartMediaImport={isAdminAuthenticated ? handleStartMediaImport : undefined}
             onToggleManualQcFilter={handleToggleManualQcFilter}
             onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           />
@@ -2750,14 +2935,14 @@ export default function App() {
                 <VideoPage
                   baseMapStyle={baseMapStyle}
                   showZoomControls={showZoomControls}
-                  onVideoReview={handleVideoReview}
+                  onVideoReview={isAdminAuthenticated ? handleVideoReview : undefined}
                   initialJobIds={initialVideoJobIds}
                   reviewedArtifacts={videoMapArtifacts}
                   archivedJobIds={archivedVideoJobIds}
                   onArchiveJob={handleArchiveVideoJob}
                   onArchiveReviewedJobs={handleArchiveReviewedVideoJobs}
                   onRestoreArchivedJobs={handleRestoreArchivedVideoJobs}
-                  onStartMediaImport={handleStartMediaImport}
+                  onStartMediaImport={isAdminAuthenticated ? handleStartMediaImport : undefined}
                 />
               )}
 

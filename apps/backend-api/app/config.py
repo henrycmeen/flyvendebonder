@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     default_gnr: int = 70
     default_bnr: int = 17
     default_fnr: int = 0
+    admin_access_code: str = ""
+    admin_session_secret: str = ""
+    admin_session_cookie_name: str = "flyvendebonder_admin"
+    admin_session_ttl_hours: int = 12
 
     photo_analysis_enabled: bool = True
     photo_ar5_wms_url: str = "https://wms.nibio.no/cgi-bin/ar5"

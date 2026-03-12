@@ -15,6 +15,7 @@ interface ApiRequestOptions {
   body?: unknown;
   query?: Record<string, QueryValue>;
   headers?: HeadersInit;
+  credentials?: RequestCredentials;
   signal?: AbortSignal;
   timeoutMs?: number;
   retries?: number;
@@ -284,6 +285,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
               "Content-Type": "application/json",
               ...(options.headers || {}),
             },
+            credentials: options.credentials ?? "same-origin",
             signal,
           });
 

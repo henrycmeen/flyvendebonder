@@ -54,6 +54,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PHOTO_AR5_WFS_LAYERS", "")
     monkeypatch.setenv("PHOTO_SOIL_WFS_URL", "")
     monkeypatch.setenv("PHOTO_SOIL_WFS_LAYERS", "")
+    monkeypatch.setenv("ADMIN_ACCESS_CODE", "test-admin-code")
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-admin-secret")
 
     _fresh_backend_modules()
 
@@ -123,6 +125,9 @@ def client(tmp_path, monkeypatch):
                     )
 
             db.commit()
+
+        login_response = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
+        assert login_response.status_code == 200
 
         yield client
     finally:

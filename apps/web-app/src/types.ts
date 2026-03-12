@@ -27,6 +27,12 @@ export interface ProfileResponse {
   property: Property | null;
 }
 
+export interface AdminSessionStatus {
+  configured: boolean;
+  authenticated: boolean;
+  expires_at: string | null;
+}
+
 export interface TimelineDate {
   date: string;
   count: number;

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
-import type { ProfileResponse } from "@/types";
+import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
 type AppView = "map" | "album" | "import" | "video";
 
@@ -60,6 +60,8 @@ interface SavePayload {
 
 interface AppSidebarProps {
   profile: ProfileResponse | null;
+  adminStatus: AdminSessionStatus | null;
+  adminBusy: boolean;
   activeView: AppView;
   statusText: string;
   propertyStatus: string;
@@ -88,6 +90,8 @@ interface AppSidebarProps {
   onChangeView: (view: AppView) => void;
   onStartMediaImport?: () => void;
   onSaveProfile: (payload: SavePayload) => Promise<void>;
+  onAdminLogin: (code: string) => Promise<void>;
+  onAdminLogout: () => Promise<void>;
 }
 
 function SidebarNavigation({
@@ -115,14 +119,16 @@ function SidebarNavigation({
             <span className="fb-sidebar-label">Album</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport?.()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-              <Import className="h-4 w-4 shrink-0" />
-            </span>
-            <span className="fb-sidebar-label">Import</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {onStartMediaImport ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+                <Import className="h-4 w-4 shrink-0" />
+              </span>
+              <span className="fb-sidebar-label">Import</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
       </SidebarMenu>
     </>
   );
@@ -130,6 +136,8 @@ function SidebarNavigation({
 
 export function AppSidebar({
   profile,
+  adminStatus,
+  adminBusy,
   activeView,
   statusText,
   propertyStatus,
@@ -158,6 +166,8 @@ export function AppSidebar({
   onChangeView,
   onStartMediaImport,
   onSaveProfile,
+  onAdminLogin,
+  onAdminLogout,
 }: AppSidebarProps) {
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
@@ -200,6 +210,8 @@ export function AppSidebar({
       <SidebarFooter className="space-y-3">
         <SettingsDialog
           profile={profile}
+          adminStatus={adminStatus}
+          adminBusy={adminBusy}
           statusText={statusText}
           propertyStatus={propertyStatus}
           showPropertyLayer={showPropertyLayer}
@@ -223,6 +235,8 @@ export function AppSidebar({
           onChangeMapVintage={onChangeMapVintage}
           onChangeShowZoomControls={onChangeShowZoomControls}
           onSaveProfile={onSaveProfile}
+          onAdminLogin={onAdminLogin}
+          onAdminLogout={onAdminLogout}
           trigger={
             <Button type="button" variant="ghost" className="fb-sidebar-settings-trigger h-12 w-full justify-start rounded-2xl px-3.5 text-[14px] font-medium text-fb-text-primary">
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">

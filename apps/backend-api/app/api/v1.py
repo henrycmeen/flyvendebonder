@@ -17,6 +17,8 @@ from ..database import get_db
 from ..logging_utils import read_recent_logs, request_id_ctx
 from ..models import IngestRun, Photo, PhotoAnalysis, Property, User
 from ..schemas import (
+    AdminLoginRequest,
+    AdminSessionStatusResponse,
     BackendLogLine,
     BackendLogsResponse,
     GardskartJobResponse,
@@ -34,6 +36,14 @@ from ..schemas import (
     TimelineDateEntry,
     TimelineResponse,
     UserOut,
+)
+from ..services.admin_access import (
+    admin_access_is_configured,
+    clear_admin_session,
+    get_admin_session,
+    issue_admin_session,
+    require_admin_session,
+    verify_admin_access_code,
 )
 from ..services.gardskart import get_job_id
 from ..services.imports import run_photo_ingest
@@ -164,6 +174,40 @@ def get_logs(limit: int = Query(default=200, ge=1, le=1000), level: str | None =
     )
 
 
+@router.get("/admin/session", response_model=AdminSessionStatusResponse)
+def get_admin_session_status(request: Request, response: Response) -> AdminSessionStatusResponse:
+    session = get_admin_session(request)
+    if request.cookies.get(settings.admin_session_cookie_name) and session is None:
+        clear_admin_session(response)
+
+    return AdminSessionStatusResponse(
+        configured=admin_access_is_configured(),
+        authenticated=session is not None,
+        expires_at=session.expires_at if session else None,
+    )
+
+
+@router.post("/admin/login", response_model=AdminSessionStatusResponse)
+def login_admin(
+    payload: AdminLoginRequest,
+    request: Request,
+    response: Response,
+) -> AdminSessionStatusResponse:
+    if not admin_access_is_configured():
+        raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
+    if not verify_admin_access_code(payload.code):
+        raise HTTPException(status_code=401, detail="Ugyldig admin-kode")
+
+    session = issue_admin_session(response, request)
+    return AdminSessionStatusResponse(configured=True, authenticated=True, expires_at=session.expires_at)
+
+
+@router.post("/admin/logout", response_model=AdminSessionStatusResponse)
+def logout_admin(response: Response) -> AdminSessionStatusResponse:
+    clear_admin_session(response)
+    return AdminSessionStatusResponse(configured=admin_access_is_configured(), authenticated=False, expires_at=None)
+
+
 @router.get("/profile/current", response_model=ProfileOut)
 def get_profile_current(db: Session = Depends(get_db)) -> ProfileOut:
     user = _current_user(db)
@@ -174,6 +218,7 @@ def get_profile_current(db: Session = Depends(get_db)) -> ProfileOut:
 @router.patch("/profile/current", response_model=ProfileOut)
 def patch_profile_current(
     payload: ProfilePatchRequest = Body(default_factory=ProfilePatchRequest),
+    _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> ProfileOut:
     user = _current_user(db)
@@ -275,7 +320,11 @@ def get_photos_page(
 
 
 @router.post("/photos/{photo_id}/approve-analysis", response_model=PhotoAnalysisActionResponse)
-def approve_photo_analysis(photo_id: str, db: Session = Depends(get_db)) -> PhotoAnalysisActionResponse:
+def approve_photo_analysis(
+    photo_id: str,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PhotoAnalysisActionResponse:
     photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
@@ -303,7 +352,11 @@ def approve_photo_analysis(photo_id: str, db: Session = Depends(get_db)) -> Phot
 
 
 @router.post("/photos/{photo_id}/recompute-analysis", response_model=PhotoAnalysisActionResponse)
-def recompute_photo_analysis(photo_id: str, db: Session = Depends(get_db)) -> PhotoAnalysisActionResponse:
+def recompute_photo_analysis(
+    photo_id: str,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PhotoAnalysisActionResponse:
     photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
@@ -325,6 +378,7 @@ def recompute_photo_analysis(photo_id: str, db: Session = Depends(get_db)) -> Ph
 def patch_photo_metadata(
     photo_id: str,
     payload: PhotoMetadataPatchRequest = Body(default_factory=PhotoMetadataPatchRequest),
+    _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> PhotoMetadataActionResponse:
     photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
@@ -409,6 +463,7 @@ def patch_photo_metadata(
 def refresh_analysis(
     user_id: int | None = Query(default=None),
     force: bool = Query(default=False),
+    _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> PhotoAnalysisRefreshResponse:
     if user_id is None:
@@ -459,6 +514,7 @@ async def get_current_gardskart_job(
 @router.post("/imports/photos")
 def post_import_photos(
     payload: ImportRequest = Body(default_factory=ImportRequest),
+    _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> dict:
     source = Path(payload.source_path) if payload.source_path else settings.imports_default_source
@@ -467,7 +523,7 @@ def post_import_photos(
 
 
 @router.get("/imports/{run_id}")
-def get_import_run(run_id: int, db: Session = Depends(get_db)) -> dict:
+def get_import_run(run_id: int, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> dict:
     run = db.execute(select(IngestRun).where(IngestRun.id == run_id)).scalar_one_or_none()
     if run is None:
         raise HTTPException(status_code=404, detail="Fant ikke ingest-run")

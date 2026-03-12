@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BASE_MAP_STYLE_ORDER, BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
-import type { ProfileResponse } from "@/types";
+import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
 interface LogEntry {
   id: string;
@@ -56,6 +56,8 @@ interface SavePayload {
 
 interface SettingsDialogProps {
   profile: ProfileResponse | null;
+  adminStatus: AdminSessionStatus | null;
+  adminBusy: boolean;
   statusText: string;
   propertyStatus: string;
   showPropertyLayer: boolean;
@@ -79,6 +81,8 @@ interface SettingsDialogProps {
   onChangeMapVintage: (next: boolean) => void;
   onChangeShowZoomControls: (next: boolean) => void;
   onSaveProfile: (payload: SavePayload) => Promise<void>;
+  onAdminLogin: (code: string) => Promise<void>;
+  onAdminLogout: () => Promise<void>;
   trigger: React.ReactNode;
 }
 
@@ -141,6 +145,8 @@ function toNumberOrUndefined(value: string): number | undefined {
 
 export function SettingsDialog({
   profile,
+  adminStatus,
+  adminBusy,
   statusText,
   propertyStatus,
   showPropertyLayer,
@@ -164,15 +170,27 @@ export function SettingsDialog({
   onChangeMapVintage,
   onChangeShowZoomControls,
   onSaveProfile,
+  onAdminLogin,
+  onAdminLogout,
   trigger,
 }: SettingsDialogProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formState, setFormState] = useState<FormState>(toFormState(profile));
+  const [adminCode, setAdminCode] = useState("");
+  const [adminError, setAdminError] = useState<string | null>(null);
 
   useEffect(() => {
     setFormState(toFormState(profile));
   }, [profile]);
+
+  useEffect(() => {
+    if (!adminStatus?.authenticated) {
+      return;
+    }
+    setAdminCode("");
+    setAdminError(null);
+  }, [adminStatus?.authenticated]);
 
   const propertyLabel = useMemo(() => {
     if (!profile?.property) return "Ingen aktiv eiendom";
@@ -187,8 +205,21 @@ export function SettingsDialog({
     return { label: "Vinter", Icon: Snowflake };
   }, []);
 
+  const adminExpiryLabel = useMemo(() => {
+    if (!adminStatus?.expires_at) return null;
+    const parsed = new Date(adminStatus.expires_at);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Intl.DateTimeFormat("nb-NO", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(parsed);
+  }, [adminStatus?.expires_at]);
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!adminStatus?.authenticated) {
+      return;
+    }
     setSaving(true);
 
     try {
@@ -217,6 +248,32 @@ export function SettingsDialog({
     }
   };
 
+  const handleAdminLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedCode = adminCode.trim();
+    if (!trimmedCode) {
+      setAdminError("Skriv inn admin-koden.");
+      return;
+    }
+
+    setAdminError(null);
+    try {
+      await onAdminLogin(trimmedCode);
+      setAdminCode("");
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Kunne ikke aktivere admin.");
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    setAdminError(null);
+    try {
+      await onAdminLogout();
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "Kunne ikke logge ut admin.");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -241,15 +298,21 @@ export function SettingsDialog({
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-none border-0 bg-transparent p-0">
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-2 rounded-none border-0 bg-transparent p-0">
             <TabsTrigger value="profile" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Profil</TabsTrigger>
             <TabsTrigger value="layer" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Kartlag</TabsTrigger>
+            <TabsTrigger value="admin" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Admin</TabsTrigger>
             <TabsTrigger value="log" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Teknisk logg</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="mt-4">
             <form className="w-full" onSubmit={onSubmit}>
               <Stack gap={4}>
+                {!adminStatus?.authenticated ? (
+                  <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
+                    Profilendringer krever admin-innlogging under fanen Admin.
+                  </div>
+                ) : null}
                 <Section compact title="Kundeprofil" className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="grid gap-1.5">
@@ -302,8 +365,8 @@ export function SettingsDialog({
                 </Section>
 
                 <DialogFooter>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? "Lagrer ..." : "Lagre"}
+                  <Button type="submit" disabled={saving || !adminStatus?.authenticated}>
+                    {saving ? "Lagrer ..." : adminStatus?.authenticated ? "Lagre" : "Admin kreves"}
                   </Button>
                 </DialogFooter>
               </Stack>
@@ -386,6 +449,61 @@ export function SettingsDialog({
               <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
                 {statusText}
               </div>
+            </Stack>
+          </TabsContent>
+
+          <TabsContent value="admin" className="mt-4">
+            <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
+              <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-primary">
+                {adminStatus === null
+                  ? "Sjekker admin-status ..."
+                  : !adminStatus.configured
+                    ? "Admin-kode er ikke konfigurert i backend ennå. Sett ADMIN_ACCESS_CODE før skriveoperasjoner åpnes."
+                    : adminStatus.authenticated
+                      ? `Admin er aktiv${adminExpiryLabel ? ` til ${adminExpiryLabel}` : ""}. Import og andre skriveoperasjoner er åpnet.`
+                      : "Logg inn med admin-kode for å åpne import og andre skriveoperasjoner."}
+              </div>
+
+              {adminStatus?.configured ? (
+                adminStatus.authenticated ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-fb-text-primary">Admin aktiv</p>
+                      <p className="text-xs text-fb-text-secondary">
+                        {adminExpiryLabel ? `Sesjonen utløper ${adminExpiryLabel}.` : "Sesjonen er aktiv i nettleseren din."}
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => void handleAdminLogout()} disabled={adminBusy}>
+                      {adminBusy ? "Logger ut ..." : "Logg ut admin"}
+                    </Button>
+                  </div>
+                ) : (
+                  <form className="space-y-3" onSubmit={handleAdminLogin}>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="admin-code">Admin-kode</Label>
+                      <Input
+                        id="admin-code"
+                        type="password"
+                        value={adminCode}
+                        onChange={(event) => setAdminCode(event.target.value)}
+                        placeholder="Skriv inn kode"
+                        autoComplete="current-password"
+                        disabled={adminBusy}
+                      />
+                    </div>
+                    {adminError ? (
+                      <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                        {adminError}
+                      </div>
+                    ) : null}
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={adminBusy || !adminCode.trim()}>
+                        {adminBusy ? "Logger inn ..." : "Aktiver admin"}
+                      </Button>
+                    </div>
+                  </form>
+                )
+              ) : null}
             </Stack>
           </TabsContent>
 
