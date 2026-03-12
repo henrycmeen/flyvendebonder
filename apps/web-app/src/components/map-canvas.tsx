@@ -29,6 +29,7 @@ interface MapCanvasProps {
 }
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
+const EARTH_RADIUS_M = 6_371_000;
 
 type LatLngPair = [number, number];
 type MediaKind = "drone" | "camera";
@@ -140,12 +141,67 @@ function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
   return parsed.filter((item): item is LatLngPair => item !== null);
 }
 
+function normalizeHeading(headingDeg: number): number {
+  return ((headingDeg % 360) + 360) % 360;
+}
+
+function projectByHeading(origin: L.LatLng, headingDeg: number, distanceM: number): L.LatLng {
+  const headingRad = (normalizeHeading(headingDeg) * Math.PI) / 180;
+  const latRad = (origin.lat * Math.PI) / 180;
+
+  const deltaLat = (Math.cos(headingRad) * distanceM) / EARTH_RADIUS_M;
+  const deltaLng = (Math.sin(headingRad) * distanceM) / (EARTH_RADIUS_M * Math.cos(latRad));
+
+  return L.latLng(origin.lat + (deltaLat * 180) / Math.PI, origin.lng + (deltaLng * 180) / Math.PI);
+}
+
 function getAnalysisTarget(photo: PhotoFeature): LatLngPair | null {
   if (photo.analysis_zone?.center_point) {
     return toLatLngFromPoint(photo.analysis_zone.center_point);
   }
   if (photo.view_lat == null || photo.view_lng == null) return null;
   return [photo.view_lat, photo.view_lng];
+}
+
+function bearingFromPoints(source: LatLngPair, target: LatLngPair): number | null {
+  const lat1 = (source[0] * Math.PI) / 180;
+  const lat2 = (target[0] * Math.PI) / 180;
+  const deltaLng = ((target[1] - source[1]) * Math.PI) / 180;
+
+  const y = Math.sin(deltaLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || (Math.abs(x) < 1e-12 && Math.abs(y) < 1e-12)) {
+    return null;
+  }
+
+  return normalizeHeading((Math.atan2(y, x) * 180) / Math.PI);
+}
+
+function resolvePhotoHeading(photo: PhotoFeature | null): number | null {
+  if (!photo) return null;
+
+  const source = toPhotoLatLng(photo);
+  const target = getAnalysisTarget(photo);
+  if (source && target) {
+    const bearing = bearingFromPoints(source, target);
+    if (bearing != null) return bearing;
+  }
+
+  if (photo.heading_deg != null && Number.isFinite(photo.heading_deg)) {
+    return normalizeHeading(photo.heading_deg);
+  }
+
+  return null;
+}
+
+function buildDronePinVisual(active: boolean, photo: PhotoFeature | null): string {
+  const heading = resolvePhotoHeading(photo);
+  const fovMarkup =
+    heading == null
+      ? ""
+      : `<span class="fb-media-pin-fov ${active ? "fb-media-pin-fov--active" : "fb-media-pin-fov--inactive"}" aria-hidden="true" style="--pin-heading:${heading.toFixed(1)}deg;--pin-length:${active ? 22 : 18}px;--pin-spread:${active ? 10 : 9}px;"><span class="fb-media-pin-fov-cone"></span><span class="fb-media-pin-fov-beam"></span><span class="fb-media-pin-fov-target"></span></span>`;
+
+  return `${fovMarkup}<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>`;
 }
 
 function mapMediaPinIcon(
@@ -157,7 +213,7 @@ function mapMediaPinIcon(
   const season = resolvePhotoSeason(photo);
   const pinVisual =
     kind === "drone"
-      ? '<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>'
+      ? buildDronePinVisual(active, photo)
       : `<img src="${mapCameraIconUrl}" alt="" />`;
   return L.divIcon({
     className: "fb-media-pin-shell",
@@ -599,94 +655,121 @@ export function MapCanvas({
     const selectedPhoto = photos.find((photo) => photo.id === activeDirectionPhotoId) ?? null;
     if (!selectedPhoto) return;
 
-    const target = getAnalysisTarget(selectedPhoto);
-    if (target == null) {
-      return;
-    }
-
     const sourcePoint = toPhotoLatLng(selectedPhoto);
     if (sourcePoint == null) return;
 
     const source = L.latLng(sourcePoint[0], sourcePoint[1]);
-    const targetLatLng = L.latLng(target[0], target[1]);
-    if (source.distanceTo(targetLatLng) < 4) {
-      return;
-    }
-
-    const line = L.polyline([source, targetLatLng], {
-      className: "fb-media-viewline",
-      color: "var(--fb-map-analysis-line)",
-      weight: 2.3,
-      opacity: 0.95,
-      dashArray: "6 10",
-      lineCap: "round",
-      interactive: false,
-      pane: "laserPane",
-    });
-
-    const targetPoint = L.circleMarker(targetLatLng, {
-      className: "fb-media-view-target",
-      radius: 4.5,
-      color: "var(--fb-map-analysis-accent)",
-      fillColor: "var(--fb-map-analysis-fill)",
-      fillOpacity: 1,
-      weight: 1.8,
-      opacity: 0.94,
-      interactive: false,
-      pane: "laserPane",
-    });
-
-    viewLayerRef.current.addLayer(line);
-    viewLayerRef.current.addLayer(targetPoint);
-
-    if (selectedPhoto.analysis_zone?.footprint_polygon?.coordinates) {
-      const footprint = toPolygonLatLngs(selectedPhoto.analysis_zone.footprint_polygon.coordinates);
-      if (footprint.length > 3) {
-        const footprintLayer = L.polygon(footprint, {
+    const target = getAnalysisTarget(selectedPhoto);
+    if (target != null) {
+      const targetLatLng = L.latLng(target[0], target[1]);
+      if (source.distanceTo(targetLatLng) >= 4) {
+        const line = L.polyline([source, targetLatLng], {
+          className: "fb-media-viewline",
           color: "var(--fb-map-analysis-line)",
-          fillColor: "var(--fb-map-analysis-line-soft)",
-          fillOpacity: 0.2,
-          weight: 1.4,
-          opacity: 0.8,
-          dashArray: "3 7",
+          weight: 2.3,
+          opacity: 0.95,
+          dashArray: "6 10",
+          lineCap: "round",
           interactive: false,
           pane: "laserPane",
         });
-        viewLayerRef.current.addLayer(footprintLayer);
-      }
-    }
 
-    if (selectedPhoto.location_uncertainty_m != null && Number.isFinite(selectedPhoto.location_uncertainty_m)) {
-      const radius = Math.max(1.4, Math.min(selectedPhoto.location_uncertainty_m, 50));
-      const uncertaintyCircle = L.circle(targetLatLng, {
-        radius,
-        color: "var(--fb-map-analysis-line)",
-        fillColor: "var(--fb-map-analysis-line-soft-strong)",
-        fillOpacity: 0.12,
-        weight: 1.2,
-        interactive: false,
-        pane: "laserPane",
-      });
-      viewLayerRef.current.addLayer(uncertaintyCircle);
-    }
+        const targetPoint = L.circleMarker(targetLatLng, {
+          className: "fb-media-view-target",
+          radius: 4.5,
+          color: "var(--fb-map-analysis-accent)",
+          fillColor: "var(--fb-map-analysis-fill)",
+          fillOpacity: 1,
+          weight: 1.8,
+          opacity: 0.94,
+          interactive: false,
+          pane: "laserPane",
+        });
 
-    if (selectedPhoto.analysis_zone?.sample_points?.length) {
-      for (const samplePoint of selectedPhoto.analysis_zone.sample_points) {
-        const sampleLatLng = toLatLngFromPoint(samplePoint);
-        if (!sampleLatLng) continue;
-        viewLayerRef.current.addLayer(
-          L.circleMarker(sampleLatLng, {
-            radius: 2.4,
-            color: "var(--fb-map-analysis-accent)",
-            fillColor: "var(--fb-map-analysis-fill)",
-            fillOpacity: 0.95,
-            weight: 1,
-            opacity: 0.9,
+        viewLayerRef.current.addLayer(line);
+        viewLayerRef.current.addLayer(targetPoint);
+
+        if (selectedPhoto.analysis_zone?.footprint_polygon?.coordinates) {
+          const footprint = toPolygonLatLngs(selectedPhoto.analysis_zone.footprint_polygon.coordinates);
+          if (footprint.length > 3) {
+            const footprintLayer = L.polygon(footprint, {
+              color: "var(--fb-map-analysis-line)",
+              fillColor: "var(--fb-map-analysis-line-soft)",
+              fillOpacity: 0.2,
+              weight: 1.4,
+              opacity: 0.8,
+              dashArray: "3 7",
+              interactive: false,
+              pane: "laserPane",
+            });
+            viewLayerRef.current.addLayer(footprintLayer);
+          }
+        }
+
+        if (selectedPhoto.location_uncertainty_m != null && Number.isFinite(selectedPhoto.location_uncertainty_m)) {
+          const radius = Math.max(1.4, Math.min(selectedPhoto.location_uncertainty_m, 50));
+          const uncertaintyCircle = L.circle(targetLatLng, {
+            radius,
+            color: "var(--fb-map-analysis-line)",
+            fillColor: "var(--fb-map-analysis-line-soft-strong)",
+            fillOpacity: 0.12,
+            weight: 1.2,
             interactive: false,
             pane: "laserPane",
-          }),
-        );
+          });
+          viewLayerRef.current.addLayer(uncertaintyCircle);
+        }
+
+        if (selectedPhoto.analysis_zone?.sample_points?.length) {
+          for (const samplePoint of selectedPhoto.analysis_zone.sample_points) {
+            const sampleLatLng = toLatLngFromPoint(samplePoint);
+            if (!sampleLatLng) continue;
+            viewLayerRef.current.addLayer(
+              L.circleMarker(sampleLatLng, {
+                radius: 2.4,
+                color: "var(--fb-map-analysis-accent)",
+                fillColor: "var(--fb-map-analysis-fill)",
+                fillOpacity: 0.95,
+                weight: 1,
+                opacity: 0.9,
+                interactive: false,
+                pane: "laserPane",
+              }),
+            );
+          }
+        }
       }
+      return;
+    }
+
+    const fallbackHeading = resolvePhotoHeading(selectedPhoto);
+    if (fallbackHeading != null) {
+      const headingPoint = projectByHeading(source, fallbackHeading, 26);
+      viewLayerRef.current.addLayer(
+        L.polyline([source, headingPoint], {
+          className: "fb-media-viewline",
+          color: "var(--fb-map-analysis-line)",
+          weight: 2,
+          opacity: 0.92,
+          dashArray: "3 7",
+          lineCap: "round",
+          interactive: false,
+          pane: "laserPane",
+        }),
+      );
+      viewLayerRef.current.addLayer(
+        L.circleMarker(headingPoint, {
+          className: "fb-media-view-target",
+          radius: 3.6,
+          color: "var(--fb-map-analysis-accent)",
+          fillColor: "var(--fb-map-analysis-fill)",
+          fillOpacity: 0.98,
+          weight: 1.4,
+          opacity: 0.92,
+          interactive: false,
+          pane: "laserPane",
+        }),
+      );
     }
   }, [hoveredPhotoId, photos, selectedPhotoId]);
 
