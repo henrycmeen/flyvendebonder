@@ -17,7 +17,8 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 1. Legg ny arbeid i en GitHub-issue først (`https://github.com/henrycmeen/flyvendebonder/issues/new`)
 2. Løs med små, målbare steg
 3. Valider med lokal sjekk (frontend build / backend lint om tilgjengelig)
-4. Oppdater status i `docs/status/`
+4. Merge til `main` når endringen er klar for live
+5. Oppdater status i `docs/status/`
 
 ## Lokale kommandoer
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
@@ -32,6 +33,20 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `~/.ssh/config` skal peke `Host macmini` til `IdentityFile ~/.ssh/macmini`.
 - `IdentitiesOnly yes` skal stå på `Host macmini` for å unngå feil nøkkelvalg.
 - Hurtigsjekk før deploy: `ssh macmini 'hostname && whoami'`.
+
+## Live deploy fra `main`
+- `main` er live-branch for webrooten.
+- Push eller merge til `main` trigger GitHub Actions-workflowen `.github/workflows/deploy-main.yml`.
+- Workflowen kjører på en self-hosted runner på Mac mini med label `flyvendebonder-live`.
+- Runneren sjekker ut repoet lokalt på Mac mini, kjører `npm ci` i `apps/web-app`, og kjører deretter `./scripts/deploy-flyvendebonder.sh --local`.
+- Resultatet blir synket til `/Users/henrymeen/srv/www/flyvendebonder/`, som serveres av Caddy.
+- Dette betyr at Mac mini ikke serverer direkte fra GitHub. GitHub brukes bare til å trigge workflowen og levere repo-innholdet til runner-jobben.
+- Backend deployes ikke automatisk av denne workflowen. `apps/backend-api` kjører fortsatt som egen prosess på Mac mini og håndteres separat.
+
+## Arbeidskopier lokalt
+- Mappen over repoet inneholder nå to vanlige git-kloner: `prod/` og `test/`.
+- `prod/` skal holdes tett på `origin/main`.
+- `test/` brukes til ny branch og pågående arbeid før PR/merge.
 
 ## Konvensjoner
 - Behold norsk språk i brukergrensesnittet.
