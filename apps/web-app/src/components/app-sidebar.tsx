@@ -56,6 +56,14 @@ interface SavePayload {
     fnr?: number;
     label?: string;
   };
+  additional_properties: Array<{
+    id?: number;
+    komm: string;
+    gnr: number;
+    bnr: number;
+    fnr?: number;
+    label?: string;
+  }>;
 }
 
 interface AppSidebarProps {

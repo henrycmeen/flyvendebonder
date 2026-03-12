@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -79,6 +80,11 @@ def _current_user(db: Session) -> User:
 
 
 def _current_property(db: Session, user_id: int) -> Property | None:
+    properties = _active_properties(db, user_id)
+    return properties[0] if properties else None
+
+
+def _active_properties(db: Session, user_id: int) -> list[Property]:
     today = date_type.today()
     return (
         db.execute(
@@ -89,8 +95,89 @@ def _current_property(db: Session, user_id: int) -> Property | None:
             .order_by(Property.id)
         )
         .scalars()
-        .first()
+        .all()
     )
+
+
+def _active_property_by_id(db: Session, user_id: int, property_id: int) -> Property | None:
+    properties = _active_properties(db, user_id)
+    return next((item for item in properties if item.id == property_id), None)
+
+
+def _profile_out(db: Session, user: User) -> ProfileOut:
+    properties = _active_properties(db, user.id)
+    current = properties[0] if properties else None
+    additional = properties[1:] if len(properties) > 1 else []
+    return ProfileOut(
+        user=UserOut.model_validate(user),
+        property=PropertyOut.model_validate(current) if current else None,
+        additional_properties=[PropertyOut.model_validate(item) for item in additional],
+    )
+
+
+def _normalize_additional_property_payload(raw_item, *, index: int) -> dict[str, object] | None:
+    komm = (raw_item.komm or "").strip()
+    label = (raw_item.label or "").strip() or None
+    gnr = raw_item.gnr
+    bnr = raw_item.bnr
+    fnr = raw_item.fnr
+
+    has_any_value = any(
+        (
+            komm,
+            label,
+            gnr is not None,
+            bnr is not None,
+            fnr is not None,
+        )
+    )
+    if not has_any_value:
+        return None
+
+    missing_fields: list[str] = []
+    if not komm:
+        missing_fields.append("kommunekode")
+    if gnr is None:
+        missing_fields.append("gnr")
+    if bnr is None:
+        missing_fields.append("bnr")
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ekstra eiendom #{index + 1} mangler {', '.join(missing_fields)}",
+        )
+
+    return {
+        "komm": komm,
+        "gnr": int(gnr),
+        "bnr": int(bnr),
+        "fnr": int(fnr) if fnr is not None else 0,
+        "label": label,
+    }
+
+
+async def _build_gardskart_job_response(
+    db: Session,
+    property_obj: Property,
+    *,
+    force_refresh: bool,
+) -> GardskartJobResponse:
+    try:
+        cache, source = await get_job_id(db, property_obj=property_obj, force_refresh=force_refresh)
+        now = datetime.utcnow()
+        return GardskartJobResponse(
+            property_id=property_obj.id,
+            job_id=cache.job_id,
+            status_code=cache.status_code,
+            status_desc=cache.status_desc,
+            fetched_at=cache.fetched_at,
+            expires_at=cache.expires_at,
+            source=source,
+            is_expired=cache.expires_at <= now,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Gardskart jobId henting feilet", extra={"error": str(exc), "property_id": property_obj.id})
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente jobId: {exc}") from exc
 
 
 def _parse_stored_tags(photo: Photo) -> tuple[list[str], list[str]]:
@@ -215,8 +302,7 @@ def logout_admin(response: Response) -> AdminSessionStatusResponse:
 @router.get("/profile/current", response_model=ProfileOut)
 def get_profile_current(db: Session = Depends(get_db)) -> ProfileOut:
     user = _current_user(db)
-    property_obj = _current_property(db, user.id)
-    return ProfileOut(user=UserOut.model_validate(user), property=PropertyOut.model_validate(property_obj) if property_obj else None)
+    return _profile_out(db, user)
 
 
 @router.patch("/profile/current", response_model=ProfileOut)
@@ -226,23 +312,60 @@ def patch_profile_current(
     db: Session = Depends(get_db),
 ) -> ProfileOut:
     user = _current_user(db)
-    property_obj = _current_property(db, user.id)
+    active_properties = _active_properties(db, user.id)
+    property_obj = active_properties[0] if active_properties else None
 
     user_data = payload.user.model_dump(exclude_unset=True)
     for key, value in user_data.items():
         setattr(user, key, value)
 
+    property_data = payload.property.model_dump(exclude_unset=True)
     if property_obj is not None:
-        property_data = payload.property.model_dump(exclude_unset=True)
         for key, value in property_data.items():
             setattr(property_obj, key, value)
 
-    db.commit()
-    db.refresh(user)
-    if property_obj is not None:
-        db.refresh(property_obj)
+    try:
+        if payload.additional_properties is not None:
+            additional_existing = {item.id: item for item in active_properties[1:]}
+            kept_ids: set[int] = set()
 
-    return ProfileOut(user=UserOut.model_validate(user), property=PropertyOut.model_validate(property_obj) if property_obj else None)
+            for index, additional_payload in enumerate(payload.additional_properties):
+                normalized = _normalize_additional_property_payload(additional_payload, index=index)
+                if normalized is None:
+                    continue
+
+                if additional_payload.id is not None:
+                    property_item = additional_existing.get(additional_payload.id)
+                    if property_item is None:
+                        raise HTTPException(status_code=404, detail=f"Fant ikke ekstra eiendom {additional_payload.id}")
+                    for key, value in normalized.items():
+                        setattr(property_item, key, value)
+                    kept_ids.add(property_item.id)
+                    continue
+
+                property_item = Property(
+                    user_id=user.id,
+                    komm=str(normalized["komm"]),
+                    gnr=int(normalized["gnr"]),
+                    bnr=int(normalized["bnr"]),
+                    fnr=int(normalized["fnr"]),
+                    label=normalized["label"],
+                )
+                db.add(property_item)
+                db.flush()
+                kept_ids.add(property_item.id)
+
+            for property_id, property_item in additional_existing.items():
+                if property_id not in kept_ids:
+                    db.delete(property_item)
+
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Eiendomslisten inneholder duplikater eller ugyldig kombinasjon") from exc
+
+    db.refresh(user)
+    return _profile_out(db, user)
 
 
 @router.get("/timeline/dates", response_model=TimelineResponse)
@@ -497,22 +620,21 @@ async def get_current_gardskart_job(
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
 
-    try:
-        cache, source = await get_job_id(db, property_obj=property_obj, force_refresh=force_refresh)
-        now = datetime.utcnow()
-        return GardskartJobResponse(
-            property_id=property_obj.id,
-            job_id=cache.job_id,
-            status_code=cache.status_code,
-            status_desc=cache.status_desc,
-            fetched_at=cache.fetched_at,
-            expires_at=cache.expires_at,
-            source=source,
-            is_expired=cache.expires_at <= now,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Gardskart jobId henting feilet", extra={"error": str(exc)})
-        raise HTTPException(status_code=502, detail=f"Kunne ikke hente jobId: {exc}") from exc
+    return await _build_gardskart_job_response(db, property_obj, force_refresh=force_refresh)
+
+
+@router.get("/properties/{property_id}/gardskart-job", response_model=GardskartJobResponse)
+async def get_property_gardskart_job(
+    property_id: int,
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> GardskartJobResponse:
+    user = _current_user(db)
+    property_obj = _active_property_by_id(db, user.id, property_id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
+
+    return await _build_gardskart_job_response(db, property_obj, force_refresh=force_refresh)
 
 
 @router.post("/imports/photos")

@@ -25,6 +25,7 @@ export interface Property {
 export interface ProfileResponse {
   user: ProfileUser;
   property: Property | null;
+  additional_properties: Property[];
 }
 
 export interface AdminSessionStatus {

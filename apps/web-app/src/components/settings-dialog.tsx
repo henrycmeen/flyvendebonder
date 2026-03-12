@@ -1,10 +1,10 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
-import { Leaf, Snowflake, Sun, Flower2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { TechnicalLogList } from "@/components/technical-log-list";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Divider, Section, Stack } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +52,14 @@ interface SavePayload {
     fnr?: number;
     label?: string;
   };
+  additional_properties: Array<{
+    id?: number;
+    komm: string;
+    gnr: number;
+    bnr: number;
+    fnr?: number;
+    label?: string;
+  }>;
 }
 
 interface SettingsDialogProps {
@@ -102,6 +110,16 @@ interface FormState {
   label: string;
 }
 
+interface AdditionalPropertyDraft {
+  client_id: string;
+  id?: number;
+  komm: string;
+  gnr: string;
+  bnr: string;
+  fnr: string;
+  label: string;
+}
+
 const emptyFormState: FormState = {
   full_name: "",
   phone: "",
@@ -117,6 +135,21 @@ const emptyFormState: FormState = {
   fnr: "",
   label: "",
 };
+
+function createDraftId() {
+  return `draft-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function emptyAdditionalPropertyDraft(): AdditionalPropertyDraft {
+  return {
+    client_id: createDraftId(),
+    komm: "",
+    gnr: "",
+    bnr: "",
+    fnr: "",
+    label: "",
+  };
+}
 
 function toFormState(profile: ProfileResponse | null): FormState {
   if (!profile) return emptyFormState;
@@ -138,9 +171,25 @@ function toFormState(profile: ProfileResponse | null): FormState {
   };
 }
 
+function toAdditionalPropertyDrafts(profile: ProfileResponse | null): AdditionalPropertyDraft[] {
+  return (profile?.additional_properties ?? []).map((property) => ({
+    client_id: `property-${property.id}`,
+    id: property.id,
+    komm: property.komm,
+    gnr: String(property.gnr),
+    bnr: String(property.bnr),
+    fnr: property.fnr ? String(property.fnr) : "",
+    label: property.label ?? "",
+  }));
+}
+
 function toNumberOrUndefined(value: string): number | undefined {
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function hasAnyAdditionalPropertyValue(draft: AdditionalPropertyDraft): boolean {
+  return [draft.label, draft.komm, draft.gnr, draft.bnr, draft.fnr].some((value) => value.trim().length > 0);
 }
 
 export function SettingsDialog({
@@ -177,11 +226,15 @@ export function SettingsDialog({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formState, setFormState] = useState<FormState>(toFormState(profile));
+  const [additionalProperties, setAdditionalProperties] = useState<AdditionalPropertyDraft[]>(toAdditionalPropertyDrafts(profile));
   const [adminCode, setAdminCode] = useState("");
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setFormState(toFormState(profile));
+    setAdditionalProperties(toAdditionalPropertyDrafts(profile));
+    setSaveError(null);
   }, [profile]);
 
   useEffect(() => {
@@ -192,18 +245,16 @@ export function SettingsDialog({
     setAdminError(null);
   }, [adminStatus?.authenticated]);
 
+  useEffect(() => {
+    if (open) return;
+    setSaveError(null);
+  }, [open]);
+
   const propertyLabel = useMemo(() => {
     if (!profile?.property) return "Ingen aktiv eiendom";
     return `${profile.property.komm}-${profile.property.gnr}/${profile.property.bnr}/${profile.property.fnr}`;
   }, [profile]);
-
-  const seasonMeta = useMemo(() => {
-    const currentMonth = new Date().getMonth() + 1;
-    if (currentMonth >= 3 && currentMonth <= 5) return { label: "Vår", Icon: Flower2 };
-    if (currentMonth >= 6 && currentMonth <= 8) return { label: "Sommer", Icon: Sun };
-    if (currentMonth >= 9 && currentMonth <= 11) return { label: "Høst", Icon: Leaf };
-    return { label: "Vinter", Icon: Snowflake };
-  }, []);
+  const activePropertyName = useMemo(() => profile?.property?.label?.trim() || "Ingen aktiv eiendom", [profile]);
 
   const adminExpiryLabel = useMemo(() => {
     if (!adminStatus?.expires_at) return null;
@@ -220,6 +271,33 @@ export function SettingsDialog({
     if (!adminStatus?.authenticated) {
       return;
     }
+    setSaveError(null);
+
+    const normalizedAdditionalProperties: SavePayload["additional_properties"] = [];
+    for (const [index, propertyDraft] of additionalProperties.entries()) {
+      if (!hasAnyAdditionalPropertyValue(propertyDraft)) continue;
+
+      const komm = propertyDraft.komm.trim();
+      const gnr = toNumberOrUndefined(propertyDraft.gnr);
+      const bnr = toNumberOrUndefined(propertyDraft.bnr);
+      const fnr = toNumberOrUndefined(propertyDraft.fnr) ?? 0;
+      const label = propertyDraft.label.trim();
+
+      if (!komm || gnr == null || bnr == null) {
+        setSaveError(`Ekstra eiendom ${index + 1} må ha kommunekode, gnr og bnr.`);
+        return;
+      }
+
+      normalizedAdditionalProperties.push({
+        id: propertyDraft.id,
+        komm,
+        gnr,
+        bnr,
+        fnr,
+        label: label || undefined,
+      });
+    }
+
     setSaving(true);
 
     try {
@@ -241,8 +319,11 @@ export function SettingsDialog({
           fnr: toNumberOrUndefined(formState.fnr),
           label: formState.label,
         },
+        additional_properties: normalizedAdditionalProperties,
       });
       setOpen(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Kunne ikke lagre innstillinger.");
     } finally {
       setSaving(false);
     }
@@ -274,28 +355,31 @@ export function SettingsDialog({
     }
   };
 
+  const addAdditionalPropertyRow = () => {
+    setAdditionalProperties((previous) => [...previous, emptyAdditionalPropertyDraft()]);
+  };
+
+  const removeAdditionalPropertyRow = (clientId: string) => {
+    setAdditionalProperties((previous) => previous.filter((property) => property.client_id !== clientId));
+  };
+
+  const updateAdditionalPropertyRow = (
+    clientId: string,
+    field: keyof Omit<AdditionalPropertyDraft, "client_id" | "id">,
+    value: string,
+  ) => {
+    setAdditionalProperties((previous) =>
+      previous.map((property) => (property.client_id === clientId ? { ...property, [field]: value } : property)),
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6">
-        <DialogHeader>
+      <DialogContent className="max-h-[90vh] gap-3 overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6">
+        <DialogHeader className="space-y-0">
           <DialogTitle>Innstillinger</DialogTitle>
-          <DialogDescription>Profil, kartlag og admin for Flyvendebønder.</DialogDescription>
         </DialogHeader>
-
-        <div className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
-              <p className="text-base font-semibold text-fb-text-primary">{profile?.property?.label ?? "Meen gård"}</p>
-              <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#ddd6c3] bg-[#fcfaf3] px-3 py-1.5 text-xs text-fb-text-secondary">
-              <seasonMeta.Icon className="h-3.5 w-3.5" />
-              {seasonMeta.label}
-            </div>
-          </div>
-        </div>
 
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-none border-0 bg-transparent p-0">
@@ -304,12 +388,17 @@ export function SettingsDialog({
             <TabsTrigger value="admin" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Admin</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="mt-4">
+          <TabsContent value="profile" className="mt-3">
             <form className="w-full" onSubmit={onSubmit}>
               <Stack gap={4}>
                 {!adminStatus?.authenticated ? (
                   <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
                     Profilendringer krever admin-innlogging under fanen Admin.
+                  </div>
+                ) : null}
+                {saveError ? (
+                  <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                    {saveError}
                   </div>
                 ) : null}
                 <Section compact title="Kundeprofil" className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
@@ -342,8 +431,25 @@ export function SettingsDialog({
                   </div>
                 </Section>
 
-                <Section compact title="Eiendom" description={`Aktiv: ${propertyLabel}`} className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                <Section
+                  compact
+                  title="Eiendom"
+                  actions={
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full px-3" onClick={addAdditionalPropertyRow}>
+                      <Plus className="h-3.5 w-3.5" />
+                      Legg til eiendom
+                    </Button>
+                  }
+                  className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none"
+                >
+                  <div className="space-y-3">
+                    <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
+                      <p className="mt-1 text-base font-semibold text-fb-text-primary">{activePropertyName}</p>
+                      <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="label">Navn på gård</Label>
                       <Input id="label" value={formState.label} onChange={(event) => setFormState((prev) => ({ ...prev, label: event.target.value }))} />
@@ -360,6 +466,95 @@ export function SettingsDialog({
                       <Label htmlFor="bnr">Bnr</Label>
                       <Input id="bnr" type="number" value={formState.bnr} onChange={(event) => setFormState((prev) => ({ ...prev, bnr: event.target.value }))} />
                     </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="fnr">Fnr</Label>
+                      <Input id="fnr" type="number" value={formState.fnr} onChange={(event) => setFormState((prev) => ({ ...prev, fnr: event.target.value }))} />
+                    </div>
+                  </div>
+
+                    <Divider />
+
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-semibold text-fb-text-primary">Ekstra eiendommer</p>
+                        <p className="text-xs text-fb-text-secondary">Legg til leiejord eller andre teiger som skal ligge ved siden av aktiv eiendom.</p>
+                      </div>
+
+                      {additionalProperties.length ? (
+                        <Stack gap={3}>
+                          {additionalProperties.map((property, index) => (
+                            <div key={property.client_id} className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-fb-text-primary">Ekstra eiendom {index + 1}</p>
+                                  <p className="text-xs text-fb-text-secondary">Brukes for tilleggsteiger og leiejord.</p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-full text-fb-text-secondary"
+                                  onClick={() => removeAdditionalPropertyRow(property.client_id)}
+                                  aria-label={`Fjern ekstra eiendom ${index + 1}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor={`additional-label-${property.client_id}`}>Navn</Label>
+                                  <Input
+                                    id={`additional-label-${property.client_id}`}
+                                    value={property.label}
+                                    onChange={(event) => updateAdditionalPropertyRow(property.client_id, "label", event.target.value)}
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor={`additional-komm-${property.client_id}`}>Kommunekode</Label>
+                                  <Input
+                                    id={`additional-komm-${property.client_id}`}
+                                    value={property.komm}
+                                    onChange={(event) => updateAdditionalPropertyRow(property.client_id, "komm", event.target.value)}
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor={`additional-gnr-${property.client_id}`}>Gnr</Label>
+                                  <Input
+                                    id={`additional-gnr-${property.client_id}`}
+                                    type="number"
+                                    value={property.gnr}
+                                    onChange={(event) => updateAdditionalPropertyRow(property.client_id, "gnr", event.target.value)}
+                                  />
+                                </div>
+                                <div className="grid gap-1.5">
+                                  <Label htmlFor={`additional-bnr-${property.client_id}`}>Bnr</Label>
+                                  <Input
+                                    id={`additional-bnr-${property.client_id}`}
+                                    type="number"
+                                    value={property.bnr}
+                                    onChange={(event) => updateAdditionalPropertyRow(property.client_id, "bnr", event.target.value)}
+                                  />
+                                </div>
+                                <div className="grid gap-1.5 sm:max-w-[12rem]">
+                                  <Label htmlFor={`additional-fnr-${property.client_id}`}>Fnr</Label>
+                                  <Input
+                                    id={`additional-fnr-${property.client_id}`}
+                                    type="number"
+                                    value={property.fnr}
+                                    onChange={(event) => updateAdditionalPropertyRow(property.client_id, "fnr", event.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <div className="rounded-[18px] border border-dashed border-[#d6cfbb] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-secondary">
+                          Ingen ekstra eiendommer lagt til ennå.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Section>
 
@@ -372,7 +567,7 @@ export function SettingsDialog({
             </form>
           </TabsContent>
 
-          <TabsContent value="layer" className="mt-4">
+          <TabsContent value="layer" className="mt-3">
             <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
               <div className="grid gap-2">
                 <Label className="text-xs uppercase tracking-[0.08em] text-fb-text-secondary">Bakgrunnskart</Label>
@@ -451,7 +646,7 @@ export function SettingsDialog({
             </Stack>
           </TabsContent>
 
-          <TabsContent value="admin" className="mt-4">
+          <TabsContent value="admin" className="mt-3">
             <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
               <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-primary">
                 {adminStatus === null

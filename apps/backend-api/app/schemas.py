@@ -41,6 +41,7 @@ class PropertyOut(BaseModel):
 class ProfileOut(BaseModel):
     user: UserOut
     property: PropertyOut | None = None
+    additional_properties: list[PropertyOut] = Field(default_factory=list)
 
 
 class ProfilePatch(BaseModel):
@@ -62,9 +63,14 @@ class PropertyPatch(BaseModel):
     label: str | None = None
 
 
+class AdditionalPropertyPatch(PropertyPatch):
+    id: int | None = None
+
+
 class ProfilePatchRequest(BaseModel):
     user: ProfilePatch = Field(default_factory=ProfilePatch)
     property: PropertyPatch = Field(default_factory=PropertyPatch)
+    additional_properties: list[AdditionalPropertyPatch] | None = None
 
 
 class AdminLoginRequest(BaseModel):

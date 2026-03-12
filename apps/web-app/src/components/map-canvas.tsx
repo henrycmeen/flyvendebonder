@@ -12,8 +12,8 @@ interface MapCanvasProps {
   hoveredPhotoId: string | null;
   focusToken: number;
   resetViewToken: number;
-  property: Property | null;
-  job: GardskartJob | null;
+  properties: Property[];
+  jobs: GardskartJob[];
   videoMapArtifacts: VideoMapArtifact[];
   baseMapStyle: BaseMapStyle;
   mapGrayscale: boolean;
@@ -130,6 +130,10 @@ function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefine
 function toPhotoLatLng(photo: PhotoFeature): LatLngPair | null {
   if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lng)) return null;
   return [photo.lat, photo.lng];
+}
+
+function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
+  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
 }
 
 function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
@@ -421,8 +425,8 @@ export function MapCanvas({
   hoveredPhotoId,
   focusToken,
   resetViewToken,
-  property,
-  job,
+  properties,
+  jobs,
   videoMapArtifacts,
   baseMapStyle,
   mapGrayscale,
@@ -443,7 +447,7 @@ export function MapCanvas({
   const photoByIdRef = useRef<Map<string, PhotoFeature>>(new Map());
   const activeMarkerIdsRef = useRef<Set<string>>(new Set());
   const baseLayerRef = useRef<L.TileLayer | null>(null);
-  const propertyLayerRef = useRef<L.TileLayer.WMS | null>(null);
+  const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
   const videoLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
@@ -918,50 +922,83 @@ export function MapCanvas({
       return;
     }
 
-    if (!property || !job) {
+    if (properties.length === 0) {
+      onPropertyStatus("Ingen aktive eiendommer tilgjengelig.");
+      return;
+    }
+
+    if (jobs.length === 0) {
       onPropertyStatus("Eiendomslag venter på gyldig jobId ...");
       return;
     }
 
-    const wmsOptions: L.WMSOptions & { maxZoom?: number; [key: string]: unknown } = {
-      layers: "eiendomsgrenser",
-      styles: "default",
-      format: "image/png",
-      transparent: true,
-      version: "1.3.0",
-      maxZoom: BASE_MAP_STYLES[baseMapStyle].maxZoom,
-      jobid: job.job_id,
-      pane: "propertyPane",
-      attribution: "NIBIO Gårdskart",
-    };
+    const jobByPropertyId = new Map(jobs.map((job) => [job.property_id, job]));
+    const matchedProperties = properties.filter((property) => jobByPropertyId.has(property.id));
+    if (matchedProperties.length === 0) {
+      onPropertyStatus("Eiendomslag venter på gyldig jobId ...");
+      return;
+    }
 
-    const layer = L.tileLayer.wms("https://wms.nibio.no/cgi-bin/gardskart", wmsOptions);
+    const layerGroup = L.layerGroup();
+    matchedProperties.forEach((property) => {
+      const job = jobByPropertyId.get(property.id);
+      if (!job) return;
 
-    layer.on("load", () => {
-      const propertyText = `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
-      if (isNIBIOStatusOk(job.status_code, job.status_desc)) {
-        onPropertyStatus(`Eiendomslag aktivt (${propertyText})`);
-      } else if (job.status_code === 100) {
-        onPropertyStatus(`NIBIO kunne ikke hente eiendomsgrenser for ${propertyText} nå (kode 100).`);
+      const wmsOptions: L.WMSOptions & { maxZoom?: number; [key: string]: unknown } = {
+        layers: "eiendomsgrenser",
+        styles: "default",
+        format: "image/png",
+        transparent: true,
+        version: "1.3.0",
+        maxZoom: BASE_MAP_STYLES[baseMapStyle].maxZoom,
+        jobid: job.job_id,
+        pane: "propertyPane",
+        attribution: "NIBIO Gårdskart",
+      };
+
+      const layer = L.tileLayer.wms("https://wms.nibio.no/cgi-bin/gardskart", wmsOptions);
+      layer.on("tileerror", () => {
+        onPropertyStatus("Eiendomslag feilet. Prøver automatisk oppfriskning ...");
+        onPropertyTileError(job.job_id);
+      });
+
+      layerGroup.addLayer(layer);
+    });
+
+    const staleCount = matchedProperties.filter((property) => {
+      const job = jobByPropertyId.get(property.id);
+      return job?.source === "stale-cache";
+    }).length;
+    const warningCount = matchedProperties.filter((property) => {
+      const job = jobByPropertyId.get(property.id);
+      return job ? !isNIBIOStatusOk(job.status_code, job.status_desc) : false;
+    }).length;
+
+    if (matchedProperties.length < properties.length) {
+      onPropertyStatus(`Eiendomslag delvis aktivt (${matchedProperties.length} av ${properties.length} eiendommer).`);
+    } else if (staleCount > 0) {
+      onPropertyStatus("Eiendomslag bruker cache pga feil mot NIBIO. Se teknisk logg.");
+    } else if (warningCount > 0) {
+      if (matchedProperties.length === 1) {
+        onPropertyStatus(`Eiendomslag aktivt (${formatPropertyReference(matchedProperties[0])}). NIBIO meldte avvik, se teknisk logg.`);
       } else {
-        onPropertyStatus(`Eiendomslag aktivt (${propertyText}). NIBIO meldte avvik, se teknisk logg.`);
+        onPropertyStatus(`Eiendomslag aktivt (${matchedProperties.length} eiendommer), men NIBIO meldte avvik på ${warningCount}.`);
       }
-    });
+    } else if (matchedProperties.length === 1) {
+      onPropertyStatus(`Eiendomslag aktivt (${formatPropertyReference(matchedProperties[0])})`);
+    } else {
+      onPropertyStatus(`Eiendomslag aktivt (${matchedProperties.length} eiendommer).`);
+    }
 
-    layer.on("tileerror", () => {
-      onPropertyStatus("Eiendomslag feilet. Prøver automatisk oppfriskning ...");
-      onPropertyTileError(job.job_id);
-    });
-
-    layer.addTo(mapRef.current);
-    propertyLayerRef.current = layer;
+    layerGroup.addTo(mapRef.current);
+    propertyLayerRef.current = layerGroup;
 
     return () => {
-      if (mapRef.current && layer) {
-        mapRef.current.removeLayer(layer);
+      if (mapRef.current && layerGroup) {
+        mapRef.current.removeLayer(layerGroup);
       }
     };
-  }, [job, onPropertyStatus, onPropertyTileError, property, showPropertyLayer, baseMapStyle]);
+  }, [jobs, onPropertyStatus, onPropertyTileError, properties, showPropertyLayer, baseMapStyle]);
 
   useEffect(() => {
     if (!mapRef.current || !videoLayerRef.current) return;

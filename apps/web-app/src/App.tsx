@@ -49,6 +49,7 @@ import type {
   PhotoFeature,
   PhotosPageResponse,
   PhotosResponse,
+  Property,
   ProfileResponse,
   ImportRun,
   TimelineDate,
@@ -94,6 +95,10 @@ const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av mens /api/v1/video-jobs-kontrakten bygges opp igjen i backend. Dette hindrer at UI-et peker til manglende endepunkter.";
+
+function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
+  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
+}
 
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "album") return "album";
@@ -267,7 +272,7 @@ export default function App() {
     setMapVintage,
     setShowZoomControls,
   } = useMapPreferences();
-  const [job, setJob] = useState<GardskartJob | null>(null);
+  const [propertyJobs, setPropertyJobs] = useState<GardskartJob[]>([]);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
@@ -396,6 +401,12 @@ export default function App() {
   const bootstrapLoadSeqRef = useRef(0);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
+  const activeProperties = useMemo<Property[]>(() => {
+    if (!profile) return [];
+    return [profile.property, ...(profile.additional_properties ?? [])].filter(
+      (property): property is Property => property !== null,
+    );
+  }, [profile]);
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
@@ -854,9 +865,16 @@ export default function App() {
     return false;
   }, [addLog, adminSession]);
 
-  const loadGardskartJob = useCallback(
-    async (forceRefresh: boolean, options?: { signal?: AbortSignal }) => {
-      if (!profile?.property || !showPropertyLayer) {
+  const loadGardskartJobs = useCallback(
+    async (
+      forceRefresh: boolean,
+      options?: {
+        signal?: AbortSignal;
+        properties?: Property[];
+      },
+    ) => {
+      const targetProperties = options?.properties ?? activeProperties;
+      if (targetProperties.length === 0 || !showPropertyLayer) {
         return;
       }
 
@@ -871,44 +889,88 @@ export default function App() {
           })();
 
       try {
-        const { data, requestId } = await trackRequest(() =>
-          apiGet<GardskartJob>(`/api/v1/properties/current/gardskart-job`, {
-            query: { force_refresh: forceRefresh ? true : undefined },
-            signal: requestController?.signal ?? options?.signal,
+        const results = await Promise.all(
+          targetProperties.map(async (property) => {
+            try {
+              const { data, requestId } = await trackRequest(() =>
+                apiGet<GardskartJob>(`/api/v1/properties/${property.id}/gardskart-job`, {
+                  query: { force_refresh: forceRefresh ? true : undefined },
+                  signal: requestController?.signal ?? options?.signal,
+                }),
+              );
+              return { ok: true as const, property, data, requestId };
+            } catch (error) {
+              return { ok: false as const, property, error: error as ApiError };
+            }
           }),
         );
 
-      if (seq !== gardskartJobLoadSeqRef.current) return;
+        if (seq !== gardskartJobLoadSeqRef.current) return;
 
-      setJob(data);
-        const statusDescLower = (data.status_desc ?? "").toLowerCase();
-        const statusIsOk =
-          data.status_code === null ||
-          data.status_code === 0 ||
-          data.status_code === 1 ||
-          statusDescLower.includes("response ok");
+        const successes = results.filter((result) => result.ok);
+        const failures = results.filter((result) => !result.ok);
+        if (failures.length > 0 && failures.every((result) => isRequestAborted(result.error))) {
+          return;
+        }
 
-        if (data.source === "stale-cache") {
+        setPropertyJobs(successes.map((result) => result.data));
+        tileRetryJobRef.current = null;
+
+        failures.forEach((result) => {
+          if (isRequestAborted(result.error)) return;
+          addLog("error", "jobId-henting feilet for eiendom", result.error.requestId, {
+            detail: result.error.detail,
+            property: formatPropertyReference(result.property),
+          });
+        });
+
+        if (successes.length === 0) {
+          setPropertyStatus("Kunne ikke hente eiendomslag fra backend.");
+          return;
+        }
+
+        const hasStaleCache = successes.some((result) => result.data.source === "stale-cache");
+        const warningResults = successes.filter((result) => {
+          const statusDescLower = (result.data.status_desc ?? "").toLowerCase();
+          return !(
+            result.data.status_code === null ||
+            result.data.status_code === 0 ||
+            result.data.status_code === 1 ||
+            statusDescLower.includes("response ok")
+          );
+        });
+
+        if (failures.some((result) => !isRequestAborted(result.error))) {
+          setPropertyStatus(`Eiendomslag delvis aktivt (${successes.length} av ${targetProperties.length} eiendommer).`);
+          addLog("warn", "Eiendomslag delvis lastet", null, {
+            loaded: successes.length,
+            total: targetProperties.length,
+          });
+        } else if (hasStaleCache) {
           setPropertyStatus("Eiendomslag bruker cache pga feil mot NIBIO. Se teknisk logg.");
-        } else if (!statusIsOk) {
-          if (data.status_code === 100) {
-            setPropertyStatus("NIBIO kunne ikke hente eiendomsgrenser for denne eiendommen nå (kode 100).");
+        } else if (warningResults.length > 0) {
+          if (warningResults.some((result) => result.data.status_code === 100)) {
+            setPropertyStatus("NIBIO kunne ikke hente alle eiendomsgrenser nå (kode 100 på minst én eiendom).");
           } else {
             setPropertyStatus("Eiendomslag aktivt, men NIBIO meldte avvik. Se teknisk logg.");
           }
-          addLog("warn", "NIBIO returnerte avvik for eiendomslag", requestId, {
-            statusCode: data.status_code,
-            statusDesc: data.status_desc,
-            source: data.source,
+          warningResults.forEach((result) => {
+            addLog("warn", "NIBIO returnerte avvik for eiendomslag", result.requestId, {
+              property: formatPropertyReference(result.property),
+              statusCode: result.data.status_code,
+              statusDesc: result.data.status_desc,
+              source: result.data.source,
+            });
           });
+        } else if (successes.length === 1) {
+          setPropertyStatus(`Eiendomslag aktivt (${formatPropertyReference(successes[0].property)}).`);
         } else {
-          setPropertyStatus("Eiendomslag aktivt.");
+          setPropertyStatus(`Eiendomslag aktivt (${successes.length} eiendommer).`);
         }
 
-        addLog("info", forceRefresh ? "jobId tvangsfornyet" : "jobId lastet", requestId, {
-          source: data.source,
-          statusCode: data.status_code,
-          jobId: data.job_id,
+        addLog("info", forceRefresh ? "Eiendomslag oppfrisket" : "Eiendomslag lastet", null, {
+          properties: successes.map((result) => formatPropertyReference(result.property)),
+          total: successes.length,
         });
       } catch (error) {
         const apiError = error as ApiError;
@@ -916,9 +978,10 @@ export default function App() {
         if (isRequestAborted(apiError)) return;
         setPropertyStatus("Kunne ikke hente eiendomslag fra backend.");
         addLog("error", "jobId-henting feilet", apiError.requestId, apiError.detail);
+        setPropertyJobs([]);
       }
     },
-    [addLog, profile?.property, showPropertyLayer, trackRequest],
+    [activeProperties, addLog, showPropertyLayer, trackRequest],
   );
 
   const handlePhotoAnalysisAction = useCallback(
@@ -1731,12 +1794,16 @@ export default function App() {
   }, [activeView, albumPhotos, hasExplicitDeepLink, syncSelectionToUrl]);
 
   useEffect(() => {
-    if (!profile?.property || !showPropertyLayer) {
+    if (activeProperties.length === 0 || !showPropertyLayer) {
+      setPropertyJobs([]);
+      if (activeProperties.length === 0) {
+        setPropertyStatus("Ingen aktive eiendommer tilgjengelig.");
+      }
       return;
     }
 
-    void loadGardskartJob(false);
-  }, [loadGardskartJob, profile?.property, showPropertyLayer]);
+    void loadGardskartJobs(false);
+  }, [activeProperties, loadGardskartJobs, showPropertyLayer]);
 
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
@@ -1793,6 +1860,14 @@ export default function App() {
       fnr?: number;
       label?: string;
     };
+    additional_properties: Array<{
+      id?: number;
+      komm: string;
+      gnr: number;
+      bnr: number;
+      fnr?: number;
+      label?: string;
+    }>;
   }) => {
     if (!ensureAdminAccess("profilendringer")) return;
 
@@ -1809,7 +1884,10 @@ export default function App() {
     }
 
     if (showPropertyLayer) {
-      await loadGardskartJob(true);
+      const updatedProperties = [data.property, ...(data.additional_properties ?? [])].filter(
+        (property): property is Property => property !== null,
+      );
+      await loadGardskartJobs(true, { properties: updatedProperties });
     }
   };
 
@@ -2008,7 +2086,7 @@ export default function App() {
     (jobId: string) => {
       if (tileRetryJobRef.current === jobId) {
         setShowPropertyLayer(false);
-        setJob(null);
+        setPropertyJobs([]);
         setPropertyStatus("Eiendomslag skrudd av automatisk etter tilgangsfeil fra NIBIO.");
         addLog("warn", "Eiendomslag skrudd av etter gjentatt tile-feil", null, { jobId });
         return;
@@ -2016,9 +2094,9 @@ export default function App() {
 
       tileRetryJobRef.current = jobId;
       addLog("warn", "Tile-feil i eiendomslag, prøver auto-refresh", null, { jobId });
-      void loadGardskartJob(true);
+      void loadGardskartJobs(true);
     },
-    [addLog, loadGardskartJob],
+    [addLog, loadGardskartJobs],
   );
 
   const handleBaseMapTileError = useCallback(
@@ -2885,7 +2963,7 @@ export default function App() {
             onTogglePropertyLayer={(next) => {
               setShowPropertyLayer(next);
               if (!next) {
-                setJob(null);
+                setPropertyJobs([]);
                 setPropertyStatus("Eiendomslag er skrudd av.");
                 addLog("info", "Eiendomslag skrudd av av bruker");
               } else {
@@ -2945,8 +3023,8 @@ export default function App() {
                   hoveredPhotoId={hoverPreviewPhotoId}
                   focusToken={mapFocusToken}
                   resetViewToken={mapResetToken}
-                  property={profile?.property ?? null}
-                  job={job}
+                  properties={activeProperties}
+                  jobs={propertyJobs}
                   videoMapArtifacts={activeVideoMapArtifacts}
                   baseMapStyle={baseMapStyle}
                   mapGrayscale={mapGrayscale}

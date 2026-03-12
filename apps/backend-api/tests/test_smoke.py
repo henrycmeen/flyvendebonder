@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 
 def test_health_smoke(client):
@@ -20,6 +21,7 @@ def test_profile_get_and_patch_smoke(client):
     assert profile["property"]["komm"] == "4003"
     assert profile["property"]["gnr"] == 70
     assert profile["property"]["bnr"] == 17
+    assert profile["additional_properties"] == []
 
     patch_response = client.patch(
         "/api/v1/profile/current",
@@ -31,6 +33,137 @@ def test_profile_get_and_patch_smoke(client):
 
     confirm = client.get("/api/v1/profile/current").json()
     assert confirm["user"]["phone"] == "+47 11111111"
+
+
+def test_profile_additional_properties_roundtrip(client):
+    initial = client.get("/api/v1/profile/current")
+    assert initial.status_code == 200
+    assert initial.json()["additional_properties"] == []
+
+    create_response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Leiejord nord",
+                    "komm": "4003",
+                    "gnr": 71,
+                    "bnr": 4,
+                    "fnr": 0,
+                },
+                {
+                    "label": "Leiejord sør",
+                    "komm": "4003",
+                    "gnr": 72,
+                    "bnr": 8,
+                },
+            ]
+        },
+    )
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert len(created["additional_properties"]) == 2
+    assert created["additional_properties"][0]["label"] == "Leiejord nord"
+    assert created["additional_properties"][1]["fnr"] == 0
+
+    first_extra = created["additional_properties"][0]
+
+    update_response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "id": first_extra["id"],
+                    "label": "Leiejord nordvest",
+                    "komm": first_extra["komm"],
+                    "gnr": first_extra["gnr"],
+                    "bnr": first_extra["bnr"],
+                    "fnr": first_extra["fnr"],
+                }
+            ]
+        },
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert len(updated["additional_properties"]) == 1
+    assert updated["additional_properties"][0]["label"] == "Leiejord nordvest"
+    assert updated["property"]["gnr"] == 70
+
+
+def test_profile_additional_property_requires_core_fields(client):
+    response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Leiejord vest",
+                    "gnr": 73,
+                    "bnr": 2,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+    assert "kommunekode" in response.json()["detail"]
+
+
+def test_profile_additional_property_duplicate_rejected(client):
+    response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Duplikat av aktiv gård",
+                    "komm": "4003",
+                    "gnr": 70,
+                    "bnr": 17,
+                    "fnr": 0,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+    assert "duplikater" in response.json()["detail"]
+
+
+def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
+    import app.api.v1 as v1
+
+    created = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Leiejord øst",
+                    "komm": "4003",
+                    "gnr": 73,
+                    "bnr": 9,
+                    "fnr": 0,
+                }
+            ]
+        },
+    )
+    assert created.status_code == 200
+    extra_property = created.json()["additional_properties"][0]
+
+    async def fake_get_job_id(db, property_obj, force_refresh=False):
+        now = datetime.utcnow()
+        cache = SimpleNamespace(
+            job_id=f"job-{property_obj.id}",
+            status_code=1,
+            status_desc="response ok",
+            fetched_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+        return cache, "fresh"
+
+    monkeypatch.setattr(v1, "get_job_id", fake_get_job_id)
+
+    response = client.get(f"/api/v1/properties/{extra_property['id']}/gardskart-job")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["property_id"] == extra_property["id"]
+    assert payload["job_id"] == f"job-{extra_property['id']}"
 
 
 def test_timeline_dates_and_photos_smoke(client):
