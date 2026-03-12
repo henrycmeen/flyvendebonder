@@ -61,11 +61,19 @@ Valider og reload:
 
 Hente siste backendlogg via API:
 ```bash
-curl -s http://127.0.0.1:8787/api/v1/logs?limit=120 | jq
+COOKIE_JAR="$(mktemp)"
+curl -s -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"<admin-kode>"}' \
+  http://127.0.0.1:8787/api/v1/admin/login | jq
+curl -s -b "$COOKIE_JAR" \
+  'http://127.0.0.1:8787/api/v1/logs?limit=120' | jq
+rm -f "$COOKIE_JAR"
 ```
 
 - `limit`: antall linjer (1–1000)
 - `level`: `DEBUG|INFO|WARNING|ERROR|CRITICAL` (valgfritt)
+- krever aktiv admin-session
 
 Følge live-logger fra utviklingsmaskinen:
 ```bash

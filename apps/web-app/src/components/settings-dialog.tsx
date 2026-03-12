@@ -280,7 +280,7 @@ export function SettingsDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6">
         <DialogHeader>
           <DialogTitle>Innstillinger</DialogTitle>
-          <DialogDescription>Profil, kartlag og teknisk logg for Flyvendebønder.</DialogDescription>
+          <DialogDescription>Profil, kartlag og admin for Flyvendebønder.</DialogDescription>
         </DialogHeader>
 
         <div className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] px-5 py-4">
@@ -298,11 +298,10 @@ export function SettingsDialog({
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid h-auto w-full grid-cols-4 gap-2 rounded-none border-0 bg-transparent p-0">
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-none border-0 bg-transparent p-0">
             <TabsTrigger value="profile" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Profil</TabsTrigger>
             <TabsTrigger value="layer" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Kartlag</TabsTrigger>
             <TabsTrigger value="admin" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Admin</TabsTrigger>
-            <TabsTrigger value="log" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Teknisk logg</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="mt-4">
@@ -504,54 +503,61 @@ export function SettingsDialog({
                   </form>
                 )
               ) : null}
-            </Stack>
-          </TabsContent>
 
-          <TabsContent value="log" className="mt-4">
-            <Stack gap={3} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
-              <div className="space-y-2">
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button type="button" variant="default" size="sm" onClick={onFetchBackendLogs} disabled={backendLogsLoading}>
-                    {backendLogsLoading ? "Henter logg ..." : "Hent backendlogg"}
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={onClearBackendLogs}>
-                    Tøm backendlogg
-                  </Button>
-                </div>
-                <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
-                  Viser siste linjer fra backend, begrenset til siste 120 i denne visningen.
-                </div>
-                <ScrollArea className="h-52 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
-                  <TechnicalLogList
-                    emptyText="Ingen serverlogg lastet enda."
-                    items={backendLogs.map((entry, index) => ({
-                      id: `${entry.timestamp}-${entry.requestId ?? entry.request_id ?? entry.logger}-${index}`,
-                      main: `${entry.timestamp} [${entry.level}] ${entry.logger}: ${entry.message}`,
-                      requestId: entry.requestId ?? entry.request_id,
-                    }))}
-                  />
-                </ScrollArea>
-              </div>
+              {adminStatus?.authenticated ? (
+                <Stack gap={3} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Teknisk logg</p>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button type="button" variant="default" size="sm" onClick={onFetchBackendLogs} disabled={backendLogsLoading}>
+                          {backendLogsLoading ? "Henter logg ..." : "Hent backendlogg"}
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={onClearBackendLogs}>
+                          Tøm backendlogg
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
+                      Viser siste linjer fra backend, begrenset til siste 120 i denne visningen.
+                    </div>
+                    <ScrollArea className="h-52 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
+                      <TechnicalLogList
+                        emptyText="Ingen serverlogg lastet enda."
+                        items={backendLogs.map((entry, index) => ({
+                          id: `${entry.timestamp}-${entry.requestId ?? entry.request_id ?? entry.logger}-${index}`,
+                          main: `${entry.timestamp} [${entry.level}] ${entry.logger}: ${entry.message}`,
+                          requestId: entry.requestId ?? entry.request_id,
+                        }))}
+                      />
+                    </ScrollArea>
+                  </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Frontendlogg</p>
-                  <Button type="button" variant="ghost" size="sm" onClick={onClearLogs}>
-                    Tøm logg
-                  </Button>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Frontendlogg</p>
+                      <Button type="button" variant="ghost" size="sm" onClick={onClearLogs}>
+                        Tøm logg
+                      </Button>
+                    </div>
+                    <ScrollArea className="h-40 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
+                      <TechnicalLogList
+                        emptyText="Ingen frontend logger enda."
+                        items={logs.map((entry) => ({
+                          id: entry.id,
+                          main: `${entry.time} [${entry.level}] ${entry.message}`,
+                          requestId: entry.requestId,
+                          details: entry.details,
+                        }))}
+                      />
+                    </ScrollArea>
+                  </div>
+                </Stack>
+              ) : (
+                <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-secondary">
+                  Teknisk logg låses opp når admin er aktiv.
                 </div>
-                <ScrollArea className="h-40 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
-                  <TechnicalLogList
-                    emptyText="Ingen frontend logger enda."
-                    items={logs.map((entry) => ({
-                      id: entry.id,
-                      main: `${entry.time} [${entry.level}] ${entry.message}`,
-                      requestId: entry.requestId,
-                      details: entry.details,
-                    }))}
-                  />
-                </ScrollArea>
-              </div>
+              )}
             </Stack>
           </TabsContent>
         </Tabs>

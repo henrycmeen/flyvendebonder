@@ -14,10 +14,17 @@ Scriptet kobler til `macmini` over SSH og følger:
 
 ## 2) Les backendlogger via API
 ```bash
-curl -s 'https://xn--flyvendebnder-jnb.no/api/v1/logs?limit=120&level=WARNING' | jq
+COOKIE_JAR="$(mktemp)"
+curl -s -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -d '{"code":"<admin-kode>"}' \
+  'https://xn--flyvendebnder-jnb.no/api/v1/admin/login' | jq
+curl -s -b "$COOKIE_JAR" \
+  'https://xn--flyvendebnder-jnb.no/api/v1/logs?limit=120&level=WARNING' | jq
+rm -f "$COOKIE_JAR"
 ```
 
-Nyttig når vi vil hente strukturerte logglinjer med `request_id`.
+`/api/v1/logs` er nå admin-beskyttet. Dette er nyttig når vi vil hente strukturerte logglinjer med `request_id`.
 
 ## 3) Les frontendlogger mens Playwright kjører
 Frontend eksponerer nå et debug-API i nettleseren:

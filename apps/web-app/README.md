@@ -4,7 +4,7 @@ Frontend for `/app/` med:
 - Leaflet kart + clustering
 - API-drevet timeline
 - Profilkort med redigering
-- Teknisk logg med request-id
+- Admin-beskyttet teknisk logg med request-id
 - Automatisk jobId-flyt via backend (ingen manuell knapp)
 
 ## Kjør lokalt

@@ -9,7 +9,7 @@ WEB_PORT=5173
 BACKEND_PID=""
 STARTED_BACKEND=0
 BACKEND_READY_CHECK_URL="http://127.0.0.1:8787/api/v1/photos/page?date=2000-01-01&mode=cumulative&limit=1"
-BACKEND_LOGS_CHECK_URL="http://127.0.0.1:8787/api/v1/logs?limit=1"
+BACKEND_ADMIN_CHECK_URL="http://127.0.0.1:8787/api/v1/admin/session"
 
 start_backend() {
   echo "Starting backend on 127.0.0.1:8787 ..."
@@ -47,7 +47,7 @@ if ! lsof -nP -iTCP:8787 -sTCP:LISTEN >/dev/null 2>&1; then
 else
   echo "Backend already running on :8787"
 
-  if ! curl -fsS "$BACKEND_READY_CHECK_URL" >/dev/null 2>&1 || ! curl -fsS "$BACKEND_LOGS_CHECK_URL" >/dev/null 2>&1; then
+  if ! curl -fsS "$BACKEND_READY_CHECK_URL" >/dev/null 2>&1 || ! curl -fsS "$BACKEND_ADMIN_CHECK_URL" >/dev/null 2>&1; then
     echo "Existing backend is missing required API routes, restarting ..."
     OLD_BACKEND_PIDS="$(lsof -tiTCP:8787 -sTCP:LISTEN | tr '\n' ' ')"
     if [[ -n "$OLD_BACKEND_PIDS" ]]; then

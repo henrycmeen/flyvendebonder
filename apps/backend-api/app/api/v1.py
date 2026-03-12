@@ -149,7 +149,11 @@ def health() -> dict:
 
 
 @router.get("/logs", response_model=BackendLogsResponse)
-def get_logs(limit: int = Query(default=200, ge=1, le=1000), level: str | None = Query(default=None)) -> BackendLogsResponse:
+def get_logs(
+    limit: int = Query(default=200, ge=1, le=1000),
+    level: str | None = Query(default=None),
+    _admin_session=Depends(require_admin_session),
+) -> BackendLogsResponse:
     if level and level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         raise HTTPException(status_code=400, detail="Nyttig nivå: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 

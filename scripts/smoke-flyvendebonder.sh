@@ -3,6 +3,23 @@ set -euo pipefail
 
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 APP_URL="${APP_URL:-http://127.0.0.1:5173/app/}"
+ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
+
+TMP_FILES=()
+
+cleanup() {
+  if ((${#TMP_FILES[@]})); then
+    rm -f "${TMP_FILES[@]}"
+  fi
+}
+trap cleanup EXIT
+
+new_tmp() {
+  local path
+  path="$(mktemp)"
+  TMP_FILES+=("$path")
+  printf '%s\n' "$path"
+}
 
 fail() {
   echo "SMOKE FAIL: $1" >&2
@@ -30,22 +47,23 @@ require_json_field() {
   local label="$1"
   local url="$2"
   local expression="$3"
+  local response
+  local code
+
+  response="$(new_tmp)"
+  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ "$code" != "200" ]]; then
+    fail "$label ($code): $url"
+  fi
 
   local result
-  result="$(python - "$url" "$expression" <<'PY'
+  result="$(python3 - "$response" "$expression" <<'PY'
 import json
 import sys
-import urllib.request
-import urllib.error
 
-url, expr = sys.argv[1], sys.argv[2]
-try:
-    with urllib.request.urlopen(url, timeout=10) as response:
-        payload = json.load(response)
-except urllib.error.HTTPError as exc:
-    raise SystemExit(f"HTTP {exc.code} from {url}")
-except Exception as exc:
-    raise SystemExit(str(exc))
+path, expr = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
 
 if not eval(expr, {"obj": payload}):
     raise SystemExit(1)
@@ -60,21 +78,22 @@ PY
 extract_json_field() {
   local url="$1"
   local expression="$2"
+  local response
+  local code
 
-  python - "$url" "$expression" <<'PY'
+  response="$(new_tmp)"
+  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ "$code" != "200" ]]; then
+    fail "Kunne ikke hente JSON-felt ($code): $url"
+  fi
+
+  python3 - "$response" "$expression" <<'PY'
 import json
 import sys
-import urllib.request
-import urllib.error
 
-url, expr = sys.argv[1], sys.argv[2]
-try:
-    with urllib.request.urlopen(url, timeout=10) as response:
-        payload = json.load(response)
-except urllib.error.HTTPError as exc:
-    raise SystemExit(f"HTTP {exc.code} from {url}")
-except Exception as exc:
-    raise SystemExit(str(exc))
+path, expr = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
 
 print(eval(expr, {"obj": payload}))
 PY
@@ -121,10 +140,50 @@ else
   echo "Advarsel: Fotoresponsen inneholder ingen thumbnail_url."
 fi
 
-require_json_field "Logg endpoint" "$BACKEND_URL/api/v1/logs?limit=10" "'lines' in obj and isinstance(obj.get('lines'), list)"
-LOGS_COUNT="$(extract_json_field "$BACKEND_URL/api/v1/logs?limit=10" "obj.get('count')")"
-if ! [[ "$LOGS_COUNT" =~ ^[0-9]+$ ]]; then
-  fail "Logger endpoint returnerte ugyldig count: $LOGS_COUNT"
+require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and 'authenticated' in obj"
+
+if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
+  COOKIE_JAR="$(new_tmp)"
+  LOGIN_FILE="$(new_tmp)"
+  LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"code": sys.argv[1]}))
+PY
+)"
+  LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
+  if [[ "$LOGIN_CODE" != "200" ]]; then
+    fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
+  fi
+
+  LOGS_FILE="$(new_tmp)"
+  LOGS_CODE="$(curl -sS -w "%{http_code}" -b "$COOKIE_JAR" -o "$LOGS_FILE" "$BACKEND_URL/api/v1/logs?limit=10")"
+  if [[ "$LOGS_CODE" != "200" ]]; then
+    fail "Logg endpoint feilet etter admin-login ($LOGS_CODE)"
+  fi
+
+  LOGS_COUNT="$(python3 - "$LOGS_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+lines = payload.get("lines")
+count = payload.get("count")
+if not isinstance(lines, list):
+    raise SystemExit("Mangler lines-list i logs payload")
+if not isinstance(count, int):
+    raise SystemExit("Mangler count-int i logs payload")
+print(count)
+PY
+)"
+  if ! [[ "$LOGS_COUNT" =~ ^[0-9]+$ ]]; then
+    fail "Logger endpoint returnerte ugyldig count: $LOGS_COUNT"
+  fi
+else
+  echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet logs-sjekk."
 fi
 
 echo "[5/5] App side"

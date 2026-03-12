@@ -51,3 +51,12 @@ def test_admin_write_requires_login(client):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Admin-innlogging kreves for denne handlingen"
+
+
+def test_logs_require_admin_login(client):
+    logout = client.post("/api/v1/admin/logout")
+    assert logout.status_code == 200
+
+    response = client.get("/api/v1/logs", params={"limit": 5})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Admin-innlogging kreves for denne handlingen"

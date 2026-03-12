@@ -16,6 +16,13 @@ BACKEND_DIR="$ROOT_DIR/apps/backend-api"
 WEB_DIR="$ROOT_DIR/apps/web-app"
 BACKEND_LOG_FILE="${BACKEND_DIR}/logs/backend.log"
 BACKEND_LOG_FALLBACK="${HOME}/Library/Logs/flyvendebonder/backend.log"
+ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
+COOKIE_JAR="$(mktemp)"
+
+cleanup() {
+  rm -f "$COOKIE_JAR"
+}
+trap cleanup EXIT
 
 {
   echo "# Flyvendebønder debug bundle"
@@ -152,10 +159,38 @@ PY
   else
     echo "Backend not reachable on 127.0.0.1:8787"
   fi
-  if curl -fsS http://127.0.0.1:8787/api/v1/logs?limit=20 >/dev/null 2>&1; then
-    curl -fsS http://127.0.0.1:8787/api/v1/logs?limit=20 >"${WORK_DIR}/logs-api.json"
+
+  if curl -fsS http://127.0.0.1:8787/api/v1/admin/session >"${WORK_DIR}/admin-session.json" 2>/dev/null; then
+    cat "${WORK_DIR}/admin-session.json"
   else
-    echo "Logs endpoint not reachable."
+    echo "Admin session endpoint not reachable."
+  fi
+
+  LOGS_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/api/v1/logs?limit=20 || true)"
+  if [[ "$LOGS_STATUS" == "200" ]]; then
+    curl -fsS http://127.0.0.1:8787/api/v1/logs?limit=20 >"${WORK_DIR}/logs-api.json"
+  elif [[ "$LOGS_STATUS" == "401" ]]; then
+    echo "Logs endpoint krever admin-session."
+    if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
+      LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"code": sys.argv[1]}))
+PY
+)"
+      LOGIN_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -d "$LOGIN_PAYLOAD" http://127.0.0.1:8787/api/v1/admin/login || true)"
+      if [[ "$LOGIN_STATUS" == "200" ]]; then
+        curl -fsS -b "$COOKIE_JAR" http://127.0.0.1:8787/api/v1/logs?limit=20 >"${WORK_DIR}/logs-api.json"
+        echo "Logs hentet med ADMIN_ACCESS_CODE."
+      else
+        echo "Admin-login for logs feilet (HTTP ${LOGIN_STATUS})."
+      fi
+    else
+      echo "Sett ADMIN_ACCESS_CODE for å inkludere beskyttede backendlogger i bundlen."
+    fi
+  else
+    echo "Logs endpoint svarte HTTP ${LOGS_STATUS}."
   fi
 } >"${WORK_DIR}/api-smoke.txt"
 
