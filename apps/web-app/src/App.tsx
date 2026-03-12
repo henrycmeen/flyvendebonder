@@ -1369,7 +1369,7 @@ export default function App() {
         mode: "cumulative",
         include_analysis: false,
         limit: 120,
-        sort: "asc",
+        sort: "desc",
       };
       if (cursor) {
         pageQuery.cursor = cursor;
