@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy-webroot:
-    name: Deploy webroot on Mac mini
+    name: Deploy live on Mac mini
     runs-on:
       - self-hosted
       - macOS
@@ -37,6 +37,9 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/web-app
         run: npm ci
+
+      - name: Deploy backend locally
+        run: ./scripts/deploy-backend-macmini.sh
 
       - name: Deploy live webroot locally
         run: ./scripts/deploy-flyvendebonder.sh --local --dest "$DEST"

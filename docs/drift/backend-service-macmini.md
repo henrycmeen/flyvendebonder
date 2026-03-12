@@ -7,6 +7,8 @@ python3 -m venv .venv
 ./.venv/bin/pip install -r apps/backend-api/requirements.txt
 ```
 
+Ved normal deploy fra `main` gjøres dette nå automatisk av `.github/workflows/deploy-main.yml` via `./scripts/deploy-backend-macmini.sh`.
+
 ## 2) Test lokal oppstart
 ```bash
 cd /Users/henrymeen/srv/apps/flyvendebonder/apps/backend-api
@@ -45,6 +47,10 @@ Sjekk status:
 launchctl list | rg flyvendebonder
 ```
 
+Ved automatisk deploy brukes samme LaunchAgent og service-label:
+- LaunchAgent: `~/Library/LaunchAgents/com.flyvendebonder.backend.plist`
+- label: `com.flyvendebonder.backend`
+
 ## 4) Caddy
 Legg inn route fra `scripts/caddy/flyvendebonder.Caddyfile.snippet` i Caddyfile.
 
@@ -78,6 +84,13 @@ rm -f "$COOKIE_JAR"
 Følge live-logger fra utviklingsmaskinen:
 ```bash
 ./scripts/watch-live-logs.sh
+```
+
+Ta en samlet debug bundle mot live-backend:
+```bash
+BACKEND_URL='https://xn--flyvendebnder-jnb.no' \
+ADMIN_ACCESS_CODE='<admin-kode>' \
+./scripts/debug-bundle.sh
 ```
 
 For kombinert frontend/backend-feilsøking med Playwright, se `docs/debug/stabilisering-med-playwright-og-logger.md`.

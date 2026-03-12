@@ -16,6 +16,7 @@ BACKEND_DIR="$ROOT_DIR/apps/backend-api"
 WEB_DIR="$ROOT_DIR/apps/web-app"
 BACKEND_LOG_FILE="${BACKEND_DIR}/logs/backend.log"
 BACKEND_LOG_FALLBACK="${HOME}/Library/Logs/flyvendebonder/backend.log"
+BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
 COOKIE_JAR="$(mktemp)"
 
@@ -43,6 +44,7 @@ trap cleanup EXIT
   echo "NPM: $(command -v npm >/dev/null && npm --version || echo missing)"
   echo "Python: $(command -v python3 >/dev/null && python3 --version || echo missing)"
   echo "Host: $(uname -a)"
+  echo "Backend URL: $BACKEND_URL"
   echo
   echo "# App metadata"
   if [[ -f "$ROOT_DIR/package.json" ]]; then
@@ -154,21 +156,21 @@ PY
 
 {
   echo "# API smoke (if backend is running)"
-  if curl -fsS http://127.0.0.1:8787/api/v1/health >/dev/null 2>&1; then
-    curl -fsS http://127.0.0.1:8787/api/v1/health | tee "${WORK_DIR}/health.json"
+  if curl -fsS "$BACKEND_URL/api/v1/health" >/dev/null 2>&1; then
+    curl -fsS "$BACKEND_URL/api/v1/health" | tee "${WORK_DIR}/health.json"
   else
-    echo "Backend not reachable on 127.0.0.1:8787"
+    echo "Backend not reachable on $BACKEND_URL"
   fi
 
-  if curl -fsS http://127.0.0.1:8787/api/v1/admin/session >"${WORK_DIR}/admin-session.json" 2>/dev/null; then
+  if curl -fsS "$BACKEND_URL/api/v1/admin/session" >"${WORK_DIR}/admin-session.json" 2>/dev/null; then
     cat "${WORK_DIR}/admin-session.json"
   else
     echo "Admin session endpoint not reachable."
   fi
 
-  LOGS_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/api/v1/logs?limit=20 || true)"
+  LOGS_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "$BACKEND_URL/api/v1/logs?limit=20" || true)"
   if [[ "$LOGS_STATUS" == "200" ]]; then
-    curl -fsS http://127.0.0.1:8787/api/v1/logs?limit=20 >"${WORK_DIR}/logs-api.json"
+    curl -fsS "$BACKEND_URL/api/v1/logs?limit=20" >"${WORK_DIR}/logs-api.json"
   elif [[ "$LOGS_STATUS" == "401" ]]; then
     echo "Logs endpoint krever admin-session."
     if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
@@ -179,9 +181,9 @@ import sys
 print(json.dumps({"code": sys.argv[1]}))
 PY
 )"
-      LOGIN_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -d "$LOGIN_PAYLOAD" http://127.0.0.1:8787/api/v1/admin/login || true)"
+      LOGIN_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login" || true)"
       if [[ "$LOGIN_STATUS" == "200" ]]; then
-        curl -fsS -b "$COOKIE_JAR" http://127.0.0.1:8787/api/v1/logs?limit=20 >"${WORK_DIR}/logs-api.json"
+        curl -fsS -b "$COOKIE_JAR" "$BACKEND_URL/api/v1/logs?limit=20" >"${WORK_DIR}/logs-api.json"
         echo "Logs hentet med ADMIN_ACCESS_CODE."
       else
         echo "Admin-login for logs feilet (HTTP ${LOGIN_STATUS})."

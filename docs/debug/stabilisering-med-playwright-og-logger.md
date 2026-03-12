@@ -26,6 +26,21 @@ rm -f "$COOKIE_JAR"
 
 `/api/v1/logs` er nå admin-beskyttet. Dette er nyttig når vi vil hente strukturerte logglinjer med `request_id`.
 
+## 2b) Pakk en debug bundle
+Lokal backend:
+```bash
+./scripts/debug-bundle.sh
+```
+
+Mot live-backend:
+```bash
+BACKEND_URL='https://xn--flyvendebnder-jnb.no' \
+ADMIN_ACCESS_CODE='<admin-kode>' \
+./scripts/debug-bundle.sh
+```
+
+Bundlen samler health, admin-session, logg-endepunkt, runtime-info og lokale backendlogger der de finnes.
+
 ## 3) Les frontendlogger mens Playwright kjører
 Frontend eksponerer nå et debug-API i nettleseren:
 
@@ -67,6 +82,7 @@ Det gir oss:
 3. Reproduser problemet.
 4. Les `browser_console_messages`, `browser_network_requests` og `window.__flyvDebug.getSnapshot()`.
 5. Match `request_id` mot backendlogg/API-logg.
+6. Opprett eller oppdater en incidentfil fra `docs/debug/incidents/TEMPLATE.md`.
 
 ## 6) Når noe går tregt
 Se etter:

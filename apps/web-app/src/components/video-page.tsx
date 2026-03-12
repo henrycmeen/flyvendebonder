@@ -19,6 +19,7 @@ type VideoJobStatus = "pending" | "processing" | "done" | "failed";
 interface VideoPageProps {
   baseMapStyle: BaseMapStyle;
   showZoomControls: boolean;
+  disabledMessage?: string | null;
   initialJobIds?: string[];
   reviewedArtifacts?: VideoMapArtifact[];
   archivedJobIds?: string[];
@@ -465,6 +466,7 @@ function pushMetadataRows(source: unknown, out: MetadataRow[], prefix = "", dept
 export function VideoPage({
   baseMapStyle,
   showZoomControls,
+  disabledMessage,
   initialJobIds = [],
   reviewedArtifacts = [],
   archivedJobIds = [],
@@ -474,6 +476,7 @@ export function VideoPage({
   onStartMediaImport,
   onVideoReview,
 }: VideoPageProps) {
+  const videoWorkflowDisabled = Boolean(disabledMessage);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [jobIds, setJobIds] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -605,6 +608,7 @@ export function VideoPage({
   const sampleFrames = framesResult?.sample_frames ?? [];
 
   const refreshJob = useCallback(async (jobId: string) => {
+    if (videoWorkflowDisabled) return;
     const response = await fetch(`/api/v1/video-jobs/${encodeURIComponent(jobId)}`, {
       method: "GET",
       headers: {
@@ -629,16 +633,18 @@ export function VideoPage({
       };
     });
     setJobIds((current) => mergeJobIds(current, [jobId]));
-  }, []);
+  }, [videoWorkflowDisabled]);
 
   useEffect(() => {
+    if (videoWorkflowDisabled) return;
     if (initialJobIds.length === 0) return;
 
     setJobIds((current) => mergeJobIds(initialJobIds, current));
     setSelectedJobId(initialJobIds[0] ?? null);
-  }, [initialJobIds]);
+  }, [initialJobIds, videoWorkflowDisabled]);
 
   useEffect(() => {
+    if (videoWorkflowDisabled) return;
     const missingJobIds = jobIds.filter((jobId) => !jobsById[jobId]);
     if (missingJobIds.length === 0) return;
 
@@ -656,9 +662,10 @@ export function VideoPage({
     return () => {
       active = false;
     };
-  }, [jobIds, jobsById, refreshJob]);
+  }, [jobIds, jobsById, refreshJob, videoWorkflowDisabled]);
 
   useEffect(() => {
+    if (videoWorkflowDisabled) return;
     const activeProcessingJobIds = jobIds.filter((jobId) => {
       const current = jobsById[jobId];
       return !current || current.status === "pending" || current.status === "processing";
@@ -699,10 +706,10 @@ export function VideoPage({
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [jobIds, jobsById, refreshJob]);
+  }, [jobIds, jobsById, refreshJob, videoWorkflowDisabled]);
 
   const handleAddRouteToMap = useCallback(async () => {
-    if (!job?.jobId || !onVideoReview || !routeResult?.geodata_geojson) return;
+    if (videoWorkflowDisabled || !job?.jobId || !onVideoReview || !routeResult?.geodata_geojson) return;
     setIsReviewSubmitting(true);
     setSubmitError(null);
     try {
@@ -723,7 +730,7 @@ export function VideoPage({
     } finally {
       setIsReviewSubmitting(false);
     }
-  }, [job?.jobId, job?.mode, job?.updatedAt, nextUnreviewedJobId, onVideoReview, routeResult]);
+  }, [job?.jobId, job?.mode, job?.updatedAt, nextUnreviewedJobId, onVideoReview, routeResult, videoWorkflowDisabled]);
 
   const handleArchiveCurrentJob = useCallback(() => {
     if (!job?.jobId || !onArchiveJob) return;
@@ -744,6 +751,7 @@ export function VideoPage({
   }, [job?.jobId]);
 
   useEffect(() => {
+    if (videoWorkflowDisabled) return;
     const metadataUrl = routeResult?.metadata_json;
     if (!routeResult || job?.status !== "done" || !metadataUrl) {
       return;
@@ -797,7 +805,27 @@ export function VideoPage({
       cancelled = true;
       controller.abort();
     };
-    }, [job?.status, job?.jobId, routeResult]);
+    }, [job?.status, job?.jobId, routeResult, videoWorkflowDisabled]);
+
+  if (videoWorkflowDisabled) {
+    return (
+      <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
+        <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+          <PageShell maxWidth="content" className="px-0">
+            <Section
+              title="Videoflyt midlertidig utilgjengelig"
+              description="Video-review er slått av til backend-kontrakten er ryddet."
+              className="space-y-3"
+            >
+              <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-4 text-sm text-fb-text-secondary">
+                {disabledMessage}
+              </div>
+            </Section>
+          </PageShell>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">

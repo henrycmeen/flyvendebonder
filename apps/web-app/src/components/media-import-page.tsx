@@ -18,6 +18,7 @@ export interface MediaImportSelection {
 interface MediaImportPageProps {
   busy?: boolean;
   errorMessage?: string | null;
+  disabledMessage?: string | null;
   onImport: (selection: MediaImportSelection) => Promise<boolean>;
 }
 
@@ -129,6 +130,7 @@ function toStagedItems(files: File[]): StagedMediaItem[] {
 export function MediaImportPage({
   busy = false,
   errorMessage,
+  disabledMessage,
   onImport,
 }: MediaImportPageProps) {
   const [items, setItems] = useState<StagedMediaItem[]>([]);
@@ -165,7 +167,7 @@ export function MediaImportPage({
   };
 
   const handleConfirmImport = async () => {
-    if (items.length === 0 || busy) return;
+    if (disabledMessage || items.length === 0 || busy) return;
     const completed = await onImport({
       images: imageItems.map((item) => ({
         file: item.file,
@@ -215,15 +217,20 @@ export function MediaImportPage({
                 <div className="flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-[26px] border-2 border-dashed border-fb-border-subtle bg-fb-surface-base px-6 py-10 text-center sm:min-h-[360px] sm:px-10">
                   <UploadCloud className="h-10 w-10 text-fb-text-secondary" />
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <Button type="button" size="lg" onClick={() => folderInputRef.current?.click()} disabled={busy}>
+                    <Button type="button" size="lg" onClick={() => folderInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
                       <FolderOpen className="mr-2 h-4 w-4" />
                       Velg mappe
                     </Button>
-                    <Button type="button" size="lg" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                    <Button type="button" size="lg" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
                       <ImagePlus className="mr-2 h-4 w-4" />
                       Velg filer
                     </Button>
                   </div>
+                  {disabledMessage ? (
+                    <p className="max-w-xl rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3 text-sm text-fb-text-secondary">
+                      {disabledMessage}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -234,7 +241,7 @@ export function MediaImportPage({
                     <Button type="button" variant="ghost" onClick={clearItems} disabled={busy}>
                       Tøm
                     </Button>
-                    <Button type="button" onClick={() => void handleConfirmImport()} disabled={busy}>
+                    <Button type="button" onClick={() => void handleConfirmImport()} disabled={busy || Boolean(disabledMessage)}>
                       {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Importer
                     </Button>
@@ -255,6 +262,7 @@ export function MediaImportPage({
             type="file"
             className="hidden"
             multiple
+            disabled={busy || Boolean(disabledMessage)}
             onChange={(event) => {
               ingestFiles(Array.from(event.currentTarget.files ?? []));
               event.currentTarget.value = "";
@@ -266,6 +274,7 @@ export function MediaImportPage({
             className="hidden"
             accept="image/*,video/*,.jpg,.jpeg,.tif,.tiff,.mp4,.mov,.m4v,.avi,.mkv,.webm"
             multiple
+            disabled={busy || Boolean(disabledMessage)}
             onChange={(event) => {
               ingestFiles(Array.from(event.currentTarget.files ?? []));
               event.currentTarget.value = "";

@@ -87,6 +87,12 @@ const MAP_PHOTO_MAX_PAGES = 80;
 const VIDEO_JOB_QUEUE_STORAGE_KEY = "fb-video-job-queue";
 const VIDEO_JOB_ARCHIVE_STORAGE_KEY = "fb-video-job-archive";
 const VIDEO_JOB_ARTIFACTS_STORAGE_KEY = "fb-video-job-artifacts";
+const BROWSER_MEDIA_IMPORT_ENABLED = false;
+const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
+  "Browserimport er midlertidig slått av mens backend-kontrakten for opplasting ryddes. Import var synlig, men pekte til endepunkter som ikke finnes i denne backend-versjonen ennå.";
+const VIDEO_WORKFLOW_ENABLED = false;
+const VIDEO_WORKFLOW_DISABLED_REASON =
+  "Videoflyten er midlertidig slått av mens /api/v1/video-jobs-kontrakten bygges opp igjen i backend. Dette hindrer at UI-et peker til manglende endepunkter.";
 
 function mergeUniqueJobIds(current: string[], incoming: string[]): string[] {
   const seen = new Set<string>();
@@ -1823,9 +1829,14 @@ export default function App() {
   const handleStartMediaImport = useCallback(() => {
     if (!ensureAdminAccess("import")) return;
     handleClosePhotoViewer();
-    setMediaImportError("");
+    setMediaImportError(BROWSER_MEDIA_IMPORT_ENABLED ? "" : BROWSER_MEDIA_IMPORT_DISABLED_REASON);
     setActiveView("import");
-    addLog("info", "Import åpnet");
+    if (BROWSER_MEDIA_IMPORT_ENABLED) {
+      addLog("info", "Import åpnet");
+      return;
+    }
+    setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
+    addLog("warn", "Browserimport er deaktivert til kontrakten er ryddet", null, { issue: 54 });
   }, [addLog, ensureAdminAccess, handleClosePhotoViewer]);
 
   const handleSubmitMediaImport = useCallback(
@@ -2936,12 +2947,14 @@ export default function App() {
                 <MediaImportPage
                   busy={isMediaImportSubmitting}
                   errorMessage={mediaImportError}
+                  disabledMessage={BROWSER_MEDIA_IMPORT_ENABLED ? null : BROWSER_MEDIA_IMPORT_DISABLED_REASON}
                   onImport={handleSubmitMediaImport}
                 />
               ) : (
                 <VideoPage
                   baseMapStyle={baseMapStyle}
                   showZoomControls={showZoomControls}
+                  disabledMessage={VIDEO_WORKFLOW_ENABLED ? null : VIDEO_WORKFLOW_DISABLED_REASON}
                   onVideoReview={isAdminAuthenticated ? handleVideoReview : undefined}
                   initialJobIds={initialVideoJobIds}
                   reviewedArtifacts={videoMapArtifacts}

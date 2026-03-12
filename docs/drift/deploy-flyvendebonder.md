@@ -47,11 +47,15 @@ Resultat i:
 ## Automatisk live-deploy fra `main`
 Repoet har nå workflowen `.github/workflows/deploy-main.yml`.
 
-Den er bevisst enkel:
+Den kjører nå både backend og webroot:
 1. Kjør ved push til `main` eller manuelt via `workflow_dispatch`.
 2. Bruk en self-hosted GitHub Actions-runner på Mac mini.
 3. Kjører `npm ci` i `apps/web-app`.
-4. Kjører eksisterende deploy-skript lokalt på Mac mini:
+4. Synker backend lokalt på Mac mini med:
+   ```bash
+   ./scripts/deploy-backend-macmini.sh
+   ```
+5. Kjører eksisterende webroot-deploy lokalt på Mac mini:
    ```bash
    ./scripts/deploy-flyvendebonder.sh --local --dest /Users/henrymeen/srv/www/flyvendebonder/
    ```
@@ -59,7 +63,7 @@ Den er bevisst enkel:
 ### Hvorfor self-hosted runner
 - Du slipper å eksponere SSH på Mac mini for GitHub-hostede runners.
 - `main` kan deployes direkte til samme maskin som faktisk server innholdet.
-- Vi kan senere utvide samme workflow med backend-sync og restart hvis det blir ønskelig.
+- Både backend og frontend kan deployes på samme maskin med samme filtilgang og launchctl-tilgang.
 
 ### Engangsoppsett på Mac mini
 1. Gå til repoet på GitHub: `Settings -> Actions -> Runners`.
@@ -72,9 +76,10 @@ Den er bevisst enkel:
    - `npm` og vanlig macOS-verktøy som `rsync`
 
 ### Viktig avgrensning
-- Workflowen publiserer bare statisk webroot for infosiden og `/app/`.
-- Backend-kode, migrasjoner, `.venv` og restart av `com.flyvendebonder.backend` er fortsatt manuell drift.
-- Hvis vi vil at backend-endringer på `main` også skal bli live automatisk, bør det lages en egen produksjonsjobb med eksplisitt restart- og rollback-steg.
+- Workflowen synker backend-kode, installerer Python-avhengigheter og restarter `com.flyvendebonder.backend`.
+- Webroot publiseres fortsatt separat via `deploy-flyvendebonder.sh`.
+- `.env`, `data/`, `logs/` og andre runtime-artefakter beholdes lokalt på Mac mini og overskrives ikke av workflowen.
+- Rollback er fortsatt manuell drift dersom deploy skulle feile etter sync.
 
 ## Backend runtime på Mac mini
 Se:
