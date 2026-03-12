@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw, X } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw } from "lucide-react";
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
@@ -37,6 +37,7 @@ import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
 import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
+import { CloseButton } from "@/components/ui/close-button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
@@ -2272,125 +2273,120 @@ export default function App() {
                     </div>
 
                     <aside className="photo-viewer-meta-column">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
-                          <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            variant={metadataEditMode ? "default" : "ghost"}
-                            size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                            onClick={() => setMetadataEditMode((value) => !value)}
-                            aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
-                            aria-pressed={metadataEditMode}
-                            disabled={!isAdminAuthenticated}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                            onClick={handleClosePhotoViewer}
-                            aria-label="Lukk bildevisning"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                      <div className="photo-viewer-meta-header">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                            <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
+                          </div>
+                          <div className="photo-viewer-meta-actions">
+                            <Button
+                              variant={metadataEditMode ? "default" : "ghost"}
+                              size="icon"
+                              className="h-9 w-9 shrink-0 rounded-full border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
+                              onClick={() => setMetadataEditMode((value) => !value)}
+                              aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
+                              aria-pressed={metadataEditMode}
+                              disabled={!isAdminAuthenticated}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <CloseButton onClick={handleClosePhotoViewer} label="Lukk bildevisning" />
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-3 space-y-2.5">
-                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-muted">Analyse</p>
-                          <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>AR5</dt>
-                              <dd className="font-medium">{selectedPhoto.analysis?.ar5_class ?? "Ikke beregnet"}</dd>
+                      <div className="photo-viewer-meta-body">
+                        <div className="space-y-2.5">
+                          <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-muted">Analyse</p>
+                            <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>AR5</dt>
+                                <dd className="font-medium">{selectedPhoto.analysis?.ar5_class ?? "Ikke beregnet"}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Jordsmonn</dt>
+                                <dd className="font-medium">{selectedPhoto.analysis?.soil_class ?? "Ikke beregnet"}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Posisjon</dt>
+                                <dd className="font-medium">
+                                  {selectedPhoto.analysis?.geometry_method
+                                    ? formatGeometryMethod(selectedPhoto.analysis.geometry_method)
+                                    : "Ikke beregnet"}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Confidence</dt>
+                                <dd className="font-medium">
+                                  {selectedPhoto.analysis?.confidence == null
+                                    ? "Ikke beregnet"
+                                    : `${formatConfidence(selectedPhoto.analysis.confidence)} (${getAnalysisToneText(selectedPhoto.analysis.confidence)})`}
+                                </dd>
+                              </div>
+                            </dl>
+                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={selectedPhoto.analysis?.approved ? "outline" : "default"}
+                                onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "approve")}
+                                disabled={
+                                  analysisBusyPhotoId === selectedPhoto.id ||
+                                  !isAdminAuthenticated ||
+                                  !selectedPhoto.analysis ||
+                                  Boolean(selectedPhoto.analysis?.approved)
+                                }
+                                className="h-8"
+                              >
+                                <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                                Godkjenn posisjon
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "recompute")}
+                                disabled={analysisBusyPhotoId === selectedPhoto.id || !isAdminAuthenticated}
+                                className="h-8"
+                              >
+                                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                                {selectedPhoto.analysis ? "Reberegn" : "Beregn nå"}
+                              </Button>
                             </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Jordsmonn</dt>
-                              <dd className="font-medium">{selectedPhoto.analysis?.soil_class ?? "Ikke beregnet"}</dd>
-                            </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Posisjon</dt>
-                              <dd className="font-medium">
-                                {selectedPhoto.analysis?.geometry_method
-                                  ? formatGeometryMethod(selectedPhoto.analysis.geometry_method)
-                                  : "Ikke beregnet"}
-                              </dd>
-                            </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Confidence</dt>
-                              <dd className="font-medium">
-                                {selectedPhoto.analysis?.confidence == null
-                                  ? "Ikke beregnet"
-                                  : `${formatConfidence(selectedPhoto.analysis.confidence)} (${getAnalysisToneText(selectedPhoto.analysis.confidence)})`}
-                              </dd>
-                            </div>
-                          </dl>
-                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={selectedPhoto.analysis?.approved ? "outline" : "default"}
-                              onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "approve")}
-                              disabled={
-                                analysisBusyPhotoId === selectedPhoto.id ||
-                                !isAdminAuthenticated ||
-                                !selectedPhoto.analysis ||
-                                Boolean(selectedPhoto.analysis?.approved)
-                              }
-                              className="h-8"
-                            >
-                              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                              Godkjenn posisjon
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void handlePhotoAnalysisAction(selectedPhoto.id, "recompute")}
-                              disabled={analysisBusyPhotoId === selectedPhoto.id || !isAdminAuthenticated}
-                              className="h-8"
-                            >
-                              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                              {selectedPhoto.analysis ? "Reberegn" : "Beregn nå"}
-                            </Button>
                           </div>
-                        </div>
 
-                        <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Nøkkelinformasjon</p>
-                          <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Dato/tid</dt>
-                              <dd className="text-right font-medium">{formatCapturedAt(selectedPhoto.captured_at)}</dd>
-                            </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Koordinater</dt>
-                              <dd className="text-right font-medium">
-                                {formatCoordinate(selectedPhoto.lat)}, {formatCoordinate(selectedPhoto.lng)}
-                              </dd>
-                            </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>Målpunkt</dt>
-                              <dd className="text-right font-medium">
-                                {selectedPhoto.view_lat == null || selectedPhoto.view_lng == null
-                                  ? "ikke estimert"
-                                  : `${formatCoordinate(selectedPhoto.view_lat)}, ${formatCoordinate(selectedPhoto.view_lng)}`}
-                              </dd>
-                            </div>
-                            <div className="flex items-start justify-between gap-2">
-                              <dt>QC-score</dt>
-                              <dd className="text-right font-medium">
-                                {formatConfidence(selectedPhoto.confidence_score)}
-                                {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
-                              </dd>
-                            </div>
-                          </dl>
-                        </div>
+                          <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Nøkkelinformasjon</p>
+                            <dl className="mt-2 grid gap-1.5 text-xs text-fb-text-primary">
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Dato/tid</dt>
+                                <dd className="text-right font-medium">{formatCapturedAt(selectedPhoto.captured_at)}</dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Koordinater</dt>
+                                <dd className="text-right font-medium">
+                                  {formatCoordinate(selectedPhoto.lat)}, {formatCoordinate(selectedPhoto.lng)}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>Målpunkt</dt>
+                                <dd className="text-right font-medium">
+                                  {selectedPhoto.view_lat == null || selectedPhoto.view_lng == null
+                                    ? "ikke estimert"
+                                    : `${formatCoordinate(selectedPhoto.view_lat)}, ${formatCoordinate(selectedPhoto.view_lng)}`}
+                                </dd>
+                              </div>
+                              <div className="flex items-start justify-between gap-2">
+                                <dt>QC-score</dt>
+                                <dd className="text-right font-medium">
+                                  {formatConfidence(selectedPhoto.confidence_score)}
+                                  {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
+                                </dd>
+                              </div>
+                            </dl>
+                          </div>
 
                         <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
                           <div className="flex items-center justify-between gap-2">
@@ -2742,6 +2738,7 @@ export default function App() {
                           ) : null}
                         </div>
                       </div>
+                      </div>
                     </aside>
                   </>
                 ) : (
@@ -2809,21 +2806,18 @@ export default function App() {
                     </div>
 
                     <aside className="photo-viewer-meta-column">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
-                          <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
+                      <div className="photo-viewer-meta-header">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
+                            <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
+                          </div>
+                          <div className="photo-viewer-meta-actions">
+                            <CloseButton onClick={handleClosePhotoViewer} label="Lukk bildevisning" />
+                          </div>
                         </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 rounded-lg border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
-                          onClick={handleClosePhotoViewer}
-                          aria-label="Lukk bildevisning"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
                       </div>
+                      <div className="photo-viewer-meta-body" />
                     </aside>
                   </>
                 )}

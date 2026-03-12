@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 
+import { CloseButton } from "@/components/ui/close-button";
 import { cn } from "@/lib/utils";
 
 const Sheet = DialogPrimitive.Root;
@@ -51,9 +51,8 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-fb-text-secondary transition-colors hover:bg-fb-surface-ghost hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Lukk meny</span>
+      <DialogPrimitive.Close asChild>
+        <CloseButton className="absolute right-3 top-3 md:hidden" label="Lukk meny" />
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </SheetPortal>

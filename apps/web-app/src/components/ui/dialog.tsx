@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
 
+import { CloseButton } from "@/components/ui/close-button";
 import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
@@ -42,9 +42,8 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Lukk</span>
+      <DialogPrimitive.Close asChild>
+        <CloseButton className="absolute right-4 top-4" label="Lukk dialog" />
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
