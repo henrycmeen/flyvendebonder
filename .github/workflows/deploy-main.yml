@@ -1,0 +1,42 @@
+name: Deploy live from main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flyvendebonder-live
+  cancel-in-progress: true
+
+jobs:
+  deploy-webroot:
+    name: Deploy webroot on Mac mini
+    runs-on:
+      - self-hosted
+      - macOS
+      - flyvendebonder-live
+    timeout-minutes: 20
+    env:
+      DEST: /Users/henrymeen/srv/www/flyvendebonder/
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web-app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web-app
+        run: npm ci
+
+      - name: Deploy live webroot locally
+        run: ./scripts/deploy-flyvendebonder.sh --local --dest "$DEST"

@@ -44,6 +44,38 @@ Resultat i:
   ./scripts/deploy-flyvendebonder.sh --host macmini --user henrymeen
   ```
 
+## Automatisk live-deploy fra `main`
+Repoet har nå workflowen `.github/workflows/deploy-main.yml`.
+
+Den er bevisst enkel:
+1. Kjør ved push til `main` eller manuelt via `workflow_dispatch`.
+2. Bruk en self-hosted GitHub Actions-runner på Mac mini.
+3. Kjører `npm ci` i `apps/web-app`.
+4. Kjører eksisterende deploy-skript lokalt på Mac mini:
+   ```bash
+   ./scripts/deploy-flyvendebonder.sh --local --dest /Users/henrymeen/srv/www/flyvendebonder/
+   ```
+
+### Hvorfor self-hosted runner
+- Du slipper å eksponere SSH på Mac mini for GitHub-hostede runners.
+- `main` kan deployes direkte til samme maskin som faktisk server innholdet.
+- Vi kan senere utvide samme workflow med backend-sync og restart hvis det blir ønskelig.
+
+### Engangsoppsett på Mac mini
+1. Gå til repoet på GitHub: `Settings -> Actions -> Runners`.
+2. Opprett en self-hosted runner på Mac mini.
+3. Gi runneren den faste labelen `flyvendebonder-live`.
+4. Kjør runneren som samme bruker som eier webrooten, i praksis `henrymeen`.
+5. Verifiser at runneren har tilgang til:
+   - repo-checkout
+   - `/Users/henrymeen/srv/www/flyvendebonder/`
+   - `npm` og vanlig macOS-verktøy som `rsync`
+
+### Viktig avgrensning
+- Workflowen publiserer bare statisk webroot for infosiden og `/app/`.
+- Backend-kode, migrasjoner, `.venv` og restart av `com.flyvendebonder.backend` er fortsatt manuell drift.
+- Hvis vi vil at backend-endringer på `main` også skal bli live automatisk, bør det lages en egen produksjonsjobb med eksplisitt restart- og rollback-steg.
+
 ## Backend runtime på Mac mini
 Se:
 - `scripts/macos/com.flyvendebonder.backend.plist` (LaunchAgent mal)
