@@ -1,10 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock3, Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, Clock3, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Divider, Grid, PageShell } from "@/components/ui/layout-primitives";
-import { seasonLabel, splitCapturedDate } from "@/lib/formatters";
+import { splitCapturedDate } from "@/lib/formatters";
 import { monthToSeason, type SeasonFilter } from "@/lib/season-theme";
 import { cn } from "@/lib/utils";
 import type { PhotoFeature } from "@/types";
@@ -27,21 +27,27 @@ interface AlbumGroup {
   photos: PhotoFeature[];
 }
 
-type AlbumGridSize = "compact" | "standard" | "large";
-
-const ALBUM_GRID_PRESETS = {
-  compact: { cols: 2, smCols: 3, lgCols: 4, xlCols: 5 },
-  standard: { cols: 2, smCols: 3, lgCols: 3, xlCols: 4 },
-  large: { cols: 1, smCols: 2, lgCols: 2, xlCols: 3 },
-} as const;
-
-const SIZE_LABELS: Record<AlbumGridSize, string> = {
-  compact: "Kompakt",
-  standard: "Standard",
-  large: "Store",
+const ALBUM_GRID_PRESET = { cols: 2, smCols: 3, lgCols: 3, xlCols: 4 } as const;
+const SUGGESTED_SEASON_TOKENS = [
+  { token: "#vår", label: "Vår" },
+  { token: "#sommer", label: "Sommer" },
+  { token: "#høst", label: "Høst" },
+  { token: "#vinter", label: "Vinter" },
+] as const;
+const SEASON_TOKEN_MAP: Record<string, SeasonFilter> = {
+  var: "spring",
+  vaar: "spring",
+  vår: "spring",
+  spring: "spring",
+  sommer: "summer",
+  summer: "summer",
+  host: "autumn",
+  høst: "autumn",
+  autumn: "autumn",
+  fall: "autumn",
+  vinter: "winter",
+  winter: "winter",
 };
-
-const SEASON_OPTIONS: SeasonFilter[] = ["all", "spring", "summer", "autumn", "winter"];
 
 function toTimestamp(value: string): number {
   const parsed = Date.parse(value);
@@ -76,7 +82,55 @@ function formatTimeLabel(value: string): string {
 }
 
 function normalizeSearchText(value: string | null | undefined): string {
-  return (value ?? "").trim().toLocaleLowerCase("nb-NO");
+  return (value ?? "")
+    .trim()
+    .toLocaleLowerCase("nb-NO")
+    .replaceAll("æ", "ae")
+    .replaceAll("ø", "o")
+    .replaceAll("å", "a");
+}
+
+function splitQueryTokens(value: string): string[] {
+  return value
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function normalizeQueryToken(value: string): string {
+  return normalizeSearchText(value)
+    .replace(/^#+/, "")
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
+
+function parseAlbumQuery(value: string): {
+  textTokens: string[];
+  yearTokens: Set<string>;
+  seasonTokens: Set<SeasonFilter>;
+} {
+  const textTokens: string[] = [];
+  const yearTokens = new Set<string>();
+  const seasonTokens = new Set<SeasonFilter>();
+
+  splitQueryTokens(value).forEach((token) => {
+    const normalizedToken = normalizeQueryToken(token);
+    if (!normalizedToken) return;
+
+    if (/^\d{4}$/.test(normalizedToken)) {
+      yearTokens.add(normalizedToken);
+      return;
+    }
+
+    const season = SEASON_TOKEN_MAP[normalizedToken];
+    if (season) {
+      seasonTokens.add(season);
+      return;
+    }
+
+    textTokens.push(normalizedToken);
+  });
+
+  return { textTokens, yearTokens, seasonTokens };
 }
 
 export function AlbumPage({
@@ -91,10 +145,8 @@ export function AlbumPage({
   onScrollActivity,
 }: AlbumPageProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const [selectedYear, setSelectedYear] = useState<string>("all");
-  const [selectedSeason, setSelectedSeason] = useState<SeasonFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [gridSize, setGridSize] = useState<AlbumGridSize>("standard");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const sortedPhotos = useMemo(() => {
@@ -105,23 +157,22 @@ export function AlbumPage({
     });
   }, [photos]);
 
-  const filteredPhotos = useMemo(() => {
-    const normalizedSearch = normalizeSearchText(deferredSearchQuery);
+  const parsedQuery = useMemo(() => parseAlbumQuery(deferredSearchQuery), [deferredSearchQuery]);
 
+  const filteredPhotos = useMemo(() => {
     return sortedPhotos.filter((photo) => {
       const dateParts = splitCapturedDate(photo.captured_date);
       if (!dateParts) return false;
-      if (selectedYear !== "all" && dateParts.year !== selectedYear) return false;
-      if (selectedSeason !== "all" && monthToSeason(dateParts.month) !== selectedSeason) return false;
-
-      if (!normalizedSearch) return true;
+      if (parsedQuery.yearTokens.size > 0 && !parsedQuery.yearTokens.has(dateParts.year)) return false;
+      if (parsedQuery.seasonTokens.size > 0 && !parsedQuery.seasonTokens.has(monthToSeason(dateParts.month))) return false;
+      if (parsedQuery.textTokens.length === 0) return true;
 
       const haystack = normalizeSearchText(
         [photo.title, photo.caption ?? "", photo.tags.join(" "), photo.captured_date].join(" "),
       );
-      return haystack.includes(normalizedSearch);
+      return parsedQuery.textTokens.every((token) => haystack.includes(token));
     });
-  }, [deferredSearchQuery, selectedSeason, selectedYear, sortedPhotos]);
+  }, [parsedQuery, sortedPhotos]);
 
   const groupedPhotos = useMemo<AlbumGroup[]>(() => {
     const groups = new Map<string, PhotoFeature[]>();
@@ -156,8 +207,9 @@ export function AlbumPage({
     return Array.from(new Set([...fromProps, ...fromLoadedPhotos]));
   }, [availableYears, sortedPhotos]);
 
-  const activeGridPreset = ALBUM_GRID_PRESETS[gridSize];
-  const hasActiveFilters = selectedYear !== "all" || selectedSeason !== "all" || deferredSearchQuery.trim() !== "";
+  const hasActiveFilters = deferredSearchQuery.trim() !== "";
+  const visibleSuggestions = isSearchFocused || hasActiveFilters;
+  const suggestedYears = visibleYears.slice(0, 4);
 
   useEffect(() => {
     if (!hasMore || isLoading || isLoadingMore || loadFailed) return;
@@ -178,6 +230,23 @@ export function AlbumPage({
     };
   }, [hasMore, isLoading, isLoadingMore, loadFailed, onLoadMore]);
 
+  const toggleQueryToken = (token: string) => {
+    setSearchQuery((current) => {
+      const existingTokens = splitQueryTokens(current);
+      const normalizedToken = normalizeQueryToken(token);
+      const remainingTokens = existingTokens.filter((existingToken) => normalizeQueryToken(existingToken) !== normalizedToken);
+
+      if (remainingTokens.length !== existingTokens.length) {
+        return remainingTokens.join(" ");
+      }
+
+      return [...remainingTokens, token].join(" ").trim();
+    });
+  };
+
+  const queryHasToken = (token: string) =>
+    splitQueryTokens(searchQuery).some((existingToken) => normalizeQueryToken(existingToken) === normalizeQueryToken(token));
+
   return (
     <div
       className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto"
@@ -189,104 +258,70 @@ export function AlbumPage({
         <PageShell maxWidth="wide" className="px-0">
           <div className="space-y-5 pb-4">
             <section className="sticky top-3 z-20 rounded-[24px] border border-fb-border-subtle/80 bg-fb-surface-base/95 px-3 py-3 shadow-[0_14px_34px_rgba(35,48,62,0.08)] backdrop-blur sm:px-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-fb-text-muted">
-                      <SlidersHorizontal className="h-3.5 w-3.5" />
-                      Album
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fb-text-secondary">
-                      <span>{filteredPhotos.length} av {sortedPhotos.length} lastede bilder</span>
-                      {hasMore ? <span>eldre sider lastes ved behov</span> : <span>hele albumet er lastet</span>}
-                    </div>
-                  </div>
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    placeholder="Søk i album, f.eks. 2025 høst eller gjødsling"
+                    className="pl-9"
+                    aria-label="Søk i album"
+                  />
+                </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium uppercase tracking-[0.2em] text-fb-text-muted">Størrelse</span>
-                    <div className="inline-flex rounded-full border border-fb-border-subtle bg-fb-surface-ghost p-1">
-                      {(Object.keys(SIZE_LABELS) as AlbumGridSize[]).map((size) => {
-                        const isActive = gridSize === size;
+                {visibleSuggestions ? (
+                  <div className="space-y-2 rounded-[20px] border border-fb-border-subtle bg-fb-surface-ghost/80 px-3 py-3">
+                    <p className="text-xs text-fb-text-secondary">
+                      Legg til år eller sesong som fritekst eller hashtag, for eksempel <span className="font-medium text-fb-text-primary">2025 høst</span> eller <span className="font-medium text-fb-text-primary">#2025 #høst</span>.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedYears.map((year) => {
+                        const token = `#${year}`;
+                        const isActive = queryHasToken(token);
                         return (
                           <button
-                            key={size}
+                            key={token}
                             type="button"
                             className={cn(
-                              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid",
+                              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid",
                               isActive
-                                ? "bg-fb-interactive-default text-[color:var(--fb-chip-active-text)]"
-                                : "text-fb-text-secondary hover:bg-fb-surface-base",
+                                ? "border-transparent bg-fb-interactive-default text-[color:var(--fb-chip-active-text)]"
+                                : "border-fb-border-subtle bg-fb-surface-base text-fb-text-secondary hover:bg-fb-surface-elevated",
                             )}
-                            onClick={() => setGridSize(size)}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => toggleQueryToken(token)}
                             aria-pressed={isActive}
                           >
-                            {SIZE_LABELS[size]}
+                            {token}
+                          </button>
+                        );
+                      })}
+                      {SUGGESTED_SEASON_TOKENS.map(({ token, label }) => {
+                        const isActive = queryHasToken(token);
+                        return (
+                          <button
+                            key={token}
+                            type="button"
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid",
+                              isActive
+                                ? "border-transparent bg-fb-interactive-default text-[color:var(--fb-chip-active-text)]"
+                                : "border-fb-border-subtle bg-fb-surface-base text-fb-text-secondary hover:bg-fb-surface-elevated",
+                            )}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => toggleQueryToken(token)}
+                            aria-pressed={isActive}
+                          >
+                            {token} <span className="text-fb-text-muted">{label}</span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-                  <label className="space-y-2">
-                    <span className="text-xs font-medium uppercase tracking-[0.2em] text-fb-text-muted">Søk i album</span>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
-                      <Input
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        placeholder="Søk i tittel, notat, tagger eller dato"
-                        className="pl-9"
-                        aria-label="Søk i album"
-                      />
-                    </div>
-                  </label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <span className="text-xs font-medium uppercase tracking-[0.2em] text-fb-text-muted">År</span>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={selectedYear === "all" ? "default" : "outline"}
-                          onClick={() => setSelectedYear("all")}
-                        >
-                          Alle år
-                        </Button>
-                        {visibleYears.map((year) => (
-                          <Button
-                            key={year}
-                            type="button"
-                            size="sm"
-                            variant={selectedYear === year ? "default" : "outline"}
-                            onClick={() => setSelectedYear(year)}
-                          >
-                            {year}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <span className="text-xs font-medium uppercase tracking-[0.2em] text-fb-text-muted">Sesong</span>
-                      <div className="flex flex-wrap gap-2">
-                        {SEASON_OPTIONS.map((season) => (
-                          <Button
-                            key={season}
-                            type="button"
-                            size="sm"
-                            variant={selectedSeason === season ? "default" : "outline"}
-                            onClick={() => setSelectedSeason(season)}
-                          >
-                            {seasonLabel(season)}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ) : null}
               </div>
             </section>
 
@@ -303,10 +338,10 @@ export function AlbumPage({
 
             {isLoading && sortedPhotos.length === 0 ? (
               <Grid
-                cols={activeGridPreset.cols}
-                smCols={activeGridPreset.smCols}
-                lgCols={activeGridPreset.lgCols}
-                xlCols={activeGridPreset.xlCols}
+                cols={ALBUM_GRID_PRESET.cols}
+                smCols={ALBUM_GRID_PRESET.smCols}
+                lgCols={ALBUM_GRID_PRESET.lgCols}
+                xlCols={ALBUM_GRID_PRESET.xlCols}
                 gap={3}
               >
                 {Array.from({ length: 10 }).map((_, index) => (
@@ -328,20 +363,11 @@ export function AlbumPage({
                   <p className="text-sm text-fb-text-secondary">
                     {hasMore
                       ? "Det kan fortsatt ligge treff i eldre sider som ikke er lastet inn ennå."
-                      : "Prøv et annet år, en annen sesong eller et bredere søk."}
+                      : "Prøv et annet søk, eller fjern år- og sesongord som 2025 og høst."}
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                     {hasActiveFilters ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedYear("all");
-                          setSelectedSeason("all");
-                          setSearchQuery("");
-                        }}
-                      >
+                      <Button type="button" size="sm" variant="outline" onClick={() => setSearchQuery("")}>
                         Nullstill filter
                       </Button>
                     ) : null}
@@ -365,10 +391,10 @@ export function AlbumPage({
                   <p className="text-xs text-fb-text-muted">{group.photos.length} bilder</p>
                 </header>
                 <Grid
-                  cols={activeGridPreset.cols}
-                  smCols={activeGridPreset.smCols}
-                  lgCols={activeGridPreset.lgCols}
-                  xlCols={activeGridPreset.xlCols}
+                  cols={ALBUM_GRID_PRESET.cols}
+                  smCols={ALBUM_GRID_PRESET.smCols}
+                  lgCols={ALBUM_GRID_PRESET.lgCols}
+                  xlCols={ALBUM_GRID_PRESET.xlCols}
                   gap={3}
                 >
                   {group.photos.map((photo) => (
