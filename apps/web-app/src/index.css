@@ -306,7 +306,10 @@ body {
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-brand {
   display: inline-flex;
   flex: 0 0 auto;
+  width: 100%;
   justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-brand-text,
@@ -323,6 +326,7 @@ body {
 
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-header > div {
   justify-content: center;
+  gap: 0;
 }
 
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-menu-button,
@@ -330,6 +334,11 @@ body {
   justify-content: center;
   padding-left: 0.75rem;
   padding-right: 0.75rem;
+}
+
+.fb-sidebar[data-collapsed="true"] .fb-sidebar-footer {
+  padding-left: 1rem;
+  padding-right: 1rem;
 }
 
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-collapse-trigger {

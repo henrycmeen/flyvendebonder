@@ -173,9 +173,9 @@ export function AppSidebar({
 
   return (
     <Sidebar>
-      <SidebarHeader className="fb-sidebar-header">
+      <SidebarHeader className="fb-sidebar-header px-5">
         <div className="flex items-center justify-between gap-2">
-          <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 px-1 py-1 text-fb-text-primary">
+          <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
             <span
               className={cn(
                 "logo-hover-spin inline-flex h-9 w-9 items-center justify-center",
@@ -207,7 +207,7 @@ export function AppSidebar({
         <SidebarNavigation activeView={activeView} onChangeView={onChangeView} onStartMediaImport={onStartMediaImport} />
       </SidebarContent>
 
-      <SidebarFooter className="space-y-3">
+      <SidebarFooter className="fb-sidebar-footer space-y-3 px-5">
         <SettingsDialog
           profile={profile}
           adminStatus={adminStatus}
