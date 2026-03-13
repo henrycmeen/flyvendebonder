@@ -43,6 +43,8 @@ import { CloseButton } from "@/components/ui/close-button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
+  FieldCandidate,
+  FieldCandidateListResponse,
   FieldPlot,
   FieldPlotDeleteResponse,
   FieldPlotDraft,
@@ -354,6 +356,24 @@ function buildFieldDraftAtPoint(point: GeoPoint, propertyId: number | null): Fie
     geometry,
     area_m2: areaM2,
     area_ha: toAreaHa(areaM2),
+    isNew: true,
+    isDirty: true,
+  };
+}
+
+function toFieldPlotDraftFromCandidate(candidate: FieldCandidate, propertyId: number | null): FieldPlotDraft {
+  const normalizedGeometry = normalizeDraftGeometry(candidate.geometry);
+  const areaM2 = candidate.area_m2 ?? polygonAreaM2(normalizedGeometry);
+
+  return {
+    id: null,
+    property_id: propertyId,
+    name: candidate.name,
+    source: "suggested",
+    status: "draft",
+    geometry: normalizedGeometry,
+    area_m2: areaM2,
+    area_ha: candidate.area_ha ?? toAreaHa(areaM2),
     isNew: true,
     isDirty: true,
   };
@@ -2119,18 +2139,64 @@ export default function App() {
   );
 
   const handleCreateFieldDraftAtPoint = useCallback(
-    (point: GeoPoint) => {
+    async (point: GeoPoint) => {
       if (!ensureAdminAccess("jordredigering")) return;
       setFieldCreateMode(false);
-      const nextDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
-      setActiveFieldDraft(nextDraft);
-      setFieldStatus("Jordutkast opprettet. Dra hjørnene i kartet og lagre når formen stemmer.");
-      addLog("info", "Opprettet jordutkast fra kartklikk", null, {
-        lat: point.lat,
-        lng: point.lng,
-      });
+      setFieldStatus("Leter etter jordgrense rundt klikkpunktet ...");
+
+      try {
+        const { data, requestId } = await trackRequest(() =>
+          apiGet<FieldCandidateListResponse>("/api/v1/properties/current/field-candidates/by-point", {
+            query: { lat: point.lat, lng: point.lng },
+            cache: false,
+            dedupe: false,
+          }),
+        );
+
+        const nearest = data.fields[0] ?? null;
+        if (nearest) {
+          const nextDraft = toFieldPlotDraftFromCandidate(nearest, currentProperty?.id ?? null);
+          setActiveFieldDraft(nextDraft);
+          setFieldStatus(
+            data.count > 1
+              ? `Fant ${data.count} teiger. Bruker nærmeste forslag: ${nearest.name}. Dra hjørnene om du vil finjustere.`
+              : `Fant jordet ${nearest.name}. Dra hjørnene i kartet hvis formen må finjusteres før lagring.`,
+          );
+          addLog("info", "Opprettet jordutkast fra Geonorge-teig", requestId, {
+            lat: point.lat,
+            lng: point.lng,
+            count: data.count,
+            name: nearest.name,
+            localId: nearest.local_id,
+          });
+          return;
+        }
+
+        const fallbackDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
+        setActiveFieldDraft(fallbackDraft);
+        setFieldStatus("Fant ingen teig ved klikkpunktet. Opprettet manuelt startpolygon som du kan justere selv.");
+        addLog("warn", "Ingen Geonorge-teig ved klikkpunktet, bruker manuelt jordutkast", requestId, {
+          lat: point.lat,
+          lng: point.lng,
+        });
+      } catch (error) {
+        const apiError = error as ApiError;
+        const fallbackDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
+        setActiveFieldDraft(fallbackDraft);
+        setFieldStatus(
+          apiError.status === 404
+            ? "Teigoppslag er ikke tilgjengelig i denne backend-versjonen ennå. Opprettet manuelt startpolygon."
+            : "Kunne ikke hente jordgrense nå. Opprettet manuelt startpolygon som fallback.",
+        );
+        addLog("warn", "Fallback til manuelt jordutkast etter teigoppslag", apiError.requestId, {
+          lat: point.lat,
+          lng: point.lng,
+          status: apiError.status,
+          detail: apiError.detail,
+        });
+      }
     },
-    [addLog, currentProperty?.id, ensureAdminAccess],
+    [addLog, currentProperty?.id, ensureAdminAccess, trackRequest],
   );
 
   const handleChangeFieldDraftName = useCallback((value: string) => {
