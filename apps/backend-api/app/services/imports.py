@@ -14,6 +14,7 @@ from ..models import IngestRun, Photo, PhotoAsset, Property, User
 from .metadata_utils import (
     ExtractedMetadata as FileMetadata,
     _serialize_orientation_candidates,
+    select_altitude_from_metadata,
     select_heading_from_metadata,
     select_pitch_from_metadata,
     derive_ground_sampling,
@@ -95,6 +96,7 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
             quality_flags = derive_qc_tags(metadata.issues)
             heading_selection = select_heading_from_metadata(metadata)
             pitch_selection = select_pitch_from_metadata(metadata)
+            altitude_selection = select_altitude_from_metadata(metadata)
             quality_flags.extend([tag for tag in heading_selection.qc_tags if tag not in quality_flags])
             quality_flags.extend([tag for tag in pitch_selection.qc_tags if tag not in quality_flags])
             needs_manual_qc = bool(quality_flags)
@@ -137,7 +139,7 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
                 captured_date=metadata.captured_at.date(),
                 lat=metadata.gps_latitude,
                 lng=metadata.gps_longitude,
-                altitude_m=metadata.altitude_m,
+                altitude_m=altitude_selection.value,
                 heading_deg=heading_value,
                 pitch_deg=pitch_value,
                 gsd_m=gsd_m,
@@ -160,8 +162,13 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
                         f"meta:heading_source_detail={heading_selection.source_detail}",
                         f"meta:pitch_source={pitch_selection.source}",
                         f"meta:pitch_source_detail={pitch_selection.source_detail}",
+                        f"meta:altitude_source={altitude_selection.source}",
+                        f"meta:altitude_source_detail={altitude_selection.source_detail}",
                         f"meta:heading_source_candidates={heading_candidates}" if heading_candidates else None,
                         f"meta:pitch_source_candidates={pitch_candidates}" if pitch_candidates else None,
+                        f"meta:altitude_source_candidates={_serialize_orientation_candidates(altitude_selection.candidates)}"
+                        if altitude_selection.candidates
+                        else None,
                         *quality_flags,
                         "qc:needs_manual_qc" if needs_manual_qc else None,
                     ],

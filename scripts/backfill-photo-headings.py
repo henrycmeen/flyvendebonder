@@ -14,8 +14,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "apps" / "backend-a
 from app.config import get_settings  # noqa: E402
 from app.database import SessionLocal, run_migrations  # noqa: E402
 from app.models import Photo, PhotoAsset  # noqa: E402
-from app.services.metadata_utils import extract_metadata  # noqa: E402
-from sqlalchemy import or_, select
+from app.services.metadata_utils import extract_metadata, resolve_photo_altitude  # noqa: E402
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 def _log(message: str) -> None:
@@ -32,6 +32,7 @@ class Summary:
     missing_pitch: int = 0
     source_lookup_used: int = 0
     source_lookup_missing: int = 0
+    altitude_updated: int = 0
 
 
 def _choose_heading(photo_meta: Any) -> float | None:
@@ -147,7 +148,6 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
     stmt = (
         select(Photo)
         .join(PhotoAsset, PhotoAsset.photo_id == Photo.id)
-        .where(or_(Photo.heading_deg.is_(None), Photo.pitch_deg.is_(None)))
         .where(PhotoAsset.kind == "original")
     )
     if user_id is not None:
@@ -200,11 +200,26 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
         if pitch is None:
             summary.missing_pitch += 1
 
-        photo.heading_deg = heading
-        photo.pitch_deg = pitch
-        summary.updated += 1
-        if force and not dry_run:
-            db.add(photo)
+        changed = False
+
+        corrected_altitude = resolve_photo_altitude(photo.altitude_m, metadata)
+        if corrected_altitude is not None and corrected_altitude != photo.altitude_m:
+            photo.altitude_m = corrected_altitude
+            summary.altitude_updated += 1
+            changed = True
+
+        if heading != photo.heading_deg:
+            photo.heading_deg = heading
+            changed = True
+
+        if pitch != photo.pitch_deg:
+            photo.pitch_deg = pitch
+            changed = True
+
+        if changed:
+            summary.updated += 1
+            if force and not dry_run:
+                db.add(photo)
 
     if force and not dry_run:
         db.commit()
@@ -247,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     _log(f"Manglende original: {summary.missing_asset}")
     _log(f"Manglende metadata: {summary.missing_metadata}")
     _log(f"Mangler pitch: {summary.missing_pitch}")
+    _log(f"Relativ høyde oppdatert: {summary.altitude_updated}")
     _log(f"Fallback kilde brukt: {summary.source_lookup_used}")
     _log(f"Fallback kilde ikke funnet: {summary.source_lookup_missing}")
     _log(f"Parse-feil: {summary.parse_failed}")
