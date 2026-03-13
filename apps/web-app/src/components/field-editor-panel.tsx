@@ -85,10 +85,10 @@ export function FieldEditorPanel({
           <div className="mt-3 rounded-2xl border border-dashed border-fb-border-strong bg-fb-surface-ghost px-3 py-3 text-sm text-fb-text-primary">
             <div className="flex items-center gap-2">
               <Crosshair className="h-4 w-4 text-[color:var(--fb-season-solid)]" />
-              <span className="font-medium">Klikk i kartet for å starte et jordutkast</span>
+              <span className="font-medium">Klikk i kartet for å finne jordet og starte et utkast</span>
             </div>
             <p className="mt-1 pl-6 text-xs leading-5 text-fb-text-secondary">
-              Vi lager et første polygon rundt punktet, og så kan du dra hjørnene videre.
+              Vi prøver først å hente riktig teig automatisk. Hvis vi ikke finner den, lager vi et manuelt startpolygon som du kan dra videre.
             </p>
           </div>
         ) : null}

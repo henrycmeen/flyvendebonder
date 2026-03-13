@@ -109,6 +109,29 @@ export interface FieldPlotDeleteResponse {
   field_id: number;
 }
 
+export type FieldCandidateSource = "geonorge";
+
+export interface FieldCandidate {
+  source: FieldCandidateSource;
+  name: string;
+  local_id: number | null;
+  matrikkelnummer: string | null;
+  object_type: string | null;
+  accuracy_class: string | null;
+  is_main_area: boolean;
+  distance_m: number | null;
+  geometry: GeoJSONPolygon;
+  area_m2: number | null;
+  area_ha: number | null;
+  source_updated_at: string | null;
+}
+
+export interface FieldCandidateListResponse {
+  property_id: number;
+  count: number;
+  fields: FieldCandidate[];
+}
+
 export interface AnalysisZone {
   center_point: GeoPoint;
   sample_points: GeoPoint[];
