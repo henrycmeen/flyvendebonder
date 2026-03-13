@@ -2,22 +2,11 @@ from __future__ import annotations
 
 import importlib
 import json
-import sys
 
 from PIL import Image
 from sqlalchemy import select
 
-
-def _fresh_backend_modules() -> None:
-    for module_name in (
-        "app.config",
-        "app.database",
-        "app.logging_utils",
-        "app.models",
-        "app.services.image_derivatives",
-        "app.services.seeding",
-    ):
-        sys.modules.pop(module_name, None)
+from tests.backend_modules import fresh_backend_modules
 
 
 def test_run_seeding_imports_demo_photo_assets(tmp_path, monkeypatch) -> None:
@@ -58,7 +47,7 @@ def test_run_seeding_imports_demo_photo_assets(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DEMO_SEED_GEOJSON", geojson_file.as_posix())
     monkeypatch.setenv("DEMO_SEED_ASSETS_DIR", assets_dir.as_posix())
 
-    _fresh_backend_modules()
+    fresh_backend_modules()
 
     importlib.import_module("app.main")
     from app.database import SessionLocal, run_migrations
