@@ -126,6 +126,15 @@ def test_profile_additional_property_duplicate_rejected(client):
     assert "duplikater" in response.json()["detail"]
 
 
+def test_fields_endpoint_smoke(client):
+    response = client.get("/api/v1/fields")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["property_id"] >= 1
+    assert payload["count"] == 0
+    assert payload["fields"] == []
+
+
 def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
     import app.api.v1 as v1
 
