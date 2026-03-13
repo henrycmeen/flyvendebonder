@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 
-import type { FieldPlot, FieldPlotDraft, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
+import type { FieldPlot, FieldPlotDraft, FlightMission, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
@@ -24,6 +24,9 @@ interface MapCanvasProps {
   soilRefreshToken: number;
   fieldPlots: FieldPlot[];
   activeFieldDraft: FieldPlotDraft | null;
+  flightMissions: FlightMission[];
+  activeFlightMissionId: number | null;
+  showMissionOverlay: boolean;
   fieldCreateMode: boolean;
   onRequestFieldCreateAt: (point: GeoPoint) => void;
   onSelectField: (fieldId: number) => void;
@@ -156,6 +159,17 @@ function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
     return [lat, lng];
   });
   return parsed.filter((item): item is LatLngPair => item !== null);
+}
+
+function toLineLatLngs(raw: unknown): LatLngPair[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((point) => {
+    if (!Array.isArray(point) || point.length < 2) return [];
+    const lng = Number(point[0]);
+    const lat = Number(point[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+    return [[lat, lng] as LatLngPair];
+  });
 }
 
 function toPolygonCoordinates(points: LatLngPair[]): number[][][] {
@@ -478,6 +492,9 @@ export function MapCanvas({
   soilRefreshToken,
   fieldPlots,
   activeFieldDraft,
+  flightMissions,
+  activeFlightMissionId,
+  showMissionOverlay,
   fieldCreateMode,
   onRequestFieldCreateAt,
   onSelectField,
@@ -502,6 +519,7 @@ export function MapCanvas({
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldHandleLayerRef = useRef<L.LayerGroup | null>(null);
+  const missionLayerRef = useRef<L.LayerGroup | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
   const videoLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
@@ -565,6 +583,13 @@ export function MapCanvas({
       fieldPane.style.zIndex = "560";
     }
 
+    map.createPane("missionPane");
+    const missionPane = map.getPane("missionPane");
+    if (missionPane) {
+      missionPane.style.zIndex = "600";
+      missionPane.style.pointerEvents = "none";
+    }
+
     map.createPane("fieldHandlePane");
     const fieldHandlePane = map.getPane("fieldHandlePane");
     if (fieldHandlePane) {
@@ -595,6 +620,9 @@ export function MapCanvas({
     const viewLayer = L.layerGroup();
     viewLayer.addTo(map);
     viewLayerRef.current = viewLayer;
+    const missionLayer = L.layerGroup();
+    missionLayer.addTo(map);
+    missionLayerRef.current = missionLayer;
     const videoLayer = L.layerGroup();
     videoLayer.addTo(map);
     videoLayerRef.current = videoLayer;
@@ -631,6 +659,10 @@ export function MapCanvas({
       if (fieldHandleLayerRef.current) {
         fieldHandleLayerRef.current.remove();
         fieldHandleLayerRef.current = null;
+      }
+      if (missionLayerRef.current) {
+        missionLayerRef.current.remove();
+        missionLayerRef.current = null;
       }
       if (viewLayerRef.current) {
         viewLayerRef.current.remove();
@@ -876,6 +908,76 @@ export function MapCanvas({
       }
     };
   }, [activeFieldDraft, fieldPlots, onFieldGeometryChange, onSelectField]);
+
+  useEffect(() => {
+    if (!mapRef.current || !missionLayerRef.current) return;
+
+    const missionLayer = missionLayerRef.current;
+    missionLayer.clearLayers();
+    if (!showMissionOverlay || activeFlightMissionId == null) return;
+
+    const mission = flightMissions.find((item) => item.id === activeFlightMissionId);
+    if (!mission) return;
+
+    mission.fields.forEach((field) => {
+      const latLngs = toPolygonLatLngs(field.geometry.coordinates);
+      if (latLngs.length < 4) return;
+
+      const polygon = L.polygon(latLngs, {
+        color: "rgba(58, 109, 214, 0.96)",
+        fillColor: "rgba(91, 140, 246, 0.16)",
+        fillOpacity: 0.16,
+        weight: 2.2,
+        opacity: 0.95,
+        pane: "missionPane",
+        interactive: false,
+      });
+      polygon.bindTooltip(createPlainTextContent(`Oppdrag · ${field.name}`), {
+        sticky: true,
+      });
+      missionLayer.addLayer(polygon);
+    });
+
+    mission.route_geojson.features.forEach((feature) => {
+      if (!feature || typeof feature !== "object") return;
+      const geometry = (feature as { geometry?: unknown }).geometry;
+      if (!geometry || typeof geometry !== "object") return;
+
+      const geometryType = (geometry as { type?: unknown }).type;
+      if (geometryType === "LineString") {
+        const latLngs = toLineLatLngs((geometry as { coordinates?: unknown }).coordinates);
+        if (latLngs.length < 2) return;
+        missionLayer.addLayer(
+          L.polyline(latLngs, {
+            color: "#5b8cf6",
+            weight: 2.8,
+            opacity: 0.96,
+            lineCap: "round",
+            pane: "missionPane",
+            interactive: false,
+          }),
+        );
+        return;
+      }
+
+      if (geometryType === "Point") {
+        const latLngs = toLineLatLngs([(geometry as { coordinates?: unknown }).coordinates]);
+        const point = latLngs[0];
+        if (!point) return;
+        missionLayer.addLayer(
+          L.circleMarker(point, {
+            radius: 3.8,
+            color: "#f4f8ff",
+            weight: 1.4,
+            fillColor: "#5b8cf6",
+            fillOpacity: 0.95,
+            pane: "missionPane",
+            interactive: false,
+          }),
+        );
+      }
+    });
+  }, [activeFlightMissionId, flightMissions, showMissionOverlay]);
 
   useEffect(() => {
     if (!mapRef.current || !viewLayerRef.current) return;
