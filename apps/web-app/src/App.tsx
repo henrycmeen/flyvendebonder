@@ -91,10 +91,10 @@ const VIDEO_JOB_ARCHIVE_STORAGE_KEY = "fb-video-job-archive";
 const VIDEO_JOB_ARTIFACTS_STORAGE_KEY = "fb-video-job-artifacts";
 const BROWSER_MEDIA_IMPORT_ENABLED = false;
 const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
-  "Browserimport er midlertidig slått av mens backend-kontrakten for opplasting ryddes. Import var synlig, men pekte til endepunkter som ikke finnes i denne backend-versjonen ennå.";
+  "Browserimport er midlertidig slått av. Denne backend-versjonen støtter bare server-side ingest via /api/v1/imports/photos, ikke filopplasting fra nettleseren.";
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
-  "Videoflyten er midlertidig slått av mens /api/v1/video-jobs-kontrakten bygges opp igjen i backend. Dette hindrer at UI-et peker til manglende endepunkter.";
+  "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
 
 function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
   return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
@@ -1941,15 +1941,16 @@ export default function App() {
 
   const handleStartMediaImport = useCallback(() => {
     if (!ensureAdminAccess("import")) return;
-    handleClosePhotoViewer();
-    setMediaImportError(BROWSER_MEDIA_IMPORT_ENABLED ? "" : BROWSER_MEDIA_IMPORT_DISABLED_REASON);
-    setActiveView("import");
-    if (BROWSER_MEDIA_IMPORT_ENABLED) {
-      addLog("info", "Import åpnet");
+    if (!BROWSER_MEDIA_IMPORT_ENABLED) {
+      setMediaImportError(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
+      setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
+      addLog("warn", "Browserimport er deaktivert til kontrakten er ryddet", null, { issue: 54 });
       return;
     }
-    setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
-    addLog("warn", "Browserimport er deaktivert til kontrakten er ryddet", null, { issue: 54 });
+    handleClosePhotoViewer();
+    setMediaImportError("");
+    setActiveView("import");
+    addLog("info", "Import åpnet");
   }, [addLog, ensureAdminAccess, handleClosePhotoViewer]);
 
   const handleSubmitMediaImport = useCallback(
@@ -1959,8 +1960,22 @@ export default function App() {
         return false;
       }
 
+      if (!BROWSER_MEDIA_IMPORT_ENABLED) {
+        setMediaImportError(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
+        setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
+        addLog("warn", "Blokkerte browserimport mot manglende backend-kontrakt", null, { issue: 54 });
+        return false;
+      }
+
       if (images.length === 0 && videos.length === 0) {
         setMediaImportError("Velg minst én bildefil eller videofil.");
+        return false;
+      }
+
+      if (videos.length > 0 && !VIDEO_WORKFLOW_ENABLED) {
+        setMediaImportError(VIDEO_WORKFLOW_DISABLED_REASON);
+        setStatusText(VIDEO_WORKFLOW_DISABLED_REASON);
+        addLog("warn", "Blokkerte videoimport mot manglende backend-kontrakt", null, { issue: 54 });
         return false;
       }
 
@@ -2974,7 +2989,7 @@ export default function App() {
             onSaveProfile={handleSaveProfile}
             onAdminLogin={handleAdminLogin}
             onAdminLogout={handleAdminLogout}
-            onStartMediaImport={isAdminAuthenticated ? handleStartMediaImport : undefined}
+            onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED && isAdminAuthenticated ? handleStartMediaImport : undefined}
             onToggleManualQcFilter={handleToggleManualQcFilter}
             onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           />
@@ -3069,7 +3084,7 @@ export default function App() {
                   onArchiveJob={handleArchiveVideoJob}
                   onArchiveReviewedJobs={handleArchiveReviewedVideoJobs}
                   onRestoreArchivedJobs={handleRestoreArchivedVideoJobs}
-                  onStartMediaImport={isAdminAuthenticated ? handleStartMediaImport : undefined}
+                  onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED && isAdminAuthenticated ? handleStartMediaImport : undefined}
                 />
               )}
 
