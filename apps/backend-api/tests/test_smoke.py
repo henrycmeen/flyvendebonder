@@ -135,6 +135,49 @@ def test_fields_endpoint_smoke(client):
     assert payload["fields"] == []
 
 
+def test_flight_missions_endpoint_smoke(client):
+    field_response = client.post(
+        "/api/v1/fields",
+        json={
+            "name": "Testjordet",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [10.0, 59.0],
+                        [10.0013, 59.0],
+                        [10.0013, 59.001],
+                        [10.0, 59.001],
+                    ]
+                ],
+            },
+        },
+    )
+    assert field_response.status_code == 201
+    field_id = field_response.json()["id"]
+
+    response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Smoke-oppdrag",
+            "field_ids": [field_id],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["field_ids"] == [field_id]
+    assert payload["route_geojson"]["type"] == "FeatureCollection"
+
+
 def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
     import app.api.v1 as v1
 

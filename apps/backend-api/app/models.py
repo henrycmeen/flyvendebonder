@@ -65,6 +65,9 @@ class Property(TimestampMixin, Base):
     photos: Mapped[list[Photo]] = relationship(back_populates="property")
     job_cache: Mapped[list[GardskartJobCache]] = relationship(back_populates="property")
     field_plots: Mapped[list[FieldPlot]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    flight_missions: Mapped[list[FlightMission]] = relationship(
+        back_populates="property", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("user_id", "komm", "gnr", "bnr", "fnr", name="uq_property_owner"),
@@ -122,6 +125,25 @@ class FieldPlot(TimestampMixin, Base):
     area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     property: Mapped[Property] = relationship(back_populates="field_plots")
+
+
+class FlightMission(TimestampMixin, Base):
+    __tablename__ = "flight_missions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="ready")
+    field_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
+    field_snapshots_json: Mapped[str] = mapped_column(Text, nullable=False)
+    route_geojson_json: Mapped[str] = mapped_column(Text, nullable=False)
+    warnings_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    export_manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    last_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    property: Mapped[Property] = relationship(back_populates="flight_missions")
 
 
 class PhotoAsset(Base):

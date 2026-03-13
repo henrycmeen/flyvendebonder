@@ -194,6 +194,71 @@ class FieldPlotDeleteResponse(BaseModel):
     field_id: int
 
 
+FlightMissionStatus = Literal["ready"]
+FlightMissionWarningSeverity = Literal["info", "warning"]
+
+
+class FlightMissionParameters(BaseModel):
+    altitude_m: float = Field(default=45.0, gt=0, le=500)
+    line_spacing_m: float = Field(default=18.0, gt=0, le=200)
+    waypoint_spacing_m: float = Field(default=18.0, gt=0, le=200)
+    route_angle_deg: float = Field(default=0.0, ge=0, le=180)
+
+
+class FlightMissionCreate(BaseModel):
+    name: str | None = None
+    field_ids: list[int] = Field(min_length=1)
+    parameters: FlightMissionParameters = Field(default_factory=FlightMissionParameters)
+
+
+class FlightMissionPatch(BaseModel):
+    name: str | None = None
+    field_ids: list[int] | None = None
+    parameters: FlightMissionParameters | None = None
+
+
+class FlightMissionWarningOut(BaseModel):
+    code: str
+    severity: FlightMissionWarningSeverity
+    message: str
+    field_id: int | None = None
+
+
+class FlightMissionFieldOut(BaseModel):
+    field_id: int
+    name: str
+    area_m2: float | None = None
+    area_ha: float | None = None
+    geometry: GeoJSONPolygon
+
+
+class GeoJSONFeatureCollection(BaseModel):
+    type: Literal["FeatureCollection"]
+    features: list[dict]
+
+
+class FlightMissionOut(BaseModel):
+    id: int
+    property_id: int
+    name: str
+    status: FlightMissionStatus
+    field_ids: list[int]
+    parameters: FlightMissionParameters
+    fields: list[FlightMissionFieldOut]
+    warnings: list[FlightMissionWarningOut]
+    route_geojson: GeoJSONFeatureCollection
+    export_manifest: dict
+    created_at: datetime
+    updated_at: datetime
+    last_generated_at: datetime
+
+
+class FlightMissionListResponse(BaseModel):
+    property_id: int
+    count: int
+    missions: list[FlightMissionOut]
+
+
 FieldCandidateSource = Literal["geonorge"]
 
 
