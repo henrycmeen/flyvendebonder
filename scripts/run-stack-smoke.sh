@@ -98,6 +98,8 @@ echo "Starting backend on $BACKEND_URL ..."
   cd "$BACKEND_DIR"
   DATABASE_URL="$DATABASE_URL" \
   APP_DATA_ROOT="$APP_DATA_ROOT" \
+  HOST="127.0.0.1" \
+  PORT="$BACKEND_PORT" \
   LOG_TO_FILE="false" \
   LOG_FILE_PATH="$LOG_FILE_PATH" \
   PHOTO_AR5_WMS_URL="" \
