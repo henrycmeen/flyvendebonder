@@ -49,6 +49,9 @@ import type {
   FieldPlotDeleteResponse,
   FieldPlotDraft,
   FieldPlotListResponse,
+  FlightMission,
+  FlightMissionListResponse,
+  FlightMissionParameters,
   GeoJSONPolygon,
   GeoPoint,
   GardskartJob,
@@ -106,6 +109,12 @@ const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
 const FIELD_DRAFT_HALF_SIZE_M = 50;
+const DEFAULT_FLIGHT_MISSION_PARAMETERS: FlightMissionParameters = {
+  altitude_m: 45,
+  line_spacing_m: 18,
+  waypoint_spacing_m: 18,
+  route_angle_deg: 0,
+};
 
 function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
   return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
@@ -231,6 +240,20 @@ function responseErrorText(payload: unknown, response: Response): string {
   return `Request feilet med status ${response.status}`;
 }
 
+function filenameFromDisposition(headerValue: string | null, fallback: string): string {
+  if (!headerValue) return fallback;
+  const starMatch = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (starMatch?.[1]) {
+    try {
+      return decodeURIComponent(starMatch[1]);
+    } catch {
+      return starMatch[1];
+    }
+  }
+  const match = headerValue.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ? match[1] : fallback;
+}
+
 function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   if (!session?.authenticated) {
     return false;
@@ -308,6 +331,14 @@ function toAreaHa(areaM2: number | null): number | null {
 }
 
 function sortFieldPlots(items: FieldPlot[]): FieldPlot[] {
+  return [...items].sort((left, right) => {
+    const updatedDiff = Date.parse(right.updated_at) - Date.parse(left.updated_at);
+    if (updatedDiff !== 0) return updatedDiff;
+    return right.id - left.id;
+  });
+}
+
+function sortFlightMissions(items: FlightMission[]): FlightMission[] {
   return [...items].sort((left, right) => {
     const updatedDiff = Date.parse(right.updated_at) - Date.parse(left.updated_at);
     if (updatedDiff !== 0) return updatedDiff;
@@ -424,6 +455,15 @@ export default function App() {
   const [activeFieldDraft, setActiveFieldDraft] = useState<FieldPlotDraft | null>(null);
   const [isFieldSaveBusy, setIsFieldSaveBusy] = useState(false);
   const [isFieldDeleteBusy, setIsFieldDeleteBusy] = useState(false);
+  const [flightMissions, setFlightMissions] = useState<FlightMission[]>([]);
+  const [flightMissionStatus, setFlightMissionStatus] = useState("Flyoppdrag lastes ...");
+  const [flightMissionName, setFlightMissionName] = useState("");
+  const [selectedMissionFieldIds, setSelectedMissionFieldIds] = useState<number[]>([]);
+  const [flightMissionParameters, setFlightMissionParameters] = useState<FlightMissionParameters>(
+    DEFAULT_FLIGHT_MISSION_PARAMETERS,
+  );
+  const [isFlightMissionCreateBusy, setIsFlightMissionCreateBusy] = useState(false);
+  const [flightMissionExportBusyId, setFlightMissionExportBusyId] = useState<number | null>(null);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
@@ -885,6 +925,49 @@ export default function App() {
         setFieldPlots([]);
         setFieldStatus(`Kunne ikke laste jordutkast: ${apiError.message}`);
         addLog("error", "Kunne ikke laste jordutkast", apiError.requestId, apiError.detail);
+        return null;
+      }
+    },
+    [addLog, currentProperty, trackRequest],
+  );
+
+  const loadFlightMissions = useCallback(
+    async (options?: { signal?: AbortSignal; silent?: boolean }) => {
+      if (!currentProperty) {
+        setFlightMissions([]);
+        setFlightMissionStatus("Ingen aktiv eiendom valgt for flyoppdrag.");
+        return null;
+      }
+
+      try {
+        const { data, requestId } = await trackRequest(() =>
+          apiGet<FlightMissionListResponse>("/api/v1/flight-missions", {
+            signal: options?.signal,
+            cache: false,
+            dedupe: false,
+          }),
+        );
+
+        const nextMissions = sortFlightMissions(data.missions);
+        setFlightMissions(nextMissions);
+        setFlightMissionStatus(
+          nextMissions.length === 0
+            ? "Ingen lagrede flyoppdrag ennå. Velg jorder og lag første oppdrag."
+            : `${nextMissions.length} flyoppdrag klare for eksport eller videre justering.`,
+        );
+        if (!options?.silent) {
+          addLog("info", "Flyoppdrag lastet", requestId, {
+            propertyId: data.property_id,
+            count: data.count,
+          });
+        }
+        return nextMissions;
+      } catch (error) {
+        const apiError = error as ApiError;
+        if (isRequestAborted(apiError)) return null;
+        setFlightMissions([]);
+        setFlightMissionStatus(`Kunne ikke laste flyoppdrag: ${apiError.message}`);
+        addLog("error", "Kunne ikke laste flyoppdrag", apiError.requestId, apiError.detail);
         return null;
       }
     },
@@ -1515,15 +1598,37 @@ export default function App() {
   }, [currentProperty?.id, loadFieldPlots]);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    void loadFlightMissions({ signal: abortController.signal, silent: true });
+    return () => {
+      abortController.abort();
+    };
+  }, [currentProperty?.id, loadFlightMissions]);
+
+  useEffect(() => {
     fieldCandidateLoadSeqRef.current += 1;
     fieldCandidateAbortRef.current?.abort();
     fieldCandidateAbortRef.current = null;
     setFieldCreateMode(false);
+    setFlightMissionName("");
+    setFlightMissionParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
+    setSelectedMissionFieldIds([]);
     setActiveFieldDraft((current) => {
       if (!current) return null;
       return current.property_id === currentProperty?.id ? current : null;
     });
   }, [currentProperty?.id]);
+
+  useEffect(() => {
+    const allowedIds = new Set(fieldPlots.map((item) => item.id));
+    setSelectedMissionFieldIds((current) => {
+      const filtered = current.filter((fieldId) => allowedIds.has(fieldId));
+      if (filtered.length > 0 || fieldPlots.length === 0) {
+        return filtered;
+      }
+      return fieldPlots.map((item) => item.id);
+    });
+  }, [fieldPlots]);
 
   useEffect(() => {
     if (adminSession?.authenticated) {
@@ -2348,6 +2453,140 @@ export default function App() {
       setIsFieldDeleteBusy(false);
     }
   }, [activeFieldDraft, addLog, ensureAdminAccess, trackRequest]);
+
+  const handleToggleMissionField = useCallback((fieldId: number) => {
+    setSelectedMissionFieldIds((current) =>
+      current.includes(fieldId) ? current.filter((item) => item !== fieldId) : [...current, fieldId],
+    );
+  }, []);
+
+  const handleChangeFlightMissionParameter = useCallback(
+    (key: keyof FlightMissionParameters, rawValue: string) => {
+      const parsed = parseDraftNumber(rawValue);
+      if (!parsed.valid || parsed.value == null) {
+        return;
+      }
+      setFlightMissionParameters((current) => ({
+        ...current,
+        [key]: parsed.value as number,
+      }));
+    },
+    [],
+  );
+
+  const handleCreateFlightMission = useCallback(async () => {
+    if (!ensureAdminAccess("oppretting av flyoppdrag")) return;
+    if (!currentProperty) {
+      setFlightMissionStatus("Velg en aktiv eiendom før du lager oppdrag.");
+      return;
+    }
+
+    const fieldIds = fieldPlots
+      .map((field) => field.id)
+      .filter((fieldId) => selectedMissionFieldIds.includes(fieldId));
+    if (fieldIds.length === 0) {
+      setFlightMissionStatus("Velg minst ett lagret jord før oppdraget kan lages.");
+      return;
+    }
+
+    setIsFlightMissionCreateBusy(true);
+    try {
+      const { data, requestId } = await trackRequest(() =>
+        apiPost<FlightMission>("/api/v1/flight-missions", {
+          name: flightMissionName.trim() || null,
+          field_ids: fieldIds,
+          parameters: flightMissionParameters,
+        }),
+      );
+      setFlightMissions((previous) => sortFlightMissions([data, ...previous.filter((item) => item.id !== data.id)]));
+      setFlightMissionName(data.name);
+      setSelectedMissionFieldIds(data.field_ids);
+      setFlightMissionStatus(
+        data.warnings.length > 0
+          ? `Oppdrag ${data.name} opprettet med ${data.warnings.length} varsel${data.warnings.length === 1 ? "" : "er"}.`
+          : `Oppdrag ${data.name} er klart for eksport.`,
+      );
+      addLog("info", "Flyoppdrag opprettet", requestId, {
+        missionId: data.id,
+        propertyId: data.property_id,
+        fieldCount: data.field_ids.length,
+      });
+    } catch (error) {
+      const apiError = error as ApiError;
+      setFlightMissionStatus(`Kunne ikke lage flyoppdrag: ${apiError.message}`);
+      addLog("error", "Kunne ikke lage flyoppdrag", apiError.requestId, apiError.detail);
+    } finally {
+      setIsFlightMissionCreateBusy(false);
+    }
+  }, [
+    addLog,
+    currentProperty,
+    ensureAdminAccess,
+    fieldPlots,
+    flightMissionName,
+    flightMissionParameters,
+    selectedMissionFieldIds,
+    trackRequest,
+  ]);
+
+  const handleExportFlightMission = useCallback(
+    async (missionId: number) => {
+      if (!ensureAdminAccess("eksport av flyoppdrag")) return;
+
+      setFlightMissionExportBusyId(missionId);
+      try {
+        const response = await trackRequest(() =>
+          fetch(`/api/v1/flight-missions/${missionId}/export`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              Accept: "application/zip,application/json",
+            },
+          }),
+        );
+
+        if (!response.ok) {
+          const payload = await readResponsePayload(response);
+          throw new ApiError({
+            message: responseErrorText(payload, response),
+            status: response.status,
+            requestId: response.headers.get("X-Request-ID"),
+            detail: payload,
+          });
+        }
+
+        const blob = await response.blob();
+        const filename = filenameFromDisposition(
+          response.headers.get("Content-Disposition"),
+          `flyvendebonder-oppdrag-${missionId}.zip`,
+        );
+        const objectUrl = window.URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.URL.revokeObjectURL(objectUrl);
+
+        const requestId = response.headers.get("X-Request-ID");
+        const mission = flightMissions.find((item) => item.id === missionId);
+        setFlightMissionStatus(`Eksporterte ${mission?.name ?? `oppdrag ${missionId}`}.`);
+        addLog("info", "Flyoppdrag eksportert", requestId, {
+          missionId,
+          filename,
+        });
+      } catch (error) {
+        const apiError = error as ApiError;
+        setFlightMissionStatus(`Kunne ikke eksportere flyoppdrag: ${apiError.message}`);
+        addLog("error", "Kunne ikke eksportere flyoppdrag", apiError.requestId, apiError.detail);
+      } finally {
+        setFlightMissionExportBusyId(null);
+      }
+    },
+    [addLog, ensureAdminAccess, flightMissions, trackRequest],
+  );
 
   const handleAdminLogin = useCallback(async (code: string) => {
     setIsAdminSessionBusy(true);
@@ -3534,12 +3773,19 @@ export default function App() {
                 <FieldEditorPanel
                   propertyLabel={currentPropertyLabel}
                   fieldStatus={fieldStatus}
+                  missionStatus={flightMissionStatus}
                   canEdit={isAdminAuthenticated}
                   createMode={fieldCreateMode}
                   fieldPlots={fieldPlots}
                   activeFieldDraft={activeFieldDraft}
+                  missionName={flightMissionName}
+                  missionParameters={flightMissionParameters}
+                  selectedMissionFieldIds={selectedMissionFieldIds}
+                  missions={flightMissions}
                   saveBusy={isFieldSaveBusy}
                   deleteBusy={isFieldDeleteBusy}
+                  missionCreateBusy={isFlightMissionCreateBusy}
+                  missionExportBusyId={flightMissionExportBusyId}
                   onStartCreate={handleStartFieldCreate}
                   onCancelCreate={handleCancelFieldCreate}
                   onSelectField={handleSelectFieldPlot}
@@ -3547,6 +3793,11 @@ export default function App() {
                   onSaveDraft={handleSaveFieldDraft}
                   onDiscardDraft={handleDiscardFieldDraft}
                   onDeleteDraft={handleDeleteFieldDraft}
+                  onChangeMissionName={setFlightMissionName}
+                  onChangeMissionParameter={handleChangeFlightMissionParameter}
+                  onToggleMissionField={handleToggleMissionField}
+                  onCreateMission={handleCreateFlightMission}
+                  onExportMission={handleExportFlightMission}
                 />
               ) : null}
 

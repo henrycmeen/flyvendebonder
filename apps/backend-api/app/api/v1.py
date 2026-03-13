@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import time
+from datetime import timedelta
 from datetime import date as date_type, datetime
 from pathlib import Path
 
@@ -17,13 +18,17 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..logging_utils import read_recent_logs, request_id_ctx
-from ..models import FieldPlot, IngestRun, Photo, PhotoAnalysis, Property, User
+from ..models import FieldPlot, FlightMission, IngestRun, Photo, PhotoAnalysis, Property, User
 from ..schemas import (
     AdminLoginRequest,
     AdminSessionStatusResponse,
     BackendLogLine,
     BackendLogsResponse,
     FieldCandidateListResponse,
+    FlightMissionCreate,
+    FlightMissionListResponse,
+    FlightMissionOut,
+    FlightMissionPatch,
     FieldPlotCreate,
     FieldPlotDeleteResponse,
     FieldPlotListResponse,
@@ -62,6 +67,10 @@ from ..services.geonorge_teiger import (
 from ..services.imports import run_photo_ingest
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
+from ..services.flight_missions import (
+    build_flight_mission_export_bundle,
+    build_flight_mission_payload,
+)
 from ..services.photo_reprocess import reprocess_photos_for_user
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
 from ..services.tag_utils import (
@@ -286,6 +295,55 @@ def _field_geometry_payload(geometry) -> tuple[str, float]:
 
 def _field_candidate_response(property_id: int, fields: list[dict]) -> FieldCandidateListResponse:
     return FieldCandidateListResponse(property_id=property_id, count=len(fields), fields=fields)
+
+
+def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
+    return FlightMissionOut(
+        id=item.id,
+        property_id=item.property_id,
+        name=(item.name or f"Oppdrag {item.id}").strip(),
+        status=item.status,
+        field_ids=json.loads(item.field_ids_json),
+        parameters=json.loads(item.parameters_json),
+        fields=json.loads(item.field_snapshots_json),
+        warnings=json.loads(item.warnings_json),
+        route_geojson=json.loads(item.route_geojson_json),
+        export_manifest=json.loads(item.export_manifest_json),
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        last_generated_at=item.last_generated_at,
+    )
+
+
+def _resolve_field_plots_for_mission(db: Session, property_obj: Property, field_ids: list[int]) -> list[FieldPlot]:
+    normalized_ids: list[int] = []
+    for raw_id in field_ids:
+        field_id = int(raw_id)
+        if field_id not in normalized_ids:
+            normalized_ids.append(field_id)
+
+    if not normalized_ids:
+        raise HTTPException(status_code=400, detail="Oppdraget må knyttes til minst ett jord")
+
+    field_items = (
+        db.execute(
+            select(FieldPlot)
+            .where(FieldPlot.property_id == property_obj.id)
+            .where(FieldPlot.id.in_(normalized_ids))
+            .order_by(FieldPlot.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    field_by_id = {item.id: item for item in field_items}
+    missing_ids = [field_id for field_id in normalized_ids if field_id not in field_by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fant ikke valgte jorder for aktiv eiendom: {', '.join(str(item) for item in missing_ids)}",
+        )
+
+    return [field_by_id[field_id] for field_id in normalized_ids]
 
 
 @router.get("/health")
@@ -541,6 +599,166 @@ def delete_field_plot(
     db.delete(item)
     db.commit()
     return FieldPlotDeleteResponse(status="deleted", field_id=field_id)
+
+
+@router.get("/flight-missions", response_model=FlightMissionListResponse)
+def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    missions = (
+        db.execute(
+            select(FlightMission)
+            .where(FlightMission.property_id == property_obj.id)
+            .order_by(FlightMission.updated_at.desc(), FlightMission.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return FlightMissionListResponse(
+        property_id=property_obj.id,
+        count=len(missions),
+        missions=[_flight_mission_out(item) for item in missions],
+    )
+
+
+@router.post("/flight-missions", response_model=FlightMissionOut, status_code=status.HTTP_201_CREATED)
+def create_flight_mission(
+    payload: FlightMissionCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FlightMissionOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    field_items = _resolve_field_plots_for_mission(db, property_obj, payload.field_ids)
+    mission_payload = build_flight_mission_payload(
+        property_obj=property_obj,
+        fields=field_items,
+        name=payload.name,
+        parameters=payload.parameters.model_dump(),
+    )
+
+    item = FlightMission(
+        property_id=property_obj.id,
+        name=mission_payload["name"],
+        status=mission_payload["status"],
+        field_ids_json=json.dumps(mission_payload["field_ids"], ensure_ascii=False),
+        parameters_json=json.dumps(mission_payload["parameters"], ensure_ascii=False),
+        field_snapshots_json=json.dumps(mission_payload["fields"], ensure_ascii=False),
+        route_geojson_json=json.dumps(mission_payload["route_geojson"], ensure_ascii=False),
+        warnings_json=json.dumps(mission_payload["warnings"], ensure_ascii=False),
+        export_manifest_json=json.dumps(mission_payload["export_manifest"], ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _flight_mission_out(item)
+
+
+@router.get("/flight-missions/{mission_id}", response_model=FlightMissionOut)
+def get_flight_mission(mission_id: int, db: Session = Depends(get_db)) -> FlightMissionOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(FlightMission).where(
+                FlightMission.id == mission_id,
+                FlightMission.property_id == property_obj.id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+    return _flight_mission_out(item)
+
+
+@router.patch("/flight-missions/{mission_id}", response_model=FlightMissionOut)
+def patch_flight_mission(
+    mission_id: int,
+    payload: FlightMissionPatch = Body(default_factory=FlightMissionPatch),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FlightMissionOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(FlightMission).where(
+                FlightMission.id == mission_id,
+                FlightMission.property_id == property_obj.id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+
+    field_ids = payload.field_ids if payload.field_ids is not None else json.loads(item.field_ids_json)
+    parameters = json.loads(item.parameters_json)
+    if payload.parameters is not None:
+        parameters = {
+            **parameters,
+            **payload.parameters.model_dump(exclude_unset=True),
+        }
+    mission_payload = build_flight_mission_payload(
+        property_obj=property_obj,
+        fields=_resolve_field_plots_for_mission(db, property_obj, field_ids),
+        name=payload.name if "name" in payload.model_fields_set else item.name,
+        parameters=parameters,
+    )
+
+    item.name = mission_payload["name"]
+    item.status = mission_payload["status"]
+    item.field_ids_json = json.dumps(mission_payload["field_ids"], ensure_ascii=False)
+    item.parameters_json = json.dumps(mission_payload["parameters"], ensure_ascii=False)
+    item.field_snapshots_json = json.dumps(mission_payload["fields"], ensure_ascii=False)
+    item.route_geojson_json = json.dumps(mission_payload["route_geojson"], ensure_ascii=False)
+    item.warnings_json = json.dumps(mission_payload["warnings"], ensure_ascii=False)
+    item.export_manifest_json = json.dumps(mission_payload["export_manifest"], ensure_ascii=False)
+    item.last_generated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(item)
+    return _flight_mission_out(item)
+
+
+@router.post("/flight-missions/{mission_id}/export")
+def export_flight_mission(
+    mission_id: int,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> Response:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(FlightMission).where(
+                FlightMission.id == mission_id,
+                FlightMission.property_id == property_obj.id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+
+    export_bytes = build_flight_mission_export_bundle(
+        mission_id=item.id,
+        mission_name=(item.name or f"Oppdrag {item.id}"),
+        fields=json.loads(item.field_snapshots_json),
+        route_geojson=json.loads(item.route_geojson_json),
+        export_manifest=json.loads(item.export_manifest_json),
+    )
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    filename = f"flyvendebonder-oppdrag-{item.id}.zip"
+    response = Response(content=export_bytes, media_type="application/zip")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["Expires"] = expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    return response
 
 
 @router.get("/photos", response_model=PhotoResponse)

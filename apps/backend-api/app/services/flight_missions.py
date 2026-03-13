@@ -1,0 +1,405 @@
+from __future__ import annotations
+
+import io
+import json
+import math
+import zipfile
+from datetime import datetime
+from typing import Any
+
+from ..models import FieldPlot, Property
+from .field_plots import normalize_polygon_coordinates, polygon_area_m2
+from .quality_metrics import meters_per_degree_latitude, meters_per_degree_longitude
+
+RECOMMENDED_ALTITUDE_RANGE_M = (20.0, 120.0)
+RECOMMENDED_LINE_SPACING_RANGE_M = (8.0, 35.0)
+RECOMMENDED_WAYPOINT_SPACING_RANGE_M = (8.0, 35.0)
+MIN_FIELD_AREA_FOR_ROUTE_M2 = 250.0
+
+
+def build_flight_mission_payload(
+    *,
+    property_obj: Property,
+    fields: list[FieldPlot],
+    name: str | None,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    normalized_parameters = _normalize_parameters(parameters)
+    warnings = _parameter_warnings(normalized_parameters)
+
+    field_snapshots: list[dict[str, Any]] = []
+    route_features: list[dict[str, Any]] = []
+    total_waypoints = 0
+    total_distance_m = 0.0
+
+    for field in fields:
+        geometry = json.loads(field.geometry_json)
+        coordinates = normalize_polygon_coordinates(geometry["coordinates"])
+        area_m2 = round(field.area_m2 or polygon_area_m2(coordinates), 2)
+        field_name = (field.name or f"Jord {field.id}").strip()
+
+        snapshot = {
+            "field_id": field.id,
+            "name": field_name,
+            "area_m2": area_m2,
+            "area_ha": round(area_m2 / 10_000, 4) if area_m2 is not None else None,
+            "geometry": {"type": "Polygon", "coordinates": coordinates},
+        }
+        field_snapshots.append(snapshot)
+
+        if len(coordinates) > 1:
+            warnings.append(
+                _warning(
+                    "holes_not_supported",
+                    "warning",
+                    "Oppdragsgeneratoren bruker bare yttergrensen i første versjon. Hull må kontrolleres manuelt.",
+                    field_id=field.id,
+                )
+            )
+
+        if area_m2 < MIN_FIELD_AREA_FOR_ROUTE_M2:
+            warnings.append(
+                _warning(
+                    "field_too_small",
+                    "warning",
+                    "Jordet er svært lite. Eksporten bør kontrolleres manuelt før flyging.",
+                    field_id=field.id,
+                )
+            )
+
+        route_points = _build_field_route(
+            coordinates[0],
+            route_angle_deg=normalized_parameters["route_angle_deg"],
+            line_spacing_m=normalized_parameters["line_spacing_m"],
+            waypoint_spacing_m=normalized_parameters["waypoint_spacing_m"],
+        )
+        if len(route_points) < 2:
+            warnings.append(
+                _warning(
+                    "route_generation_failed",
+                    "warning",
+                    "Klarte ikke å lage en brukbar sweep-rute for jordet. Finjuster geometri eller parametre.",
+                    field_id=field.id,
+                )
+            )
+            continue
+
+        total_waypoints += len(route_points)
+        total_distance_m += _polyline_distance_m(route_points)
+        route_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "field_id": field.id,
+                    "field_name": field_name,
+                    "kind": "route",
+                    "altitude_m": normalized_parameters["altitude_m"],
+                    "line_spacing_m": normalized_parameters["line_spacing_m"],
+                    "waypoint_spacing_m": normalized_parameters["waypoint_spacing_m"],
+                    "route_angle_deg": normalized_parameters["route_angle_deg"],
+                    "waypoint_count": len(route_points),
+                },
+                "geometry": {"type": "LineString", "coordinates": route_points},
+            }
+        )
+        for index, point in enumerate(route_points, start=1):
+            route_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "field_id": field.id,
+                        "field_name": field_name,
+                        "kind": "waypoint",
+                        "sequence": index,
+                        "altitude_m": normalized_parameters["altitude_m"],
+                    },
+                    "geometry": {"type": "Point", "coordinates": point},
+                }
+            )
+
+    route_geojson = {"type": "FeatureCollection", "features": route_features}
+    generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    mission_name = (name or f"Oppdrag {property_obj.gnr}/{property_obj.bnr}").strip()
+    manifest = {
+        "format": "flyvendebonder.flight-mission-bundle.v1",
+        "generated_at": generated_at,
+        "mission_name": mission_name,
+        "property": {
+            "id": property_obj.id,
+            "komm": property_obj.komm,
+            "gnr": property_obj.gnr,
+            "bnr": property_obj.bnr,
+            "fnr": property_obj.fnr,
+            "label": property_obj.label,
+        },
+        "summary": {
+            "field_count": len(field_snapshots),
+            "waypoint_count": total_waypoints,
+            "route_distance_m": round(total_distance_m, 1),
+        },
+        "parameters": normalized_parameters,
+        "warnings": warnings,
+        "export_notes": [
+            "GeoJSON-bunten er første eksportprofil i Flyvendebønder.",
+            "Bruk eksporten som grunnlag for DJI-flyt til vi har en dedikert DJI-missionprofil.",
+        ],
+    }
+
+    return {
+        "name": mission_name,
+        "status": "ready",
+        "field_ids": [field.id for field in fields],
+        "parameters": normalized_parameters,
+        "fields": field_snapshots,
+        "warnings": warnings,
+        "route_geojson": route_geojson,
+        "export_manifest": manifest,
+    }
+
+
+def build_flight_mission_export_bundle(
+    *,
+    mission_id: int,
+    mission_name: str,
+    fields: list[dict[str, Any]],
+    route_geojson: dict[str, Any],
+    export_manifest: dict[str, Any],
+) -> bytes:
+    field_features = [
+        {
+            "type": "Feature",
+            "properties": {
+                "field_id": field["field_id"],
+                "field_name": field["name"],
+                "area_m2": field.get("area_m2"),
+                "area_ha": field.get("area_ha"),
+            },
+            "geometry": field["geometry"],
+        }
+        for field in fields
+    ]
+    fields_geojson = {"type": "FeatureCollection", "features": field_features}
+
+    slug = _slugify(mission_name) or f"mission-{mission_id}"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(export_manifest, ensure_ascii=False, indent=2))
+        archive.writestr("fields.geojson", json.dumps(fields_geojson, ensure_ascii=False, indent=2))
+        archive.writestr("route.geojson", json.dumps(route_geojson, ensure_ascii=False, indent=2))
+        archive.writestr(
+            f"{slug}.readme.txt",
+            "\n".join(
+                [
+                    f"Oppdrag: {mission_name}",
+                    "Denne eksporten inneholder jordgrenser og en enkel sweep-rute som bør kontrolleres i planleggingsverktøy før bruk.",
+                ]
+            ),
+        )
+    return buffer.getvalue()
+
+
+def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, float]:
+    return {
+        "altitude_m": round(float(parameters["altitude_m"]), 2),
+        "line_spacing_m": round(float(parameters["line_spacing_m"]), 2),
+        "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
+        "route_angle_deg": round(float(parameters["route_angle_deg"]), 2),
+    }
+
+
+def _parameter_warnings(parameters: dict[str, float]) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    altitude_m = parameters["altitude_m"]
+    if altitude_m < RECOMMENDED_ALTITUDE_RANGE_M[0] or altitude_m > RECOMMENDED_ALTITUDE_RANGE_M[1]:
+        warnings.append(
+            _warning(
+                "altitude_outside_recommended",
+                "warning",
+                f"Flyhøyde {altitude_m:g} m er utenfor anbefalt område {RECOMMENDED_ALTITUDE_RANGE_M[0]:g}-{RECOMMENDED_ALTITUDE_RANGE_M[1]:g} m.",
+            )
+        )
+
+    line_spacing_m = parameters["line_spacing_m"]
+    if line_spacing_m < RECOMMENDED_LINE_SPACING_RANGE_M[0] or line_spacing_m > RECOMMENDED_LINE_SPACING_RANGE_M[1]:
+        warnings.append(
+            _warning(
+                "line_spacing_outside_recommended",
+                "warning",
+                "Linjeavstand er utenfor anbefalt område og bør kontrolleres mot ønsket dekning.",
+            )
+        )
+
+    waypoint_spacing_m = parameters["waypoint_spacing_m"]
+    if (
+        waypoint_spacing_m < RECOMMENDED_WAYPOINT_SPACING_RANGE_M[0]
+        or waypoint_spacing_m > RECOMMENDED_WAYPOINT_SPACING_RANGE_M[1]
+    ):
+        warnings.append(
+            _warning(
+                "waypoint_spacing_outside_recommended",
+                "warning",
+                "Avstand mellom waypoint er utenfor anbefalt område og bør kontrolleres mot ønsket dekning.",
+            )
+        )
+
+    return warnings
+
+
+def _warning(code: str, severity: str, message: str, *, field_id: int | None = None) -> dict[str, Any]:
+    return {"code": code, "severity": severity, "message": message, "field_id": field_id}
+
+
+def _build_field_route(
+    ring: list[list[float]],
+    *,
+    route_angle_deg: float,
+    line_spacing_m: float,
+    waypoint_spacing_m: float,
+) -> list[list[float]]:
+    projected, origin, centroid = _project_ring_to_local_meters(ring)
+    rotated = [_rotate_point(point[0], point[1], -route_angle_deg) for point in projected]
+    ys = [point[1] for point in rotated]
+    if not ys:
+        return []
+
+    min_y = min(ys)
+    max_y = max(ys)
+    if max_y - min_y < 0.5:
+        return []
+
+    route_points: list[list[float]] = []
+    scan_y = min_y + (line_spacing_m / 2.0)
+    reverse = False
+
+    while scan_y <= max_y + 0.001:
+        intersections = _scanline_intersections(rotated, scan_y)
+        if len(intersections) >= 2:
+            segment_points: list[list[float]] = []
+            for start_x, end_x in _pair_intersections(intersections):
+                if abs(end_x - start_x) < 1.0:
+                    continue
+                segment = _segment_points(start_x, end_x, scan_y, waypoint_spacing_m)
+                if reverse:
+                    segment.reverse()
+                segment_points.extend(segment)
+                reverse = not reverse
+
+            if segment_points:
+                for point in segment_points:
+                    x_rot, y_rot = _rotate_point(point[0], point[1], route_angle_deg)
+                    lng, lat = _local_point_to_lng_lat(x_rot, y_rot, origin=origin, centroid=centroid)
+                    if route_points and route_points[-1] == [lng, lat]:
+                        continue
+                    route_points.append([round(lng, 8), round(lat, 8)])
+
+        scan_y += line_spacing_m
+
+    return route_points
+
+
+def _project_ring_to_local_meters(
+    ring: list[list[float]],
+) -> tuple[list[tuple[float, float]], tuple[float, float], tuple[float, float]]:
+    points = ring[:-1] if ring and ring[0] == ring[-1] else ring
+    avg_lng = sum(point[0] for point in points) / len(points)
+    avg_lat = sum(point[1] for point in points) / len(points)
+    meters_lat = meters_per_degree_latitude()
+    meters_lng = meters_per_degree_longitude(avg_lat)
+    projected = [((lng - avg_lng) * meters_lng, (lat - avg_lat) * meters_lat) for lng, lat in ring]
+    return projected, (meters_lng, meters_lat), (avg_lng, avg_lat)
+
+
+def _local_point_to_lng_lat(
+    x: float,
+    y: float,
+    *,
+    origin: tuple[float, float],
+    centroid: tuple[float, float],
+) -> tuple[float, float]:
+    meters_lng, meters_lat = origin
+    avg_lng, avg_lat = centroid
+    lng = avg_lng + (x / meters_lng)
+    lat = avg_lat + (y / meters_lat)
+    return lng, lat
+
+
+def _rotate_point(x: float, y: float, angle_deg: float) -> tuple[float, float]:
+    angle = math.radians(angle_deg)
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+    return (x * cos_a) - (y * sin_a), (x * sin_a) + (y * cos_a)
+
+
+def _scanline_intersections(ring: list[tuple[float, float]], scan_y: float) -> list[float]:
+    intersections: list[float] = []
+    for index in range(len(ring) - 1):
+        x1, y1 = ring[index]
+        x2, y2 = ring[index + 1]
+
+        if math.isclose(y1, y2, abs_tol=1e-9):
+            continue
+        if scan_y < min(y1, y2) or scan_y >= max(y1, y2):
+            continue
+
+        ratio = (scan_y - y1) / (y2 - y1)
+        intersections.append(x1 + (ratio * (x2 - x1)))
+
+    intersections.sort()
+    return intersections
+
+
+def _pair_intersections(intersections: list[float]) -> list[tuple[float, float]]:
+    pairs: list[tuple[float, float]] = []
+    for index in range(0, len(intersections) - 1, 2):
+        start_x = intersections[index]
+        end_x = intersections[index + 1]
+        if end_x > start_x:
+            pairs.append((start_x, end_x))
+    return pairs
+
+
+def _segment_points(start_x: float, end_x: float, scan_y: float, waypoint_spacing_m: float) -> list[list[float]]:
+    points = [[start_x, scan_y]]
+    distance = abs(end_x - start_x)
+    if distance <= waypoint_spacing_m:
+        points.append([end_x, scan_y])
+        return points
+
+    segment_count = max(1, int(math.ceil(distance / waypoint_spacing_m)))
+    for step in range(1, segment_count):
+        fraction = step / segment_count
+        points.append([start_x + ((end_x - start_x) * fraction), scan_y])
+    points.append([end_x, scan_y])
+    return points
+
+
+def _polyline_distance_m(points: list[list[float]]) -> float:
+    distance = 0.0
+    for current, nxt in zip(points, points[1:]):
+        distance += _haversine_distance_m(current[1], current[0], nxt[1], nxt[0])
+    return round(distance, 2)
+
+
+def _haversine_distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    radius_m = 6_371_000.0
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    d_lat = math.radians(lat2 - lat1)
+    d_lng = math.radians(lng2 - lng1)
+
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lng / 2) ** 2
+    )
+    return 2 * radius_m * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _slugify(value: str) -> str:
+    normalized = [
+        character.lower() if character.isalnum() else "-"
+        for character in value.strip()
+    ]
+    slug = "".join(normalized).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:80]
