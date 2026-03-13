@@ -177,6 +177,15 @@ function polygonBoundsCenter(points: LatLngPair[]): LatLngPair | null {
   return [center.lat, center.lng];
 }
 
+function createPlainTextContent(text: string, className?: string): HTMLElement {
+  const element = document.createElement("span");
+  if (className) {
+    element.className = className;
+  }
+  element.textContent = text;
+  return element;
+}
+
 function normalizeHeading(headingDeg: number): number {
   return ((headingDeg % 360) + 360) % 360;
 }
@@ -777,7 +786,7 @@ export function MapCanvas({
         interactive: true,
         bubblingMouseEvents: false,
       });
-      polygon.bindTooltip(field.name ?? `Jord ${field.id}`);
+      polygon.bindTooltip(createPlainTextContent(field.name ?? `Jord ${field.id}`));
       polygon.on("click", () => {
         onSelectField(field.id);
       });
@@ -791,7 +800,7 @@ export function MapCanvas({
           keyboard: false,
           icon: L.divIcon({
             className: "fb-field-label-shell",
-            html: `<span class="fb-field-label">${field.name ?? `Jord ${field.id}`}</span>`,
+            html: createPlainTextContent(field.name ?? `Jord ${field.id}`, "fb-field-label"),
           }),
         });
         fieldGroup.addLayer(label);
@@ -811,7 +820,7 @@ export function MapCanvas({
           interactive: true,
           bubblingMouseEvents: false,
         });
-        activePolygon.bindTooltip(activeFieldDraft.name?.trim() || "Aktivt jordutkast", {
+        activePolygon.bindTooltip(createPlainTextContent(activeFieldDraft.name?.trim() || "Aktivt jordutkast"), {
           permanent: true,
           direction: "center",
           className: "fb-field-active-tooltip",

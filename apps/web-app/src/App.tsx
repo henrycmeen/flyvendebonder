@@ -844,6 +844,7 @@ export default function App() {
         );
         setActiveFieldDraft((current) => {
           if (!current) return null;
+          if (current.property_id !== data.property_id) return null;
           if (current.isNew || current.isDirty) return current;
           if (current.id == null) return null;
           const refreshed = nextFields.find((item) => item.id === current.id);
