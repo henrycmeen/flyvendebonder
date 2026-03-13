@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{(BASE_DIR / 'data' / 'flyvendebonder.db').as_posix()}"
 
     app_data_root: Path = BASE_DIR / "storage"
-    photos_root: Path = BASE_DIR / "storage" / "photos"
+    photos_root: Path | None = None
     imports_default_source: Path = Path("/Users/henmee/Movies/Droneshots/Meen gård/Analysebilder")
 
     demo_seed_geojson: Path = REPO_ROOT / "apps" / "demo-fotokart" / "data" / "photos.geojson"
@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     photo_analysis_lookup_radius_deg: float = 0.00018
     photo_analysis_wms_query_radius_deg: float = 0.0002
     photo_analysis_http_timeout_seconds: float = 20.0
+
+    def model_post_init(self, __context) -> None:
+        if self.photos_root is None:
+            self.photos_root = self.app_data_root / "photos"
 
 
 @lru_cache(maxsize=1)

@@ -2,33 +2,13 @@ from __future__ import annotations
 
 import importlib
 import json
-import sys
 from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-
-def _fresh_backend_modules() -> None:
-    for module_name in (
-        "app.config",
-        "app.database",
-        "app.logging_utils",
-        "app.models",
-        "app.schemas",
-        "app.services.analysis_enrich",
-        "app.services.geometry_utils",
-        "app.services.metadata_utils",
-        "app.services.image_derivatives",
-        "app.services.imports",
-        "app.services.photos",
-        "app.services.seeding",
-        "app.services.gardskart",
-        "app.api.v1",
-        "app.main",
-    ):
-        sys.modules.pop(module_name, None)
+from tests.backend_modules import fresh_backend_modules
 
 
 @pytest.fixture
@@ -57,7 +37,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_ACCESS_CODE", "test-admin-code")
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-admin-secret")
 
-    _fresh_backend_modules()
+    fresh_backend_modules()
 
     main_module = importlib.import_module("app.main")
     from app.config import get_settings
