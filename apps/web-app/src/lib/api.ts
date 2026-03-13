@@ -456,3 +456,15 @@ export function apiPatch<T>(
     cache: false,
   });
 }
+
+export function apiDelete<T>(
+  path: string,
+  options: Omit<ApiRequestOptions, "method" | "body"> = {},
+): Promise<ApiResponse<T>> {
+  return requestJson<T>(path, {
+    ...options,
+    method: "DELETE",
+    dedupe: false,
+    cache: false,
+  });
+}

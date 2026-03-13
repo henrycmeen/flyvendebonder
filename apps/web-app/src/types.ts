@@ -69,6 +69,46 @@ export interface GeoJSONPolygon {
   coordinates: number[][][];
 }
 
+export type FieldPlotStatus = "draft" | "confirmed";
+export type FieldPlotSource = "manual" | "suggested" | "imported";
+
+export interface FieldPlot {
+  id: number;
+  property_id: number;
+  name: string | null;
+  source: FieldPlotSource;
+  status: FieldPlotStatus;
+  geometry: GeoJSONPolygon;
+  area_m2: number | null;
+  area_ha: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FieldPlotDraft {
+  id: number | null;
+  property_id: number | null;
+  name: string | null;
+  source: FieldPlotSource;
+  status: FieldPlotStatus;
+  geometry: GeoJSONPolygon;
+  area_m2: number | null;
+  area_ha: number | null;
+  isNew: boolean;
+  isDirty: boolean;
+}
+
+export interface FieldPlotListResponse {
+  property_id: number;
+  count: number;
+  fields: FieldPlot[];
+}
+
+export interface FieldPlotDeleteResponse {
+  status: "deleted";
+  field_id: number;
+}
+
 export interface AnalysisZone {
   center_point: GeoPoint;
   sample_points: GeoPoint[];

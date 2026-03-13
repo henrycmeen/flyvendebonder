@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 
-import type { GardskartJob, PhotoFeature, Property, VideoMapArtifact } from "@/types";
+import type { FieldPlot, FieldPlotDraft, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
@@ -22,6 +22,12 @@ interface MapCanvasProps {
   showSoilLayer: boolean;
   showPropertyLayer: boolean;
   soilRefreshToken: number;
+  fieldPlots: FieldPlot[];
+  activeFieldDraft: FieldPlotDraft | null;
+  fieldCreateMode: boolean;
+  onRequestFieldCreateAt: (point: GeoPoint) => void;
+  onSelectField: (fieldId: number) => void;
+  onFieldGeometryChange: (geometry: GeoJSONPolygon) => void;
   onSelectPhoto: (photoId: string) => void;
   onHoverPhoto: (photoId: string | null) => void;
   onOpenPhotoFullscreen: (photoId: string) => void;
@@ -150,6 +156,25 @@ function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
     return [lat, lng];
   });
   return parsed.filter((item): item is LatLngPair => item !== null);
+}
+
+function toPolygonCoordinates(points: LatLngPair[]): number[][][] {
+  if (points.length === 0) return [];
+  const ring = points.map(([lat, lng]) => [lng, lat]);
+  const [firstLng, firstLat] = ring[0];
+  const [lastLng, lastLat] = ring[ring.length - 1];
+  if (firstLng !== lastLng || firstLat !== lastLat) {
+    ring.push([firstLng, firstLat]);
+  }
+  return [ring];
+}
+
+function polygonBoundsCenter(points: LatLngPair[]): LatLngPair | null {
+  if (points.length === 0) return null;
+  const bounds = L.latLngBounds(points);
+  if (!bounds.isValid()) return null;
+  const center = bounds.getCenter();
+  return [center.lat, center.lng];
 }
 
 function normalizeHeading(headingDeg: number): number {
@@ -442,6 +467,12 @@ export function MapCanvas({
   showSoilLayer,
   showPropertyLayer,
   soilRefreshToken,
+  fieldPlots,
+  activeFieldDraft,
+  fieldCreateMode,
+  onRequestFieldCreateAt,
+  onSelectField,
+  onFieldGeometryChange,
   onSelectPhoto,
   onHoverPhoto,
   onOpenPhotoFullscreen,
@@ -460,6 +491,8 @@ export function MapCanvas({
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
+  const fieldLayerRef = useRef<L.LayerGroup | null>(null);
+  const fieldHandleLayerRef = useRef<L.LayerGroup | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
   const videoLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
@@ -517,6 +550,18 @@ export function MapCanvas({
       laserPane.style.pointerEvents = "none";
     }
 
+    map.createPane("fieldPane");
+    const fieldPane = map.getPane("fieldPane");
+    if (fieldPane) {
+      fieldPane.style.zIndex = "560";
+    }
+
+    map.createPane("fieldHandlePane");
+    const fieldHandlePane = map.getPane("fieldHandlePane");
+    if (fieldHandlePane) {
+      fieldHandlePane.style.zIndex = "670";
+    }
+
     const clusterLayer = L.markerClusterGroup({
       showCoverageOnHover: false,
       spiderfyOnMaxZoom: true,
@@ -570,6 +615,14 @@ export function MapCanvas({
       baseLayerRef.current = null;
       soilLayerRef.current = null;
       propertyLayerRef.current = null;
+      if (fieldLayerRef.current) {
+        fieldLayerRef.current.remove();
+        fieldLayerRef.current = null;
+      }
+      if (fieldHandleLayerRef.current) {
+        fieldHandleLayerRef.current.remove();
+        fieldHandleLayerRef.current = null;
+      }
       if (viewLayerRef.current) {
         viewLayerRef.current.remove();
         viewLayerRef.current = null;
@@ -667,6 +720,153 @@ export function MapCanvas({
   useEffect(() => {
     selectedPhotoIdRef.current = selectedPhotoId;
   }, [selectedPhotoId]);
+
+  useEffect(() => {
+    const container = mapRef.current?.getContainer();
+    if (!container) return;
+
+    container.classList.toggle("fb-map-create-mode", fieldCreateMode);
+    return () => {
+      container.classList.remove("fb-map-create-mode");
+    };
+  }, [fieldCreateMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleMapClick = (event: L.LeafletMouseEvent) => {
+      if (!fieldCreateMode) return;
+      onRequestFieldCreateAt({ lat: event.latlng.lat, lng: event.latlng.lng });
+    };
+
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [fieldCreateMode, onRequestFieldCreateAt]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (fieldLayerRef.current) {
+      mapRef.current.removeLayer(fieldLayerRef.current);
+      fieldLayerRef.current = null;
+    }
+    if (fieldHandleLayerRef.current) {
+      mapRef.current.removeLayer(fieldHandleLayerRef.current);
+      fieldHandleLayerRef.current = null;
+    }
+
+    const fieldGroup = L.layerGroup();
+    const handleGroup = L.layerGroup();
+    const activeFieldId = activeFieldDraft?.id ?? null;
+
+    fieldPlots.forEach((field) => {
+      if (field.id === activeFieldId) return;
+      const latLngs = toPolygonLatLngs(field.geometry.coordinates);
+      if (latLngs.length < 4) return;
+
+      const polygon = L.polygon(latLngs, {
+        color: "rgba(191, 126, 63, 0.9)",
+        fillColor: "rgba(244, 199, 112, 0.22)",
+        fillOpacity: 0.14,
+        weight: 1.6,
+        opacity: 0.84,
+        pane: "fieldPane",
+        interactive: true,
+        bubblingMouseEvents: false,
+      });
+      polygon.bindTooltip(field.name ?? `Jord ${field.id}`);
+      polygon.on("click", () => {
+        onSelectField(field.id);
+      });
+      fieldGroup.addLayer(polygon);
+
+      const centerPoint = polygonBoundsCenter(latLngs);
+      if (centerPoint) {
+        const label = L.marker(centerPoint, {
+          pane: "fieldPane",
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: "fb-field-label-shell",
+            html: `<span class="fb-field-label">${field.name ?? `Jord ${field.id}`}</span>`,
+          }),
+        });
+        fieldGroup.addLayer(label);
+      }
+    });
+
+    if (activeFieldDraft) {
+      const latLngs = toPolygonLatLngs(activeFieldDraft.geometry.coordinates);
+      if (latLngs.length >= 4) {
+        const activePolygon = L.polygon(latLngs, {
+          color: "rgba(199, 92, 36, 0.98)",
+          fillColor: "rgba(243, 162, 87, 0.24)",
+          fillOpacity: 0.22,
+          weight: 2.8,
+          opacity: 0.96,
+          pane: "fieldPane",
+          interactive: true,
+          bubblingMouseEvents: false,
+        });
+        activePolygon.bindTooltip(activeFieldDraft.name?.trim() || "Aktivt jordutkast", {
+          permanent: true,
+          direction: "center",
+          className: "fb-field-active-tooltip",
+        });
+        fieldGroup.addLayer(activePolygon);
+
+        const handleIcon = L.divIcon({
+          className: "fb-field-handle-shell",
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+          html: '<span class="fb-field-handle"></span>',
+        });
+        const editablePoints = latLngs.slice(0, -1);
+        editablePoints.forEach((point, index) => {
+          const handleMarker = L.marker(point, {
+            draggable: true,
+            icon: handleIcon,
+            pane: "fieldHandlePane",
+            keyboard: false,
+            zIndexOffset: 600,
+          });
+          handleMarker.on("drag", () => {
+            const nextPoint = handleMarker.getLatLng();
+            const nextPoints: LatLngPair[] = editablePoints.map(([lat, lng], pointIndex) =>
+              pointIndex === index ? ([nextPoint.lat, nextPoint.lng] as LatLngPair) : [lat, lng],
+            );
+            activePolygon.setLatLngs(nextPoints as L.LatLngExpression[]);
+          });
+          handleMarker.on("dragend", () => {
+            const nextPoint = handleMarker.getLatLng();
+            const nextPoints: LatLngPair[] = editablePoints.map(([lat, lng], pointIndex) =>
+              pointIndex === index ? ([nextPoint.lat, nextPoint.lng] as LatLngPair) : [lat, lng],
+            );
+            onFieldGeometryChange({
+              type: "Polygon",
+              coordinates: toPolygonCoordinates(nextPoints),
+            });
+          });
+          handleGroup.addLayer(handleMarker);
+        });
+      }
+    }
+
+    fieldGroup.addTo(mapRef.current);
+    handleGroup.addTo(mapRef.current);
+    fieldLayerRef.current = fieldGroup;
+    fieldHandleLayerRef.current = handleGroup;
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.removeLayer(fieldGroup);
+        mapRef.current.removeLayer(handleGroup);
+      }
+    };
+  }, [activeFieldDraft, fieldPlots, onFieldGeometryChange, onSelectField]);
 
   useEffect(() => {
     if (!mapRef.current || !viewLayerRef.current) return;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw } from "lucide-react";
 
-import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
@@ -31,6 +31,7 @@ import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/sea
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
 import { AppSidebar } from "@/components/app-sidebar";
+import { FieldEditorPanel } from "@/components/field-editor-panel";
 import { FilterPanel } from "@/components/filter-panel";
 import { MapLayerPanel } from "@/components/map-layer-panel";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
@@ -42,6 +43,12 @@ import { CloseButton } from "@/components/ui/close-button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
+  FieldPlot,
+  FieldPlotDeleteResponse,
+  FieldPlotDraft,
+  FieldPlotListResponse,
+  GeoJSONPolygon,
+  GeoPoint,
   GardskartJob,
   VideoMapArtifact,
   PhotoAnalysis,
@@ -96,6 +103,7 @@ const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
+const FIELD_DRAFT_HALF_SIZE_M = 50;
 
 function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
   return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
@@ -235,6 +243,122 @@ function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   return expiresAt > Date.now();
 }
 
+function metersToLatitudeDegrees(distanceM: number): number {
+  return distanceM / 111_320;
+}
+
+function metersToLongitudeDegrees(distanceM: number, latitudeDeg: number): number {
+  const cosLat = Math.max(0.15, Math.abs(Math.cos((latitudeDeg * Math.PI) / 180)));
+  return distanceM / (111_320 * cosLat);
+}
+
+function normalizeDraftGeometry(geometry: GeoJSONPolygon): GeoJSONPolygon {
+  const rings = geometry.coordinates.map((ring) => {
+    const normalized = ring
+      .map((point) => [Number(point[0]), Number(point[1])])
+      .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+
+    if (normalized.length === 0) {
+      return normalized;
+    }
+
+    const [firstLng, firstLat] = normalized[0];
+    const [lastLng, lastLat] = normalized[normalized.length - 1];
+    if (firstLng !== lastLng || firstLat !== lastLat) {
+      normalized.push([firstLng, firstLat]);
+    }
+    return normalized;
+  });
+
+  return {
+    type: "Polygon",
+    coordinates: rings,
+  };
+}
+
+function polygonAreaM2(geometry: GeoJSONPolygon): number | null {
+  const ring = geometry.coordinates[0];
+  if (!ring || ring.length < 4) return null;
+
+  const avgLat = ring.slice(0, -1).reduce((sum, point) => sum + point[1], 0) / Math.max(1, ring.length - 1);
+  const metersLat = 111_132;
+  const metersLng = 111_320 * Math.max(0.15, Math.abs(Math.cos((avgLat * Math.PI) / 180)));
+  const [originLng, originLat] = ring[0];
+
+  let area = 0;
+  for (let index = 0; index < ring.length - 1; index += 1) {
+    const current = ring[index];
+    const next = ring[index + 1];
+    const x1 = (current[0] - originLng) * metersLng;
+    const y1 = (current[1] - originLat) * metersLat;
+    const x2 = (next[0] - originLng) * metersLng;
+    const y2 = (next[1] - originLat) * metersLat;
+    area += x1 * y2 - x2 * y1;
+  }
+
+  const absolute = Math.abs(area) / 2;
+  return Number.isFinite(absolute) ? Math.round(absolute * 100) / 100 : null;
+}
+
+function toAreaHa(areaM2: number | null): number | null {
+  if (areaM2 == null || !Number.isFinite(areaM2)) return null;
+  return Math.round((areaM2 / 10_000) * 10_000) / 10_000;
+}
+
+function sortFieldPlots(items: FieldPlot[]): FieldPlot[] {
+  return [...items].sort((left, right) => {
+    const updatedDiff = Date.parse(right.updated_at) - Date.parse(left.updated_at);
+    if (updatedDiff !== 0) return updatedDiff;
+    return right.id - left.id;
+  });
+}
+
+function toFieldPlotDraft(item: FieldPlot): FieldPlotDraft {
+  return {
+    id: item.id,
+    property_id: item.property_id,
+    name: item.name,
+    source: item.source,
+    status: item.status,
+    geometry: normalizeDraftGeometry(item.geometry),
+    area_m2: item.area_m2,
+    area_ha: item.area_ha,
+    isNew: false,
+    isDirty: false,
+  };
+}
+
+function buildFieldDraftAtPoint(point: GeoPoint, propertyId: number | null): FieldPlotDraft {
+  const latDelta = metersToLatitudeDegrees(FIELD_DRAFT_HALF_SIZE_M);
+  const lngDelta = metersToLongitudeDegrees(FIELD_DRAFT_HALF_SIZE_M, point.lat);
+  const geometry: GeoJSONPolygon = {
+    type: "Polygon",
+    coordinates: [
+      [
+        [point.lng - lngDelta, point.lat - latDelta],
+        [point.lng + lngDelta, point.lat - latDelta],
+        [point.lng + lngDelta, point.lat + latDelta],
+        [point.lng - lngDelta, point.lat + latDelta],
+        [point.lng - lngDelta, point.lat - latDelta],
+      ],
+    ],
+  };
+  const areaM2 = polygonAreaM2(geometry);
+
+  return {
+    id: null,
+    property_id: propertyId,
+    name: "",
+    source: "manual",
+    status: "draft",
+    geometry,
+    area_m2: areaM2,
+    area_ha: toAreaHa(areaM2),
+    isNew: true,
+    isDirty: true,
+  };
+}
+
 export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
@@ -274,6 +398,12 @@ export default function App() {
     setShowZoomControls,
   } = useMapPreferences();
   const [propertyJobs, setPropertyJobs] = useState<GardskartJob[]>([]);
+  const [fieldPlots, setFieldPlots] = useState<FieldPlot[]>([]);
+  const [fieldStatus, setFieldStatus] = useState("Jordutkast lastes ...");
+  const [fieldCreateMode, setFieldCreateMode] = useState(false);
+  const [activeFieldDraft, setActiveFieldDraft] = useState<FieldPlotDraft | null>(null);
+  const [isFieldSaveBusy, setIsFieldSaveBusy] = useState(false);
+  const [isFieldDeleteBusy, setIsFieldDeleteBusy] = useState(false);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
@@ -412,6 +542,11 @@ export default function App() {
       (property): property is Property => property !== null,
     );
   }, [profile]);
+  const currentProperty = profile?.property ?? null;
+  const currentPropertyLabel = useMemo(
+    () => (currentProperty ? currentProperty.label?.trim() || formatPropertyReference(currentProperty) : null),
+    [currentProperty],
+  );
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
@@ -680,6 +815,58 @@ export default function App() {
       return data;
     });
   }, [addLog, trackRequest]);
+
+  const loadFieldPlots = useCallback(
+    async (options?: { signal?: AbortSignal; silent?: boolean }) => {
+      if (!currentProperty) {
+        setFieldPlots([]);
+        setFieldCreateMode(false);
+        setActiveFieldDraft(null);
+        setFieldStatus("Ingen aktiv eiendom valgt for jordarbeid.");
+        return null;
+      }
+
+      try {
+        const { data, requestId } = await trackRequest(() =>
+          apiGet<FieldPlotListResponse>("/api/v1/fields", {
+            signal: options?.signal,
+            cache: false,
+            dedupe: false,
+          }),
+        );
+
+        const nextFields = sortFieldPlots(data.fields);
+        setFieldPlots(nextFields);
+        setFieldStatus(
+          nextFields.length === 0
+            ? "Ingen jordutkast ennå. Start med å klikke Nytt jordutkast."
+            : `${nextFields.length} jord${nextFields.length === 1 ? "" : "er"} klare for bruk eller videre justering.`,
+        );
+        setActiveFieldDraft((current) => {
+          if (!current) return null;
+          if (current.isNew || current.isDirty) return current;
+          if (current.id == null) return null;
+          const refreshed = nextFields.find((item) => item.id === current.id);
+          return refreshed ? toFieldPlotDraft(refreshed) : null;
+        });
+        if (!options?.silent) {
+          addLog("info", "Jordutkast lastet", requestId, {
+            propertyId: data.property_id,
+            count: data.count,
+          });
+        }
+        return nextFields;
+      } catch (error) {
+        const apiError = error as ApiError;
+        if (isRequestAborted(apiError)) return null;
+        setFieldPlots([]);
+        setFieldStatus(`Kunne ikke laste jordutkast: ${apiError.message}`);
+        addLog("error", "Kunne ikke laste jordutkast", apiError.requestId, apiError.detail);
+        return null;
+      }
+    },
+    [addLog, currentProperty, trackRequest],
+  );
 
   const loadAdminSession = useCallback(async (options?: { signal?: AbortSignal; silent?: boolean }): Promise<AdminSessionStatus | null> => {
     const seq = ++adminSessionLoadSeqRef.current;
@@ -1297,6 +1484,14 @@ export default function App() {
   }, [loadAdminSession]);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    void loadFieldPlots({ signal: abortController.signal, silent: true });
+    return () => {
+      abortController.abort();
+    };
+  }, [currentProperty?.id, loadFieldPlots]);
+
+  useEffect(() => {
     if (adminSession?.authenticated) {
       return;
     }
@@ -1895,6 +2090,164 @@ export default function App() {
       await loadGardskartJobs(true, { properties: updatedProperties });
     }
   };
+
+  const handleStartFieldCreate = useCallback(() => {
+    if (!ensureAdminAccess("jordredigering")) return;
+    setFieldCreateMode(true);
+    setActiveFieldDraft(null);
+    setFieldStatus("Klikk i kartet for å starte et nytt jordutkast.");
+    addLog("info", "Jordutkast venter på kartklikk", null, {
+      propertyId: currentProperty?.id ?? null,
+    });
+  }, [addLog, currentProperty?.id, ensureAdminAccess]);
+
+  const handleCancelFieldCreate = useCallback(() => {
+    setFieldCreateMode(false);
+    setFieldStatus("Oppretting av jordutkast avbrutt.");
+  }, []);
+
+  const handleSelectFieldPlot = useCallback(
+    (fieldId: number) => {
+      const nextField = fieldPlots.find((item) => item.id === fieldId);
+      if (!nextField) return;
+      setFieldCreateMode(false);
+      setActiveFieldDraft(toFieldPlotDraft(nextField));
+      setFieldStatus(`Valgte ${nextField.name ?? `jord ${nextField.id}`}. Dra hjørnene i kartet for å justere formen.`);
+    },
+    [fieldPlots],
+  );
+
+  const handleCreateFieldDraftAtPoint = useCallback(
+    (point: GeoPoint) => {
+      if (!ensureAdminAccess("jordredigering")) return;
+      setFieldCreateMode(false);
+      const nextDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
+      setActiveFieldDraft(nextDraft);
+      setFieldStatus("Jordutkast opprettet. Dra hjørnene i kartet og lagre når formen stemmer.");
+      addLog("info", "Opprettet jordutkast fra kartklikk", null, {
+        lat: point.lat,
+        lng: point.lng,
+      });
+    },
+    [addLog, currentProperty?.id, ensureAdminAccess],
+  );
+
+  const handleChangeFieldDraftName = useCallback((value: string) => {
+    setActiveFieldDraft((current) =>
+      current
+        ? {
+            ...current,
+            name: value,
+            isDirty: true,
+          }
+        : current,
+    );
+  }, []);
+
+  const handleChangeFieldDraftGeometry = useCallback((geometry: GeoJSONPolygon) => {
+    const normalized = normalizeDraftGeometry(geometry);
+    const areaM2 = polygonAreaM2(normalized);
+    setActiveFieldDraft((current) =>
+      current
+        ? {
+            ...current,
+            geometry: normalized,
+            area_m2: areaM2,
+            area_ha: toAreaHa(areaM2),
+            isDirty: true,
+          }
+        : current,
+    );
+  }, []);
+
+  const handleDiscardFieldDraft = useCallback(() => {
+    setFieldCreateMode(false);
+    if (!activeFieldDraft) return;
+    if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
+      setActiveFieldDraft(null);
+      setFieldStatus("Ulagret jordutkast fjernet.");
+      return;
+    }
+    const savedField = fieldPlots.find((item) => item.id === activeFieldDraft.id);
+    setActiveFieldDraft(savedField ? toFieldPlotDraft(savedField) : null);
+    setFieldStatus("Endringer forkastet.");
+  }, [activeFieldDraft, fieldPlots]);
+
+  const handleSaveFieldDraft = useCallback(async () => {
+    if (!activeFieldDraft) return;
+    if (!ensureAdminAccess("lagring av jordutkast")) return;
+
+    setIsFieldSaveBusy(true);
+    try {
+      const payload = {
+        name: activeFieldDraft.name?.trim() || null,
+        source: activeFieldDraft.source,
+        status: activeFieldDraft.status,
+        geometry: activeFieldDraft.geometry,
+      };
+
+      if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
+        const { data, requestId } = await trackRequest(() => apiPost<FieldPlot>("/api/v1/fields", payload));
+        setFieldPlots((previous) => sortFieldPlots([data, ...previous]));
+        setActiveFieldDraft(toFieldPlotDraft(data));
+        setFieldStatus(`Lagret ${data.name ?? `jord ${data.id}`}.`);
+        addLog("info", "Jordutkast lagret", requestId, {
+          fieldId: data.id,
+          propertyId: data.property_id,
+        });
+      } else {
+        const { data, requestId } = await trackRequest(() =>
+          apiPatch<FieldPlot>(`/api/v1/fields/${activeFieldDraft.id}`, payload),
+        );
+        setFieldPlots((previous) =>
+          sortFieldPlots(previous.map((item) => (item.id === data.id ? data : item))),
+        );
+        setActiveFieldDraft(toFieldPlotDraft(data));
+        setFieldStatus(`Oppdaterte ${data.name ?? `jord ${data.id}`}.`);
+        addLog("info", "Jordutkast oppdatert", requestId, {
+          fieldId: data.id,
+          propertyId: data.property_id,
+        });
+      }
+    } catch (error) {
+      const apiError = error as ApiError;
+      setFieldStatus(`Kunne ikke lagre jordutkast: ${apiError.message}`);
+      addLog("error", "Kunne ikke lagre jordutkast", apiError.requestId, apiError.detail);
+    } finally {
+      setIsFieldSaveBusy(false);
+    }
+  }, [activeFieldDraft, addLog, ensureAdminAccess, trackRequest]);
+
+  const handleDeleteFieldDraft = useCallback(async () => {
+    if (!activeFieldDraft) return;
+    if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
+      setActiveFieldDraft(null);
+      setFieldCreateMode(false);
+      setFieldStatus("Ulagret jordutkast fjernet.");
+      return;
+    }
+    if (!ensureAdminAccess("sletting av jordutkast")) return;
+
+    setIsFieldDeleteBusy(true);
+    try {
+      const { data, requestId } = await trackRequest(() =>
+        apiDelete<FieldPlotDeleteResponse>(`/api/v1/fields/${activeFieldDraft.id}`),
+      );
+      setFieldPlots((previous) => previous.filter((item) => item.id !== data.field_id));
+      setActiveFieldDraft(null);
+      setFieldCreateMode(false);
+      setFieldStatus("Jordutkast slettet.");
+      addLog("info", "Jordutkast slettet", requestId, {
+        fieldId: data.field_id,
+      });
+    } catch (error) {
+      const apiError = error as ApiError;
+      setFieldStatus(`Kunne ikke slette jordutkast: ${apiError.message}`);
+      addLog("error", "Kunne ikke slette jordutkast", apiError.requestId, apiError.detail);
+    } finally {
+      setIsFieldDeleteBusy(false);
+    }
+  }, [activeFieldDraft, addLog, ensureAdminAccess, trackRequest]);
 
   const handleAdminLogin = useCallback(async (code: string) => {
     setIsAdminSessionBusy(true);
@@ -3077,6 +3430,26 @@ export default function App() {
                 />
               ) : null}
 
+              {activeView === "map" ? (
+                <FieldEditorPanel
+                  propertyLabel={currentPropertyLabel}
+                  fieldStatus={fieldStatus}
+                  canEdit={isAdminAuthenticated}
+                  createMode={fieldCreateMode}
+                  fieldPlots={fieldPlots}
+                  activeFieldDraft={activeFieldDraft}
+                  saveBusy={isFieldSaveBusy}
+                  deleteBusy={isFieldDeleteBusy}
+                  onStartCreate={handleStartFieldCreate}
+                  onCancelCreate={handleCancelFieldCreate}
+                  onSelectField={handleSelectFieldPlot}
+                  onChangeDraftName={handleChangeFieldDraftName}
+                  onSaveDraft={handleSaveFieldDraft}
+                  onDiscardDraft={handleDiscardFieldDraft}
+                  onDeleteDraft={handleDeleteFieldDraft}
+                />
+              ) : null}
+
               {activeView === "map" && !photosLoadFailed ? (
                 <MapLayerPanel
                   propertyCount={activeProperties.length}
@@ -3106,6 +3479,12 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   showPropertyLayer={showPropertyLayer}
                   soilRefreshToken={soilRefreshToken}
+                  fieldPlots={fieldPlots}
+                  activeFieldDraft={activeFieldDraft}
+                  fieldCreateMode={fieldCreateMode}
+                  onRequestFieldCreateAt={handleCreateFieldDraftAtPoint}
+                  onSelectField={handleSelectFieldPlot}
+                  onFieldGeometryChange={handleChangeFieldDraftGeometry}
                   onSelectPhoto={handleSelectPhoto}
                   onHoverPhoto={handleHoverPhoto}
                   onOpenPhotoFullscreen={handleOpenPhotoViewer}
