@@ -37,8 +37,10 @@ FIELD_ALIASES = {
     "ResolutionUnit": "resolution_unit",
     "GPSLatitude": "gps_latitude",
     "GPSLongitude": "gps_longitude",
-    "GPSAltitude": "altitude_m",
-    "Altitude": "altitude_m",
+    "GPSAltitude": "gps_altitude_m",
+    "Altitude": "absolute_altitude_m",
+    "AbsoluteAltitude": "absolute_altitude_m",
+    "RelativeAltitude": "relative_altitude_m",
     "FlightYawDegree": "flight_yaw_degree",
     "FlightPitchDegree": "flight_pitch_degree",
     "GimbalPitchDegree": "gimbal_pitch_degree",
@@ -71,6 +73,9 @@ class ExtractedMetadata:
     gps_latitude: float | None
     gps_longitude: float | None
     altitude_m: float | None
+    gps_altitude_m: float | None
+    relative_altitude_m: float | None
+    absolute_altitude_m: float | None
     heading_deg: float | None
     flight_yaw_degree: float | None
     flight_pitch_degree: float | None
@@ -102,6 +107,18 @@ class OrientationSelection:
     source_detail: str
     candidates: dict[str, float]
     qc_tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AltitudeSelection:
+    value: float | None
+    source: str
+    source_detail: str
+    candidates: dict[str, float] = field(default_factory=dict)
+
+
+_ALTITUDE_MATCH_TOLERANCE_M = 3.0
+_ALTITUDE_SIGNIFICANT_DELTA_M = 10.0
 
 
 def _heading_delta_deg(angle_a: float, angle_b: float) -> float:
@@ -156,6 +173,77 @@ def _serialize_orientation_candidates(candidates: dict[str, float]) -> str:
         return ""
 
     return ",".join(f"{name}={value:.2f}" for name, value in sorted(candidates.items()))
+
+
+def select_altitude_from_metadata(metadata: ExtractedMetadata) -> AltitudeSelection:
+    candidate_specs = [
+        ("relative_altitude", "relative_altitude_m", "relative"),
+        ("gps_altitude", "gps_altitude_m", "gps"),
+        ("absolute_altitude", "absolute_altitude_m", "absolute"),
+        ("legacy_altitude", "altitude_m", "legacy"),
+    ]
+
+    candidates: dict[str, float] = {}
+    ordered_candidates: list[tuple[str, float, str]] = []
+
+    for candidate_name, field_name, source in candidate_specs:
+        raw = getattr(metadata, field_name, None)
+        normalized = _to_float(raw)
+        if normalized is None or not math.isfinite(normalized):
+            continue
+
+        if candidate_name == "legacy_altitude" and any(
+            abs(existing - normalized) <= 0.01 for existing in candidates.values()
+        ):
+            continue
+
+        candidates[candidate_name] = normalized
+        ordered_candidates.append((candidate_name, normalized, source))
+
+    if not ordered_candidates:
+        return AltitudeSelection(value=None, source="unknown", source_detail="unknown", candidates={})
+
+    source_detail, value, source = ordered_candidates[0]
+    return AltitudeSelection(
+        value=value,
+        source=source,
+        source_detail=source_detail,
+        candidates={name: candidates[name] for name in sorted(candidates)},
+    )
+
+
+def resolve_photo_altitude(photo_altitude_m: float | None, metadata: ExtractedMetadata) -> float | None:
+    selected = select_altitude_from_metadata(metadata)
+    stored_altitude = _to_float(photo_altitude_m)
+    if stored_altitude is None:
+        return selected.value
+
+    relative_altitude = _to_float(metadata.relative_altitude_m)
+    if relative_altitude is None or not math.isfinite(relative_altitude):
+        return stored_altitude
+
+    absolute_candidates = [
+        candidate
+        for candidate in (
+            _to_float(metadata.gps_altitude_m),
+            _to_float(metadata.absolute_altitude_m),
+        )
+        if candidate is not None and math.isfinite(candidate)
+    ]
+    if not absolute_candidates:
+        return stored_altitude
+
+    matches_absolute = any(
+        abs(stored_altitude - absolute_altitude) <= _ALTITUDE_MATCH_TOLERANCE_M
+        for absolute_altitude in absolute_candidates
+    )
+    if not matches_absolute:
+        return stored_altitude
+
+    if abs(stored_altitude - relative_altitude) < _ALTITUDE_SIGNIFICANT_DELTA_M:
+        return stored_altitude
+
+    return relative_altitude
 
 
 def select_heading_from_metadata(metadata: ExtractedMetadata) -> OrientationSelection:
@@ -547,6 +635,9 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "date_time",
         "gps_latitude",
         "gps_longitude",
+        "gps_altitude_m",
+        "relative_altitude_m",
+        "absolute_altitude_m",
         "altitude_m",
         "flight_yaw_degree",
         "flight_pitch_degree",
@@ -586,10 +677,18 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         date_candidates[0] if date_candidates[0] is not None else date_candidates[1]
     )
 
-    for key in ("gps_latitude", "gps_longitude", "altitude_m"):
+    for key in ("gps_latitude", "gps_longitude", "gps_altitude_m", "relative_altitude_m", "absolute_altitude_m", "altitude_m"):
         fallback = _to_float(payload.get(key))
         if fallback is not None:
             normalized[key] = fallback
+
+    altitude_candidates = (
+        normalized.get("relative_altitude_m"),
+        normalized.get("gps_altitude_m"),
+        normalized.get("absolute_altitude_m"),
+        normalized.get("altitude_m"),
+    )
+    normalized["altitude_m"] = next((candidate for candidate in altitude_candidates if candidate is not None), None)
 
     return normalized
 
@@ -716,6 +815,9 @@ def extract_metadata(path: Path) -> ExtractedMetadata:
     gps_latitude = _to_float(normalized.get("gps_latitude"))
     gps_longitude = _to_float(normalized.get("gps_longitude"))
     altitude_m = _to_float(normalized.get("altitude_m"))
+    gps_altitude_m = _to_float(normalized.get("gps_altitude_m"))
+    relative_altitude_m = _to_float(normalized.get("relative_altitude_m"))
+    absolute_altitude_m = _to_float(normalized.get("absolute_altitude_m"))
     heading_deg = _to_float(normalized.get("heading_deg"))
     flight_yaw_degree = _to_float(normalized.get("flight_yaw_degree"))
     flight_pitch_degree = _to_float(normalized.get("flight_pitch_degree"))
@@ -756,6 +858,9 @@ def extract_metadata(path: Path) -> ExtractedMetadata:
         gps_latitude=gps_latitude,
         gps_longitude=gps_longitude,
         altitude_m=altitude_m,
+        gps_altitude_m=gps_altitude_m,
+        relative_altitude_m=relative_altitude_m,
+        absolute_altitude_m=absolute_altitude_m,
         heading_deg=heading_deg,
         flight_yaw_degree=flight_yaw_degree,
         flight_pitch_degree=flight_pitch_degree,

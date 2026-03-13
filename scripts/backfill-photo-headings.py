@@ -14,8 +14,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "apps" / "backend-a
 from app.config import get_settings  # noqa: E402
 from app.database import SessionLocal, run_migrations  # noqa: E402
 from app.models import Photo, PhotoAsset  # noqa: E402
-from app.services.metadata_utils import extract_metadata  # noqa: E402
-from sqlalchemy import or_, select
+from app.services.metadata_utils import extract_metadata, resolve_photo_altitude  # noqa: E402
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 def _log(message: str) -> None:
@@ -32,6 +32,7 @@ class Summary:
     missing_pitch: int = 0
     source_lookup_used: int = 0
     source_lookup_missing: int = 0
+    altitude_updated: int = 0
 
 
 def _choose_heading(photo_meta: Any) -> float | None:
@@ -147,7 +148,6 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
     stmt = (
         select(Photo)
         .join(PhotoAsset, PhotoAsset.photo_id == Photo.id)
-        .where(or_(Photo.heading_deg.is_(None), Photo.pitch_deg.is_(None)))
         .where(PhotoAsset.kind == "original")
     )
     if user_id is not None:
@@ -176,16 +176,16 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
             summary.parse_failed += 1
             continue
 
-        heading = _choose_heading(metadata)
-        pitch = _choose_pitch(metadata)
-        if heading is None or pitch is None:
+        heading = _choose_heading(metadata) if photo.heading_deg is None else photo.heading_deg
+        pitch = _choose_pitch(metadata) if photo.pitch_deg is None else photo.pitch_deg
+        if (photo.heading_deg is None and heading is None) or (photo.pitch_deg is None and pitch is None):
             fallback_path = _resolve_source_fallback(photo, source_index)
             if fallback_path is not None:
                 try:
                     fallback_meta = extract_metadata(fallback_path)
-                    if heading is None:
+                    if photo.heading_deg is None and heading is None:
                         heading = _choose_heading(fallback_meta)
-                    if pitch is None:
+                    if photo.pitch_deg is None and pitch is None:
                         pitch = _choose_pitch(fallback_meta)
                     summary.source_lookup_used += 1
                 except Exception as exc:  # noqa: BLE001
@@ -194,17 +194,31 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
             else:
                 summary.source_lookup_missing += 1
 
-        if heading is None:
+        if photo.heading_deg is None and heading is None:
             summary.missing_metadata += 1
-            continue
-        if pitch is None:
+        if photo.pitch_deg is None and pitch is None:
             summary.missing_pitch += 1
 
-        photo.heading_deg = heading
-        photo.pitch_deg = pitch
-        summary.updated += 1
-        if force and not dry_run:
-            db.add(photo)
+        changed = False
+
+        corrected_altitude = resolve_photo_altitude(photo.altitude_m, metadata)
+        if corrected_altitude is not None and corrected_altitude != photo.altitude_m:
+            photo.altitude_m = corrected_altitude
+            summary.altitude_updated += 1
+            changed = True
+
+        if photo.heading_deg is None and heading is not None and heading != photo.heading_deg:
+            photo.heading_deg = heading
+            changed = True
+
+        if photo.pitch_deg is None and pitch is not None and pitch != photo.pitch_deg:
+            photo.pitch_deg = pitch
+            changed = True
+
+        if changed:
+            summary.updated += 1
+            if force and not dry_run:
+                db.add(photo)
 
     if force and not dry_run:
         db.commit()
@@ -217,7 +231,7 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Backfyll heading_deg i Photo basert på originalfiler."
+        description="Backfyll manglende heading/pitch og reparer relativ høyde i Photo basert på originalfiler."
     )
     parser.add_argument("--dry-run", action="store_true", help="Vis bare hvilke bilder som blir oppdatert.")
     parser.add_argument("--force", action="store_true", help="Gjennomfør lagring til database (kreves med --dry-run false).")
@@ -247,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
     _log(f"Manglende original: {summary.missing_asset}")
     _log(f"Manglende metadata: {summary.missing_metadata}")
     _log(f"Mangler pitch: {summary.missing_pitch}")
+    _log(f"Relativ høyde oppdatert: {summary.altitude_updated}")
     _log(f"Fallback kilde brukt: {summary.source_lookup_used}")
     _log(f"Fallback kilde ikke funnet: {summary.source_lookup_missing}")
     _log(f"Parse-feil: {summary.parse_failed}")

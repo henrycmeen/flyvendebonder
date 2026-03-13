@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.services.metadata_utils import ExtractedMetadata, select_heading_from_metadata, select_pitch_from_metadata
+from app.services.metadata_utils import (
+    ExtractedMetadata,
+    resolve_photo_altitude,
+    select_altitude_from_metadata,
+    select_heading_from_metadata,
+    select_pitch_from_metadata,
+)
 
 
 def _base_metadata(**overrides) -> ExtractedMetadata:
@@ -12,6 +18,9 @@ def _base_metadata(**overrides) -> ExtractedMetadata:
         "gps_latitude": 59.0,
         "gps_longitude": 10.0,
         "altitude_m": 100.0,
+        "gps_altitude_m": None,
+        "relative_altitude_m": None,
+        "absolute_altitude_m": None,
         "heading_deg": None,
         "flight_yaw_degree": None,
         "flight_pitch_degree": None,
@@ -75,3 +84,40 @@ def test_pitch_sign_fold_is_marked_as_uncertain():
 
     assert selection.value == 30.0
     assert "qc:pitch_sign_uncertain" in selection.qc_tags
+
+
+def test_altitude_prefers_relative_altitude_when_available():
+    metadata = _base_metadata(
+        altitude_m=58.2,
+        gps_altitude_m=286.0,
+        absolute_altitude_m=285.9,
+        relative_altitude_m=58.2,
+    )
+
+    selection = select_altitude_from_metadata(metadata)
+
+    assert selection.value == 58.2
+    assert selection.source == "relative"
+    assert selection.source_detail == "relative_altitude"
+
+
+def test_resolve_photo_altitude_switches_legacy_absolute_to_relative():
+    metadata = _base_metadata(
+        altitude_m=58.2,
+        gps_altitude_m=286.035,
+        absolute_altitude_m=286.1,
+        relative_altitude_m=58.2,
+    )
+
+    assert resolve_photo_altitude(286.0, metadata) == 58.2
+
+
+def test_resolve_photo_altitude_keeps_manual_override():
+    metadata = _base_metadata(
+        altitude_m=58.2,
+        gps_altitude_m=286.035,
+        absolute_altitude_m=286.1,
+        relative_altitude_m=58.2,
+    )
+
+    assert resolve_photo_altitude(84.0, metadata) == 84.0

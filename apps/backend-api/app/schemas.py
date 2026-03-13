@@ -323,3 +323,12 @@ class PhotoAnalysisRefreshResponse(BaseModel):
     requested: int
     processed: int
     failed: int
+
+
+class PhotoReprocessResponse(BaseModel):
+    requested: int
+    metadata_updated: int
+    analysis_processed: int
+    analysis_failed: int
+    missing_original: int
+    parse_failed: int

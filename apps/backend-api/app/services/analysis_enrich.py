@@ -16,6 +16,7 @@ from .geometry_utils import GeometryResult, choose_geometry
 from .metadata_utils import (
     ExtractedMetadata,
     extract_metadata,
+    resolve_photo_altitude,
     select_heading_from_metadata,
     select_pitch_from_metadata,
 )
@@ -90,6 +91,9 @@ def _build_fallback_metadata(photo: Photo) -> ExtractedMetadata:
         gps_latitude=photo.lat,
         gps_longitude=photo.lng,
         altitude_m=photo.altitude_m,
+        gps_altitude_m=photo.altitude_m,
+        relative_altitude_m=photo.altitude_m,
+        absolute_altitude_m=photo.altitude_m,
         heading_deg=photo.heading_deg,
         flight_yaw_degree=None,
         flight_pitch_degree=None,
@@ -570,7 +574,7 @@ def _derive_geometry(
     # UI viser view-punkt basert på photo-feltene. Vi prioriterer de samme feltene i analyse for konsistens.
     pitch = photo.pitch_deg if photo.pitch_deg is not None else select_pitch_from_metadata(metadata).value
     yaw = photo.heading_deg if photo.heading_deg is not None else select_heading_from_metadata(metadata).value
-    altitude = photo.altitude_m if photo.altitude_m is not None else metadata.altitude_m
+    altitude = resolve_photo_altitude(photo.altitude_m, metadata)
 
     if pitch is None or yaw is None or altitude is None:
         return GeometryResult(lat=photo.lat, lng=photo.lng, geometry_method="point", confidence=0.6)
@@ -644,6 +648,10 @@ def enrich_photo(
                 "Originalfil mangler under analyse, bruker fallback metadata",
                 extra={"photo_id": photo.id, "path": str(original_path)},
             )
+
+    corrected_altitude = resolve_photo_altitude(photo.altitude_m, metadata)
+    if corrected_altitude is not None and corrected_altitude != photo.altitude_m:
+        photo.altitude_m = corrected_altitude
 
     geometry = _derive_geometry(photo=photo, metadata=metadata)
 

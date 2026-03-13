@@ -260,6 +260,16 @@ def test_analysis_actions_and_refresh(client):
     assert refresh_payload["processed"] >= 1
     assert refresh_payload["failed"] >= 0
 
+    reprocess = client.post(
+        "/api/v1/maintenance/reprocess-photos",
+        params={"refresh_analysis": True, "force_analysis": True},
+    )
+    assert reprocess.status_code == 200
+    reprocess_payload = reprocess.json()
+    assert reprocess_payload["requested"] >= 1
+    assert reprocess_payload["analysis_processed"] >= 1
+    assert reprocess_payload["analysis_failed"] >= 0
+
 
 def test_photo_metadata_patch(client):
     photos_response = client.get(
