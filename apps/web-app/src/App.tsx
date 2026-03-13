@@ -462,6 +462,8 @@ export default function App() {
   const [flightMissionParameters, setFlightMissionParameters] = useState<FlightMissionParameters>(
     DEFAULT_FLIGHT_MISSION_PARAMETERS,
   );
+  const [activeFlightMissionId, setActiveFlightMissionId] = useState<number | null>(null);
+  const [showMissionOverlay, setShowMissionOverlay] = useState(true);
   const [isFlightMissionCreateBusy, setIsFlightMissionCreateBusy] = useState(false);
   const [flightMissionExportBusyId, setFlightMissionExportBusyId] = useState<number | null>(null);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
@@ -609,6 +611,19 @@ export default function App() {
     () => (currentProperty ? currentProperty.label?.trim() || formatPropertyReference(currentProperty) : null),
     [currentProperty],
   );
+  const activeFlightMission = useMemo(
+    () => flightMissions.find((item) => item.id === activeFlightMissionId) ?? null,
+    [activeFlightMissionId, flightMissions],
+  );
+  const missionOverlayStatus = useMemo(() => {
+    if (flightMissions.length === 0) {
+      return "Ingen planlagte oppdrag ennå.";
+    }
+    if (!activeFlightMission) {
+      return "Velg et oppdrag i venstre panel for å vise ruten i kartet.";
+    }
+    return `${activeFlightMission.name} · ${activeFlightMission.fields.length} jord${activeFlightMission.fields.length === 1 ? "" : "er"} i oppdraget.`;
+  }, [activeFlightMission, flightMissions.length]);
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
@@ -1613,6 +1628,8 @@ export default function App() {
     setFlightMissionName("");
     setFlightMissionParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
     setSelectedMissionFieldIds([]);
+    setActiveFlightMissionId(null);
+    setShowMissionOverlay(true);
     setActiveFieldDraft((current) => {
       if (!current) return null;
       return current.property_id === currentProperty?.id ? current : null;
@@ -1629,6 +1646,16 @@ export default function App() {
       return fieldPlots.map((item) => item.id);
     });
   }, [fieldPlots]);
+
+  useEffect(() => {
+    setActiveFlightMissionId((current) => {
+      if (flightMissions.length === 0) return null;
+      if (current != null && flightMissions.some((item) => item.id === current)) {
+        return current;
+      }
+      return flightMissions[0]?.id ?? null;
+    });
+  }, [flightMissions]);
 
   useEffect(() => {
     if (adminSession?.authenticated) {
@@ -2501,6 +2528,8 @@ export default function App() {
       setFlightMissions((previous) => sortFlightMissions([data, ...previous.filter((item) => item.id !== data.id)]));
       setFlightMissionName(data.name);
       setSelectedMissionFieldIds(data.field_ids);
+      setActiveFlightMissionId(data.id);
+      setShowMissionOverlay(true);
       setFlightMissionStatus(
         data.warnings.length > 0
           ? `Oppdrag ${data.name} opprettet med ${data.warnings.length} varsel${data.warnings.length === 1 ? "" : "er"}.`
@@ -2587,6 +2616,14 @@ export default function App() {
     },
     [addLog, ensureAdminAccess, flightMissions, trackRequest],
   );
+
+  const handleSelectFlightMission = useCallback((missionId: number) => {
+    setActiveFlightMissionId(missionId);
+    setShowMissionOverlay(true);
+    const mission = flightMissions.find((item) => item.id === missionId);
+    if (!mission) return;
+    setFlightMissionStatus(`Viser ${mission.name} i kartet.`);
+  }, [flightMissions]);
 
   const handleAdminLogin = useCallback(async (code: string) => {
     setIsAdminSessionBusy(true);
@@ -3011,6 +3048,24 @@ export default function App() {
     setPropertyStatus("Eiendomslag lastes ...");
     addLog("info", "Eiendomslag skrudd på av bruker");
   }, [addLog]);
+
+  const handleToggleMissionLayer = useCallback((next: boolean) => {
+    setShowMissionOverlay(next);
+    if (!next) {
+      setFlightMissionStatus("Flyrute-overlegg er skrudd av.");
+      addLog("info", "Flyrute-overlegg skrudd av av bruker");
+      return;
+    }
+
+    if (activeFlightMission) {
+      setFlightMissionStatus(`Viser ${activeFlightMission.name} i kartet.`);
+    } else {
+      setFlightMissionStatus("Velg et oppdrag i venstre panel for å vise ruten i kartet.");
+    }
+    addLog("info", "Flyrute-overlegg skrudd på av bruker", null, {
+      missionId: activeFlightMission?.id ?? null,
+    });
+  }, [activeFlightMission, addLog]);
 
   useEffect(() => {
     if (activeView === "album") return;
@@ -3782,6 +3837,7 @@ export default function App() {
                   missionParameters={flightMissionParameters}
                   selectedMissionFieldIds={selectedMissionFieldIds}
                   missions={flightMissions}
+                  activeMissionId={activeFlightMissionId}
                   saveBusy={isFieldSaveBusy}
                   deleteBusy={isFieldDeleteBusy}
                   missionCreateBusy={isFlightMissionCreateBusy}
@@ -3797,6 +3853,7 @@ export default function App() {
                   onChangeMissionParameter={handleChangeFlightMissionParameter}
                   onToggleMissionField={handleToggleMissionField}
                   onCreateMission={handleCreateFlightMission}
+                  onSelectMission={handleSelectFlightMission}
                   onExportMission={handleExportFlightMission}
                 />
               ) : null}
@@ -3810,6 +3867,9 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   soilStatus={soilStatus}
                   onToggleSoilLayer={handleToggleSoilLayer}
+                  showMissionLayer={showMissionOverlay}
+                  missionStatus={missionOverlayStatus}
+                  onToggleMissionLayer={handleToggleMissionLayer}
                 />
               ) : null}
 
@@ -3832,6 +3892,9 @@ export default function App() {
                   soilRefreshToken={soilRefreshToken}
                   fieldPlots={fieldPlots}
                   activeFieldDraft={activeFieldDraft}
+                  flightMissions={flightMissions}
+                  activeFlightMissionId={activeFlightMissionId}
+                  showMissionOverlay={showMissionOverlay}
                   fieldCreateMode={fieldCreateMode}
                   onRequestFieldCreateAt={handleCreateFieldDraftAtPoint}
                   onSelectField={handleSelectFieldPlot}

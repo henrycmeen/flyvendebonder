@@ -16,6 +16,7 @@ interface FieldEditorPanelProps {
   missionParameters: FlightMissionParameters;
   selectedMissionFieldIds: number[];
   missions: FlightMission[];
+  activeMissionId: number | null;
   saveBusy: boolean;
   deleteBusy: boolean;
   missionCreateBusy: boolean;
@@ -31,6 +32,7 @@ interface FieldEditorPanelProps {
   onChangeMissionParameter: (key: keyof FlightMissionParameters, value: string) => void;
   onToggleMissionField: (fieldId: number) => void;
   onCreateMission: () => void;
+  onSelectMission: (missionId: number) => void;
   onExportMission: (missionId: number) => void;
 }
 
@@ -76,6 +78,7 @@ export function FieldEditorPanel({
   missionParameters,
   selectedMissionFieldIds,
   missions,
+  activeMissionId,
   saveBusy,
   deleteBusy,
   missionCreateBusy,
@@ -91,6 +94,7 @@ export function FieldEditorPanel({
   onChangeMissionParameter,
   onToggleMissionField,
   onCreateMission,
+  onSelectMission,
   onExportMission,
 }: FieldEditorPanelProps) {
   const hasActiveDraft = activeFieldDraft !== null;
@@ -372,25 +376,40 @@ export function FieldEditorPanel({
               {missions.slice(0, 4).map((mission) => (
                 <div
                   key={mission.id}
-                  className="rounded-2xl border border-fb-border-subtle bg-fb-surface-page px-3 py-2.5"
+                  className={cn(
+                    "rounded-2xl border px-3 py-2.5",
+                    activeMissionId === mission.id
+                      ? "border-fb-border-strong bg-[color:color-mix(in_srgb,var(--fb-season-solid)_7%,white)]"
+                      : "border-fb-border-subtle bg-fb-surface-page",
+                  )}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-fb-text-primary">{mission.name}</p>
                       <p className="mt-0.5 text-xs text-fb-text-secondary">{missionSummary(mission)}</p>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onExportMission(mission.id)}
-                      loading={missionExportBusyId === mission.id}
-                      loadingLabel="Eksporterer"
-                      disabled={!canEdit}
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Eksporter
-                    </Button>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={activeMissionId === mission.id ? "default" : "outline"}
+                        onClick={() => onSelectMission(mission.id)}
+                      >
+                        {activeMissionId === mission.id ? "Vises i kart" : "Vis i kart"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onExportMission(mission.id)}
+                        loading={missionExportBusyId === mission.id}
+                        loadingLabel="Eksporterer"
+                        disabled={!canEdit}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Eksporter
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
