@@ -32,6 +32,7 @@ import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterPanel } from "@/components/filter-panel";
+import { MapLayerPanel } from "@/components/map-layer-panel";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { PhotoMapInset } from "@/components/photo-map-inset";
@@ -2277,6 +2278,33 @@ export default function App() {
     };
   }, []);
 
+  const handleToggleSoilLayer = useCallback((next: boolean) => {
+    soilRetryCountRef.current = 0;
+    setShowSoilLayer(next);
+    if (!next) {
+      setSoilStatus("Jordsmonnlag er skrudd av.");
+      addLog("info", "Jordsmonnlag skrudd av av bruker");
+      return;
+    }
+
+    setSoilStatus("Jordsmonnlag lastes ...");
+    addLog("info", "Jordsmonnlag skrudd på av bruker");
+  }, [addLog]);
+
+  const handleTogglePropertyLayer = useCallback((next: boolean) => {
+    setShowPropertyLayer(next);
+    if (!next) {
+      setPropertyJobs([]);
+      setPropertyStatus("Eiendomslag er skrudd av.");
+      addLog("info", "Eiendomslag skrudd av av bruker");
+      return;
+    }
+
+    tileRetryJobRef.current = null;
+    setPropertyStatus("Eiendomslag lastes ...");
+    addLog("info", "Eiendomslag skrudd på av bruker");
+  }, [addLog]);
+
   useEffect(() => {
     if (activeView === "album") return;
     setAlbumScrollSpin(false);
@@ -2956,17 +2984,7 @@ export default function App() {
             backendLogsLoading={isBackendLogsLoading}
             onClearBackendLogs={() => setBackendLogs([])}
             onFetchBackendLogs={loadBackendLogs}
-            onToggleSoilLayer={(next) => {
-              soilRetryCountRef.current = 0;
-              setShowSoilLayer(next);
-              if (!next) {
-                setSoilStatus("Jordsmonnlag er skrudd av.");
-                addLog("info", "Jordsmonnlag skrudd av av bruker");
-              } else {
-                setSoilStatus("Jordsmonnlag lastes ...");
-                addLog("info", "Jordsmonnlag skrudd på av bruker");
-              }
-            }}
+            onToggleSoilLayer={handleToggleSoilLayer}
             onChangeBaseMapStyle={(style) => {
               baseMapTileErrorRef.current = null;
               setBaseMapStyle(style);
@@ -2998,17 +3016,7 @@ export default function App() {
                       : "Kart åpnet",
               );
             }}
-            onTogglePropertyLayer={(next) => {
-              setShowPropertyLayer(next);
-              if (!next) {
-                setPropertyJobs([]);
-                setPropertyStatus("Eiendomslag er skrudd av.");
-                addLog("info", "Eiendomslag skrudd av av bruker");
-              } else {
-                tileRetryJobRef.current = null;
-                addLog("info", "Eiendomslag skrudd på av bruker");
-              }
-            }}
+            onTogglePropertyLayer={handleTogglePropertyLayer}
             onSaveProfile={handleSaveProfile}
             onAdminLogin={handleAdminLogin}
             onAdminLogout={handleAdminLogout}
@@ -3051,6 +3059,18 @@ export default function App() {
                     setMapResetToken((value) => value + 1);
                     addLog("info", "Sesongfilter endret", null, { season });
                   }}
+                />
+              ) : null}
+
+              {activeView === "map" && !photosLoadFailed ? (
+                <MapLayerPanel
+                  propertyCount={activeProperties.length}
+                  showPropertyLayer={showPropertyLayer}
+                  propertyStatus={propertyStatus}
+                  onTogglePropertyLayer={handleTogglePropertyLayer}
+                  showSoilLayer={showSoilLayer}
+                  soilStatus={soilStatus}
+                  onToggleSoilLayer={handleToggleSoilLayer}
                 />
               ) : null}
 
