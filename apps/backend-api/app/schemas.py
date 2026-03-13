@@ -152,6 +152,48 @@ class GeoJSONPolygon(BaseModel):
     coordinates: list[list[list[float]]]
 
 
+FieldPlotStatus = Literal["draft", "confirmed"]
+FieldPlotSource = Literal["manual", "suggested", "imported"]
+
+
+class FieldPlotCreate(BaseModel):
+    name: str | None = None
+    source: FieldPlotSource = "manual"
+    status: FieldPlotStatus = "draft"
+    geometry: GeoJSONPolygon
+
+
+class FieldPlotPatch(BaseModel):
+    name: str | None = None
+    source: FieldPlotSource | None = None
+    status: FieldPlotStatus | None = None
+    geometry: GeoJSONPolygon | None = None
+
+
+class FieldPlotOut(BaseModel):
+    id: int
+    property_id: int
+    name: str | None = None
+    source: FieldPlotSource
+    status: FieldPlotStatus
+    geometry: GeoJSONPolygon
+    area_m2: float | None = None
+    area_ha: float | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FieldPlotListResponse(BaseModel):
+    property_id: int
+    count: int
+    fields: list[FieldPlotOut]
+
+
+class FieldPlotDeleteResponse(BaseModel):
+    status: Literal["deleted"]
+    field_id: int
+
+
 class SamplingStrategy(BaseModel):
     type: str
     radius_m: float

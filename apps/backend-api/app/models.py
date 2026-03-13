@@ -64,6 +64,7 @@ class Property(TimestampMixin, Base):
     user: Mapped[User] = relationship(back_populates="properties")
     photos: Mapped[list[Photo]] = relationship(back_populates="property")
     job_cache: Mapped[list[GardskartJobCache]] = relationship(back_populates="property")
+    field_plots: Mapped[list[FieldPlot]] = relationship(back_populates="property", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("user_id", "komm", "gnr", "bnr", "fnr", name="uq_property_owner"),
@@ -106,6 +107,21 @@ class Photo(TimestampMixin, Base):
         Index("idx_photo_secondary_dedupe", "source_filename", "captured_at", "lat", "lng"),
         Index("idx_photos_user_captured_at_id", "user_id", "captured_at", "id"),
     )
+
+
+class FieldPlot(TimestampMixin, Base):
+    __tablename__ = "field_plots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft")
+    geometry_json: Mapped[str] = mapped_column(Text, nullable=False)
+    area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    property: Mapped[Property] = relationship(back_populates="field_plots")
 
 
 class PhotoAsset(Base):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -7,7 +8,7 @@ import time
 from datetime import date as date_type, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
@@ -16,12 +17,17 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..logging_utils import read_recent_logs, request_id_ctx
-from ..models import IngestRun, Photo, PhotoAnalysis, Property, User
+from ..models import FieldPlot, IngestRun, Photo, PhotoAnalysis, Property, User
 from ..schemas import (
     AdminLoginRequest,
     AdminSessionStatusResponse,
     BackendLogLine,
     BackendLogsResponse,
+    FieldPlotCreate,
+    FieldPlotDeleteResponse,
+    FieldPlotListResponse,
+    FieldPlotOut,
+    FieldPlotPatch,
     GardskartJobResponse,
     PhotoAnalysisActionResponse,
     PhotoMetadataActionResponse,
@@ -49,6 +55,7 @@ from ..services.admin_access import (
 from ..services.gardskart import get_job_id
 from ..services.imports import run_photo_ingest
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
+from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
 from ..services.tag_utils import (
     extract_meta_float,
@@ -226,6 +233,50 @@ def _validate_numeric_override(
     return float(value)
 
 
+def _require_current_property(db: Session, user_id: int) -> Property:
+    property_obj = _current_property(db, user_id)
+    if property_obj is None:
+        raise HTTPException(status_code=400, detail="Ingen aktiv eiendom er valgt")
+    return property_obj
+
+
+def _normalize_field_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
+    area_m2 = round(item.area_m2, 2) if item.area_m2 is not None else None
+    return FieldPlotOut(
+        id=item.id,
+        property_id=item.property_id,
+        name=item.name,
+        source=item.source,
+        status=item.status,
+        geometry=json.loads(item.geometry_json),
+        area_m2=area_m2,
+        area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _field_geometry_payload(geometry) -> tuple[str, float]:
+    try:
+        normalized_coordinates = normalize_polygon_coordinates(geometry.coordinates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    area_m2 = polygon_area_m2(normalized_coordinates)
+    if area_m2 <= 1.0:
+        raise HTTPException(status_code=400, detail="Polygonet er for lite til å lagres som jordutkast")
+    return (
+        json.dumps({"type": "Polygon", "coordinates": normalized_coordinates}, ensure_ascii=False),
+        area_m2,
+    )
+
+
 @router.get("/health")
 def health() -> dict:
     return {
@@ -378,6 +429,107 @@ def get_timeline_dates(
 
     dates = timeline_dates(db, user_id=user_id)
     return TimelineResponse(user_id=user_id, dates=[TimelineDateEntry(**item) for item in dates])
+
+
+@router.get("/fields", response_model=FieldPlotListResponse)
+def list_field_plots(db: Session = Depends(get_db)) -> FieldPlotListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    field_plots = (
+        db.execute(
+            select(FieldPlot)
+            .where(FieldPlot.property_id == property_obj.id)
+            .order_by(FieldPlot.updated_at.desc(), FieldPlot.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return FieldPlotListResponse(
+        property_id=property_obj.id,
+        count=len(field_plots),
+        fields=[_field_plot_out(item) for item in field_plots],
+    )
+
+
+@router.post("/fields", response_model=FieldPlotOut, status_code=status.HTTP_201_CREATED)
+def create_field_plot(
+    payload: FieldPlotCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FieldPlotOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
+
+    item = FieldPlot(
+        property_id=property_obj.id,
+        name=_normalize_field_name(payload.name),
+        source=payload.source,
+        status=payload.status,
+        geometry_json=geometry_json,
+        area_m2=area_m2,
+    )
+    db.add(item)
+    db.flush()
+
+    if item.name is None:
+        item.name = f"Jordutkast {item.id}"
+
+    db.commit()
+    db.refresh(item)
+    return _field_plot_out(item)
+
+
+@router.patch("/fields/{field_id}", response_model=FieldPlotOut)
+def patch_field_plot(
+    field_id: int,
+    payload: FieldPlotPatch = Body(default_factory=FieldPlotPatch),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FieldPlotOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+
+    if "name" in payload.model_fields_set:
+        item.name = _normalize_field_name(payload.name)
+    if payload.source is not None:
+        item.source = payload.source
+    if payload.status is not None:
+        item.status = payload.status
+    if payload.geometry is not None:
+        item.geometry_json, item.area_m2 = _field_geometry_payload(payload.geometry)
+
+    db.commit()
+    db.refresh(item)
+    return _field_plot_out(item)
+
+
+@router.delete("/fields/{field_id}", response_model=FieldPlotDeleteResponse)
+def delete_field_plot(
+    field_id: int,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FieldPlotDeleteResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+
+    db.delete(item)
+    db.commit()
+    return FieldPlotDeleteResponse(status="deleted", field_id=field_id)
 
 
 @router.get("/photos", response_model=PhotoResponse)
