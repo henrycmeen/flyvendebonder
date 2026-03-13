@@ -175,6 +175,98 @@ def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
     assert payload["job_id"] == f"job-{extra_property['id']}"
 
 
+def test_current_property_field_candidates_endpoint(client, monkeypatch):
+    import app.api.v1 as v1
+
+    async def fake_list_field_candidates_for_property(property_obj):
+        return [
+            {
+                "source": "geonorge",
+                "name": f"{property_obj.gnr}/{property_obj.bnr} · hovedteig",
+                "local_id": 42465981,
+                "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
+                "object_type": "Teig",
+                "accuracy_class": "Gult",
+                "is_main_area": True,
+                "distance_m": None,
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[9.66, 59.17], [9.661, 59.17], [9.661, 59.171], [9.66, 59.17]]],
+                },
+                "area_m2": 1000.0,
+                "area_ha": 0.1,
+                "source_updated_at": datetime.utcnow(),
+            }
+        ]
+
+    monkeypatch.setattr(v1, "list_field_candidates_for_property", fake_list_field_candidates_for_property)
+
+    response = client.get("/api/v1/properties/current/field-candidates")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["fields"][0]["source"] == "geonorge"
+    assert payload["fields"][0]["name"].endswith("hovedteig")
+
+
+def test_property_specific_field_candidates_by_point_endpoint(client, monkeypatch):
+    import app.api.v1 as v1
+
+    created = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Leiejord øst",
+                    "komm": "4003",
+                    "gnr": 73,
+                    "bnr": 9,
+                    "fnr": 0,
+                }
+            ]
+        },
+    )
+    assert created.status_code == 200
+    extra_property = created.json()["additional_properties"][0]
+
+    async def fake_lookup_field_candidates_by_point(property_obj, *, lat, lng, radius_m):
+        assert property_obj.id == extra_property["id"]
+        assert lat == 59.12
+        assert lng == 9.87
+        assert radius_m == 42
+        return [
+            {
+                "source": "geonorge",
+                "name": "73/9 · teig 1",
+                "local_id": 1,
+                "matrikkelnummer": "73/9",
+                "object_type": "Teig",
+                "accuracy_class": "Gult",
+                "is_main_area": False,
+                "distance_m": 3,
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[9.66, 59.17], [9.661, 59.17], [9.661, 59.171], [9.66, 59.17]]],
+                },
+                "area_m2": 1000.0,
+                "area_ha": 0.1,
+                "source_updated_at": datetime.utcnow(),
+            }
+        ]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point", fake_lookup_field_candidates_by_point)
+
+    response = client.get(
+        f"/api/v1/properties/{extra_property['id']}/field-candidates/by-point",
+        params={"lat": 59.12, "lng": 9.87, "radius_m": 42},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["property_id"] == extra_property["id"]
+    assert payload["count"] == 1
+    assert payload["fields"][0]["distance_m"] == 3
+
+
 def test_timeline_dates_and_photos_smoke(client):
     timeline_response = client.get("/api/v1/timeline/dates")
     assert timeline_response.status_code == 200
