@@ -696,7 +696,12 @@ def patch_flight_mission(
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
     field_ids = payload.field_ids if payload.field_ids is not None else json.loads(item.field_ids_json)
-    parameters = payload.parameters.model_dump() if payload.parameters is not None else json.loads(item.parameters_json)
+    parameters = json.loads(item.parameters_json)
+    if payload.parameters is not None:
+        parameters = {
+            **parameters,
+            **payload.parameters.model_dump(exclude_unset=True),
+        }
     mission_payload = build_flight_mission_payload(
         property_obj=property_obj,
         fields=_resolve_field_plots_for_mission(db, property_obj, field_ids),

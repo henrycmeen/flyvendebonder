@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import zipfile
 
+from app.services.flight_missions import _segment_points
+
 
 def _sample_polygon(offset: float = 0.0) -> dict:
     return {
@@ -113,6 +115,47 @@ def test_flight_mission_returns_warning_for_outside_recommended_altitude(client)
     assert response.status_code == 201
     warnings = response.json()["warnings"]
     assert any(item["code"] == "altitude_outside_recommended" for item in warnings)
+
+
+def test_flight_mission_patch_preserves_existing_parameters_when_partial(client):
+    field = _create_field(client, name="Vestjordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Parametertest",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 21,
+                "waypoint_spacing_m": 13,
+                "route_angle_deg": 37,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    patch_response = client.patch(
+        f"/api/v1/flight-missions/{mission['id']}",
+        json={
+            "parameters": {
+                "altitude_m": 62,
+            },
+        },
+    )
+    assert patch_response.status_code == 200
+    patched = patch_response.json()
+    assert patched["parameters"]["altitude_m"] == 62
+    assert patched["parameters"]["line_spacing_m"] == 21
+    assert patched["parameters"]["waypoint_spacing_m"] == 13
+    assert patched["parameters"]["route_angle_deg"] == 37
+
+
+def test_segment_points_respects_waypoint_spacing_ceiling():
+    points = _segment_points(0.0, 30.0, 0.0, 18.0)
+
+    assert points == [[0.0, 0.0], [15.0, 0.0], [30.0, 0.0]]
 
 
 def test_flight_mission_rejects_unknown_field_ids(client):

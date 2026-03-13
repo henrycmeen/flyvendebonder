@@ -365,9 +365,9 @@ def _segment_points(start_x: float, end_x: float, scan_y: float, waypoint_spacin
         points.append([end_x, scan_y])
         return points
 
-    steps = max(1, int(distance // waypoint_spacing_m))
-    for step in range(1, steps):
-        fraction = step / steps
+    segment_count = max(1, int(math.ceil(distance / waypoint_spacing_m)))
+    for step in range(1, segment_count):
+        fraction = step / segment_count
         points.append([start_x + ((end_x - start_x) * fraction), scan_y])
     points.append([end_x, scan_y])
     return points
