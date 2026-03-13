@@ -23,6 +23,7 @@ from ..schemas import (
     AdminSessionStatusResponse,
     BackendLogLine,
     BackendLogsResponse,
+    FieldCandidateListResponse,
     FieldPlotCreate,
     FieldPlotDeleteResponse,
     FieldPlotListResponse,
@@ -54,6 +55,10 @@ from ..services.admin_access import (
     verify_admin_access_code,
 )
 from ..services.gardskart import get_job_id
+from ..services.geonorge_teiger import (
+    list_field_candidates_for_property,
+    lookup_field_candidates_by_point,
+)
 from ..services.imports import run_photo_ingest
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
@@ -277,6 +282,10 @@ def _field_geometry_payload(geometry) -> tuple[str, float]:
         json.dumps({"type": "Polygon", "coordinates": normalized_coordinates}, ensure_ascii=False),
         area_m2,
     )
+
+
+def _field_candidate_response(property_id: int, fields: list[dict]) -> FieldCandidateListResponse:
+    return FieldCandidateListResponse(property_id=property_id, count=len(fields), fields=fields)
 
 
 @router.get("/health")
@@ -797,6 +806,49 @@ async def get_current_gardskart_job(
     return await _build_gardskart_job_response(db, property_obj, force_refresh=force_refresh)
 
 
+@router.get("/properties/current/field-candidates", response_model=FieldCandidateListResponse)
+async def get_current_property_field_candidates(db: Session = Depends(get_db)) -> FieldCandidateListResponse:
+    user = _current_user(db)
+    property_obj = _current_property(db, user.id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
+
+    try:
+        fields = await list_field_candidates_for_property(property_obj)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge teigoppslag feilet",
+            extra={"property_id": property_obj.id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente teiger fra Geonorge: {exc}") from exc
+
+    return _field_candidate_response(property_obj.id, fields)
+
+
+@router.get("/properties/current/field-candidates/by-point", response_model=FieldCandidateListResponse)
+async def get_current_property_field_candidates_by_point(
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+    radius_m: int = Query(default=settings.geonorge_point_lookup_radius_m, ge=1, le=3000),
+    db: Session = Depends(get_db),
+) -> FieldCandidateListResponse:
+    user = _current_user(db)
+    property_obj = _current_property(db, user.id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
+
+    try:
+        fields = await lookup_field_candidates_by_point(property_obj, lat=lat, lng=lng, radius_m=radius_m)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge punktoppslag feilet",
+            extra={"property_id": property_obj.id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente teiger fra Geonorge: {exc}") from exc
+
+    return _field_candidate_response(property_obj.id, fields)
+
+
 @router.get("/properties/{property_id}/gardskart-job", response_model=GardskartJobResponse)
 async def get_property_gardskart_job(
     property_id: int,
@@ -809,6 +861,53 @@ async def get_property_gardskart_job(
         raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
 
     return await _build_gardskart_job_response(db, property_obj, force_refresh=force_refresh)
+
+
+@router.get("/properties/{property_id}/field-candidates", response_model=FieldCandidateListResponse)
+async def get_property_field_candidates(
+    property_id: int,
+    db: Session = Depends(get_db),
+) -> FieldCandidateListResponse:
+    user = _current_user(db)
+    property_obj = _active_property_by_id(db, user.id, property_id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
+
+    try:
+        fields = await list_field_candidates_for_property(property_obj)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge teigoppslag feilet",
+            extra={"property_id": property_obj.id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente teiger fra Geonorge: {exc}") from exc
+
+    return _field_candidate_response(property_obj.id, fields)
+
+
+@router.get("/properties/{property_id}/field-candidates/by-point", response_model=FieldCandidateListResponse)
+async def get_property_field_candidates_by_point(
+    property_id: int,
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+    radius_m: int = Query(default=settings.geonorge_point_lookup_radius_m, ge=1, le=3000),
+    db: Session = Depends(get_db),
+) -> FieldCandidateListResponse:
+    user = _current_user(db)
+    property_obj = _active_property_by_id(db, user.id, property_id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
+
+    try:
+        fields = await lookup_field_candidates_by_point(property_obj, lat=lat, lng=lng, radius_m=radius_m)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge punktoppslag feilet",
+            extra={"property_id": property_obj.id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente teiger fra Geonorge: {exc}") from exc
+
+    return _field_candidate_response(property_obj.id, fields)
 
 
 @router.post("/imports/photos")

@@ -194,6 +194,30 @@ class FieldPlotDeleteResponse(BaseModel):
     field_id: int
 
 
+FieldCandidateSource = Literal["geonorge"]
+
+
+class FieldCandidateOut(BaseModel):
+    source: FieldCandidateSource
+    name: str
+    local_id: int | None = None
+    matrikkelnummer: str | None = None
+    object_type: str | None = None
+    accuracy_class: str | None = None
+    is_main_area: bool = False
+    distance_m: int | None = None
+    geometry: GeoJSONPolygon
+    area_m2: float | None = None
+    area_ha: float | None = None
+    source_updated_at: datetime | None = None
+
+
+class FieldCandidateListResponse(BaseModel):
+    property_id: int
+    count: int
+    fields: list[FieldCandidateOut]
+
+
 class SamplingStrategy(BaseModel):
     type: str
     radius_m: float

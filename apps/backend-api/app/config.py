@@ -36,6 +36,10 @@ class Settings(BaseSettings):
 
     nibio_job_ttl_hours: int = 24 * 6
     nibio_gpiareastat_url: str = "https://kart17.nibio.no/gardskart_ws_04/gpiareastat"
+    geonorge_eiendom_api_url: str = "https://ws.geonorge.no/eiendom/v1"
+    geonorge_http_timeout_seconds: float = 20.0
+    geonorge_point_lookup_radius_m: int = 75
+    geonorge_point_lookup_max_hits: int = 25
 
     default_user_name: str = "Roar Meen"
     default_municipality_code: str = "4003"
