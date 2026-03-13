@@ -1093,14 +1093,12 @@ body {
 }
 
 [data-kind="drone"] .fb-media-pin-fov--inactive {
-  opacity: 0.8;
-}
-
-[data-kind="drone"] .fb-media-pin-fov--inactive .fb-media-pin-fov-cone {
-  opacity: 0.58;
+  display: none;
+  opacity: 0;
 }
 
 [data-kind="drone"] .fb-media-pin-fov--active {
+  display: block;
   opacity: 1;
 }
 
@@ -1113,25 +1111,19 @@ body {
   height: 15px;
 }
 
-[data-kind="drone"] .fb-media-pin-fov {
-  display: block;
-}
-
 .fb-media-viewline {
-  stroke: rgba(255, 172, 64, 0.95);
+  stroke: rgba(240, 141, 79, 0.94);
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 6 10;
-  filter: drop-shadow(0 0 3px rgba(255, 168, 64, 0.45));
-  animation: fb-viewline-flow 900ms linear infinite;
+  filter: drop-shadow(0 0 2px rgba(240, 141, 79, 0.28));
 }
 
 .fb-media-view-target {
-  fill: #fff7ea !important;
+  fill: #fff9f1 !important;
   fill-opacity: 1 !important;
   stroke: #8a5120 !important;
-  stroke-width: 1.8 !important;
-  filter: drop-shadow(0 0 3px rgba(255, 170, 71, 0.35));
+  stroke-width: 2.1 !important;
+  filter: drop-shadow(0 0 2px rgba(240, 141, 79, 0.24));
 }
 
 @keyframes fb-laser-flow {
