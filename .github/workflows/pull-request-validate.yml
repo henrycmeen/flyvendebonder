@@ -1,0 +1,91 @@
+name: Validate pull requests
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flyvendebonder-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: apps/backend-api/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: apps/backend-api
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web-app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web-app
+        run: npm ci
+
+      - name: Run backend + frontend validation
+        run: ./scripts/validate-agent-worktree.sh
+
+  stack-smoke:
+    name: stack-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - validate
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: apps/backend-api/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: apps/backend-api
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web-app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web-app
+        run: npm ci
+
+      - name: Build frontend preview bundle
+        working-directory: apps/web-app
+        run: npm run build
+
+      - name: Run stack smoke
+        run: ./scripts/run-stack-smoke.sh

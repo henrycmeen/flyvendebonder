@@ -8,7 +8,8 @@
 - `apps/shared-assets/`: felles assets (logo/video)
 - `docs/`: innsikt, brand og driftsdokumentasjon
 - `docs/status/`: samlet status på siste funksjoner/arbeid
-- `GitHub Issues`: opprettet i repoet (`https://github.com/henrycmeen/flyvendebonder/issues`)
+- `Linear`: arbeidsflate for backlog, prioritering og status (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
+- `GitHub Issues`: repo-nære saker og speiling av utvalgte arbeidsoppgaver (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `archive/`: historiske versjoner av tidligere sideoppsett
 - `scripts/`: staging og deploy scripts
 
@@ -46,6 +47,19 @@ python3 -m pytest -q tests/test_smoke.py
 2. API + frontend-endepunkter:
 ```bash
 ./scripts/smoke-flyvendebonder.sh
+```
+
+## Standard validering for PR-er
+Kjør samme løype lokalt som GitHub Actions bruker:
+
+```bash
+./scripts/validate-agent-worktree.sh
+```
+
+Kjør full stack-smoke når endringen påvirker frontend, routing eller API-overflate:
+
+```bash
+./scripts/run-stack-smoke.sh
 ```
 
 ## Staging/deploy

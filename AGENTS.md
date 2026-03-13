@@ -11,19 +11,24 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `scripts/` – deploy-steg, import og vedlikehold
 - `docs/` – dokumentasjon, drift og planlegging
 - `docs/status/` – prosjektstatus og ukentlige notater
-- `GitHub Issues` – operativ backlog for alt videre arbeid (`https://github.com/henrycmeen/flyvendebonder/issues`)
+- `Linear` – primær arbeidsflate for backlog, prioritering og status (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
+- `GitHub Issues` – repo-nære issues og speiling av utvalgte oppgaver (`https://github.com/henrycmeen/flyvendebonder/issues`)
 
 ## Standard arbeidsflyt
-1. Legg ny arbeid i en GitHub-issue først (`https://github.com/henrycmeen/flyvendebonder/issues/new`)
-2. Løs med små, målbare steg
-3. Valider med lokal sjekk (frontend build / backend lint om tilgjengelig)
-4. Merge til `main` når endringen er klar for live
-5. Oppdater status i `docs/status/`
+1. Triager og prioriter arbeid i Linear først når saken trenger prosjektkontekst eller splitting.
+2. Knytt arbeid til GitHub-issue eller PR når endringen er repo-nær og reviewbar.
+3. Løs med små, målbare steg.
+4. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
+5. Merge til `main` når endringen er klar for live.
+6. Oppdater status i `docs/status/` ved større leveranser.
 
 ## Lokale kommandoer
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
 - `cd apps/web-app && npm run dev -- --host 127.0.0.1 --port 5173` – kun frontend
 - `cd apps/web-app && npm run build` – frontend build
+- `./scripts/validate-agent-worktree.sh` – standard backend + frontend-validering
+- `./scripts/run-stack-smoke.sh` – lokal stack-smoke for API + frontend
+- `./scripts/sync-github-labels.sh` – synk anbefalte GitHub-labels
 - `./scripts/prepare-webroot.sh` – bygg staging webroot
 - `./scripts/deploy-flyvendebonder.sh --dry-run` – valider deploy
 - `./scripts/deploy-flyvendebonder.sh` – faktisk deploy
