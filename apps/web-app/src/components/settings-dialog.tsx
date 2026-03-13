@@ -68,6 +68,8 @@ interface SettingsDialogProps {
   adminBusy: boolean;
   statusText: string;
   propertyStatus: string;
+  soilStatus: string;
+  showSoilLayer: boolean;
   showPropertyLayer: boolean;
   showOnlyManualQc: boolean;
   showOnlyLowConfidence: boolean;
@@ -81,6 +83,7 @@ interface SettingsDialogProps {
   backendLogsLoading: boolean;
   onFetchBackendLogs: () => void;
   onClearBackendLogs: () => void;
+  onToggleSoilLayer: (next: boolean) => void;
   onTogglePropertyLayer: (next: boolean) => void;
   onToggleManualQcFilter: (next: boolean) => void;
   onToggleLowConfidenceFilter: (next: boolean) => void;
@@ -198,6 +201,8 @@ export function SettingsDialog({
   adminBusy,
   statusText,
   propertyStatus,
+  soilStatus,
+  showSoilLayer,
   showPropertyLayer,
   showOnlyManualQc,
   showOnlyLowConfidence,
@@ -211,6 +216,7 @@ export function SettingsDialog({
   backendLogsLoading,
   onFetchBackendLogs,
   onClearBackendLogs,
+  onToggleSoilLayer,
   onTogglePropertyLayer,
   onToggleManualQcFilter,
   onToggleLowConfidenceFilter,
@@ -618,6 +624,14 @@ export function SettingsDialog({
               </div>
 
               <Divider />
+
+              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+                <div>
+                  <p className="text-sm text-fb-text-primary">Vis jordsmonn</p>
+                  <p className="text-xs text-fb-text-secondary">{soilStatus}</p>
+                </div>
+                <Switch id="show-soil-layer" checked={showSoilLayer} onCheckedChange={onToggleSoilLayer} />
+              </div>
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>

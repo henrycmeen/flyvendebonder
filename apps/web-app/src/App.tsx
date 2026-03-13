@@ -278,9 +278,11 @@ export default function App() {
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
   });
   const [showPropertyLayer, setShowPropertyLayer] = useState(true);
+  const [showSoilLayer, setShowSoilLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState("Laster eiendomslag ...");
+  const [soilStatus, setSoilStatus] = useState("Jordsmonnlag er skrudd av.");
   const [statusText, setStatusText] = useState("Laster data ...");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [backendLogs, setBackendLogs] = useState<BackendLogEntry[]>([]);
@@ -329,6 +331,7 @@ export default function App() {
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
+  const [soilRefreshToken, setSoilRefreshToken] = useState(0);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
     if (selectedSeason !== "all") return selectedSeason;
@@ -381,6 +384,7 @@ export default function App() {
 
   const initialPhotoRef = useRef<string | null>(initialPhoto);
   const tileRetryJobRef = useRef<string | null>(null);
+  const soilRetryCountRef = useRef(0);
   const baseMapTileErrorRef = useRef<BaseMapStyle | null>(null);
   const albumScrollSpinTimeoutRef = useRef<number | null>(null);
   const bootstrapAbortRef = useRef<AbortController | null>(null);
@@ -2099,6 +2103,27 @@ export default function App() {
     [addLog, loadGardskartJobs],
   );
 
+  const handleSoilStatus = useCallback((text: string) => {
+    if (text === "Jordsmonnlag aktivt.") {
+      soilRetryCountRef.current = 0;
+    }
+    setSoilStatus(text);
+  }, []);
+
+  const handleSoilTileError = useCallback(() => {
+    if (soilRetryCountRef.current >= 1) {
+      soilRetryCountRef.current = 0;
+      setShowSoilLayer(false);
+      setSoilStatus("Jordsmonnlag skrudd av automatisk etter gjentatt tile-feil.");
+      addLog("warn", "Jordsmonnlag skrudd av etter gjentatt tile-feil");
+      return;
+    }
+
+    soilRetryCountRef.current += 1;
+    addLog("warn", "Tile-feil i jordsmonnlag, prøver auto-refresh");
+    setSoilRefreshToken((value) => value + 1);
+  }, [addLog]);
+
   const handleBaseMapTileError = useCallback(
     (style: BaseMapStyle) => {
       if (style === "none") return;
@@ -2914,6 +2939,8 @@ export default function App() {
             activeView={activeView}
             statusText={statusText}
             propertyStatus={propertyStatus}
+            soilStatus={soilStatus}
+            showSoilLayer={showSoilLayer}
             showPropertyLayer={showPropertyLayer}
             showOnlyManualQc={showOnlyManualQc}
             showOnlyLowConfidence={showOnlyLowConfidence}
@@ -2929,6 +2956,17 @@ export default function App() {
             backendLogsLoading={isBackendLogsLoading}
             onClearBackendLogs={() => setBackendLogs([])}
             onFetchBackendLogs={loadBackendLogs}
+            onToggleSoilLayer={(next) => {
+              soilRetryCountRef.current = 0;
+              setShowSoilLayer(next);
+              if (!next) {
+                setSoilStatus("Jordsmonnlag er skrudd av.");
+                addLog("info", "Jordsmonnlag skrudd av av bruker");
+              } else {
+                setSoilStatus("Jordsmonnlag lastes ...");
+                addLog("info", "Jordsmonnlag skrudd på av bruker");
+              }
+            }}
             onChangeBaseMapStyle={(style) => {
               baseMapTileErrorRef.current = null;
               setBaseMapStyle(style);
@@ -3030,10 +3068,14 @@ export default function App() {
                   mapGrayscale={mapGrayscale}
                   mapVintage={mapVintage}
                   showZoomControls={showZoomControls}
+                  showSoilLayer={showSoilLayer}
                   showPropertyLayer={showPropertyLayer}
+                  soilRefreshToken={soilRefreshToken}
                   onSelectPhoto={handleSelectPhoto}
                   onHoverPhoto={handleHoverPhoto}
                   onOpenPhotoFullscreen={handleOpenPhotoViewer}
+                  onSoilStatus={handleSoilStatus}
+                  onSoilTileError={handleSoilTileError}
                   onPropertyStatus={setPropertyStatus}
                   onPropertyTileError={handlePropertyTileError}
                   onBaseMapTileError={handleBaseMapTileError}

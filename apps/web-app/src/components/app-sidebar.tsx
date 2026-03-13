@@ -73,6 +73,8 @@ interface AppSidebarProps {
   activeView: AppView;
   statusText: string;
   propertyStatus: string;
+  soilStatus: string;
+  showSoilLayer: boolean;
   showPropertyLayer: boolean;
   showOnlyManualQc: boolean;
   showOnlyLowConfidence: boolean;
@@ -88,6 +90,7 @@ interface AppSidebarProps {
   backendLogsLoading: boolean;
   onFetchBackendLogs: () => void;
   onClearBackendLogs: () => void;
+  onToggleSoilLayer: (next: boolean) => void;
   onTogglePropertyLayer: (next: boolean) => void;
   onToggleManualQcFilter: (next: boolean) => void;
   onToggleLowConfidenceFilter: (next: boolean) => void;
@@ -149,6 +152,8 @@ export function AppSidebar({
   activeView,
   statusText,
   propertyStatus,
+  soilStatus,
+  showSoilLayer,
   showPropertyLayer,
   showOnlyManualQc,
   showOnlyLowConfidence,
@@ -164,6 +169,7 @@ export function AppSidebar({
   backendLogsLoading,
   onFetchBackendLogs,
   onClearBackendLogs,
+  onToggleSoilLayer,
   onTogglePropertyLayer,
   onToggleManualQcFilter,
   onToggleLowConfidenceFilter,
@@ -222,6 +228,8 @@ export function AppSidebar({
           adminBusy={adminBusy}
           statusText={statusText}
           propertyStatus={propertyStatus}
+          soilStatus={soilStatus}
+          showSoilLayer={showSoilLayer}
           showPropertyLayer={showPropertyLayer}
           showOnlyManualQc={showOnlyManualQc}
           showOnlyLowConfidence={showOnlyLowConfidence}
@@ -235,6 +243,7 @@ export function AppSidebar({
           backendLogsLoading={backendLogsLoading}
           onFetchBackendLogs={onFetchBackendLogs}
           onClearBackendLogs={onClearBackendLogs}
+          onToggleSoilLayer={onToggleSoilLayer}
           onTogglePropertyLayer={onTogglePropertyLayer}
           onToggleManualQcFilter={onToggleManualQcFilter}
           onToggleLowConfidenceFilter={onToggleLowConfidenceFilter}

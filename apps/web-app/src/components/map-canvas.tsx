@@ -19,10 +19,14 @@ interface MapCanvasProps {
   mapGrayscale: boolean;
   mapVintage: boolean;
   showZoomControls: boolean;
+  showSoilLayer: boolean;
   showPropertyLayer: boolean;
+  soilRefreshToken: number;
   onSelectPhoto: (photoId: string) => void;
   onHoverPhoto: (photoId: string | null) => void;
   onOpenPhotoFullscreen: (photoId: string) => void;
+  onSoilStatus: (text: string) => void;
+  onSoilTileError: () => void;
   onPropertyStatus: (text: string) => void;
   onPropertyTileError: (jobId: string) => void;
   onBaseMapTileError: (style: BaseMapStyle) => void;
@@ -30,6 +34,9 @@ interface MapCanvasProps {
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
 const EARTH_RADIUS_M = 6_371_000;
+const SOIL_WMS_URL = "https://wms.nibio.no/cgi-bin/jordkvalitet";
+const SOIL_WMS_LAYER = "Jordkvalitet";
+const SOIL_LAYER_OPACITY = 0.34;
 
 type LatLngPair = [number, number];
 type MediaKind = "drone" | "camera";
@@ -432,10 +439,14 @@ export function MapCanvas({
   mapGrayscale,
   mapVintage,
   showZoomControls,
+  showSoilLayer,
   showPropertyLayer,
+  soilRefreshToken,
   onSelectPhoto,
   onHoverPhoto,
   onOpenPhotoFullscreen,
+  onSoilStatus,
+  onSoilTileError,
   onPropertyStatus,
   onPropertyTileError,
   onBaseMapTileError,
@@ -447,6 +458,7 @@ export function MapCanvas({
   const photoByIdRef = useRef<Map<string, PhotoFeature>>(new Map());
   const activeMarkerIdsRef = useRef<Set<string>>(new Set());
   const baseLayerRef = useRef<L.TileLayer | null>(null);
+  const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const viewLayerRef = useRef<L.LayerGroup | null>(null);
   const videoLayerRef = useRef<L.LayerGroup | null>(null);
@@ -488,6 +500,14 @@ export function MapCanvas({
     const propertyPane = map.getPane("propertyPane");
     if (propertyPane) {
       propertyPane.style.zIndex = "420";
+    }
+
+    map.createPane("soilPane");
+    const soilPane = map.getPane("soilPane");
+    if (soilPane) {
+      soilPane.style.zIndex = "360";
+      soilPane.style.pointerEvents = "none";
+      soilPane.style.mixBlendMode = "multiply";
     }
 
     map.createPane("laserPane");
@@ -548,6 +568,7 @@ export function MapCanvas({
       mapRef.current = null;
       markersRef.current = null;
       baseLayerRef.current = null;
+      soilLayerRef.current = null;
       propertyLayerRef.current = null;
       if (viewLayerRef.current) {
         viewLayerRef.current.remove();
@@ -908,6 +929,59 @@ export function MapCanvas({
     if (!mapRef.current) return;
     mapRef.current.setView(fallbackCenter, 13, { animate: true });
   }, [resetViewToken]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (soilLayerRef.current) {
+      mapRef.current.removeLayer(soilLayerRef.current);
+      soilLayerRef.current = null;
+    }
+
+    if (!showSoilLayer) {
+      return;
+    }
+
+    onSoilStatus("Jordsmonnlag lastes ...");
+
+    let tileErrorHandled = false;
+    let didSetActiveStatus = false;
+    const layer = L.tileLayer.wms(SOIL_WMS_URL, {
+      layers: SOIL_WMS_LAYER,
+      styles: "",
+      format: "image/png",
+      transparent: true,
+      version: "1.3.0",
+      maxZoom: BASE_MAP_STYLES[baseMapStyle].maxZoom,
+      opacity: SOIL_LAYER_OPACITY,
+      pane: "soilPane",
+      attribution: "NIBIO Jordkvalitet",
+    });
+
+    const markLoaded = () => {
+      if (didSetActiveStatus) return;
+      didSetActiveStatus = true;
+      onSoilStatus("Jordsmonnlag aktivt.");
+    };
+
+    layer.once("load", markLoaded);
+    layer.on("tileload", markLoaded);
+    layer.on("tileerror", () => {
+      if (tileErrorHandled) return;
+      tileErrorHandled = true;
+      onSoilStatus("Jordsmonnlag feilet. Prøver automatisk oppfriskning ...");
+      onSoilTileError();
+    });
+
+    layer.addTo(mapRef.current);
+    soilLayerRef.current = layer;
+
+    return () => {
+      if (mapRef.current && layer) {
+        mapRef.current.removeLayer(layer);
+      }
+    };
+  }, [baseMapStyle, onSoilStatus, onSoilTileError, showSoilLayer, soilRefreshToken]);
 
   useEffect(() => {
     if (!mapRef.current) return;
