@@ -33,6 +33,7 @@ from ..schemas import (
     PhotoMetadataActionResponse,
     PhotoMetadataPatchRequest,
     PhotoAnalysisRefreshResponse,
+    PhotoReprocessResponse,
     ImportRequest,
     ImportRunOut,
     PhotoPageResponse,
@@ -56,6 +57,7 @@ from ..services.gardskart import get_job_id
 from ..services.imports import run_photo_ingest
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
+from ..services.photo_reprocess import reprocess_photos_for_user
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
 from ..services.tag_utils import (
     extract_meta_float,
@@ -750,6 +752,26 @@ def refresh_analysis(
 
     results = rebuild_photo_analysis_for_user(db, user_id=user_id, force=force)
     return PhotoAnalysisRefreshResponse(**results)
+
+
+@router.post("/maintenance/reprocess-photos", response_model=PhotoReprocessResponse)
+def reprocess_photo_metadata(
+    user_id: int | None = Query(default=None),
+    refresh_analysis: bool = Query(default=True),
+    force_analysis: bool = Query(default=True),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PhotoReprocessResponse:
+    if user_id is None:
+        user_id = _current_user(db).id
+
+    results = reprocess_photos_for_user(
+        db,
+        user_id=user_id,
+        refresh_analysis=refresh_analysis,
+        force_analysis=force_analysis,
+    )
+    return PhotoReprocessResponse(**results)
 
 
 @router.get("/properties/current")

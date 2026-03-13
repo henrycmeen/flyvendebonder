@@ -73,3 +73,8 @@ Tving reanalyse av alle bilder:
 ```bash
 curl -X POST "http://127.0.0.1:8787/api/v1/analysis/refresh?force=true"
 ```
+
+Reparse original metadata og rebygg analyse i samme pass:
+```bash
+curl -X POST "http://127.0.0.1:8787/api/v1/maintenance/reprocess-photos?refresh_analysis=true&force_analysis=true"
+```
