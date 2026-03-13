@@ -176,16 +176,16 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
             summary.parse_failed += 1
             continue
 
-        heading = _choose_heading(metadata)
-        pitch = _choose_pitch(metadata)
-        if heading is None or pitch is None:
+        heading = _choose_heading(metadata) if photo.heading_deg is None else photo.heading_deg
+        pitch = _choose_pitch(metadata) if photo.pitch_deg is None else photo.pitch_deg
+        if (photo.heading_deg is None and heading is None) or (photo.pitch_deg is None and pitch is None):
             fallback_path = _resolve_source_fallback(photo, source_index)
             if fallback_path is not None:
                 try:
                     fallback_meta = extract_metadata(fallback_path)
-                    if heading is None:
+                    if photo.heading_deg is None and heading is None:
                         heading = _choose_heading(fallback_meta)
-                    if pitch is None:
+                    if photo.pitch_deg is None and pitch is None:
                         pitch = _choose_pitch(fallback_meta)
                     summary.source_lookup_used += 1
                 except Exception as exc:  # noqa: BLE001
@@ -194,10 +194,9 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
             else:
                 summary.source_lookup_missing += 1
 
-        if heading is None:
+        if photo.heading_deg is None and heading is None:
             summary.missing_metadata += 1
-            continue
-        if pitch is None:
+        if photo.pitch_deg is None and pitch is None:
             summary.missing_pitch += 1
 
         changed = False
@@ -208,11 +207,11 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
             summary.altitude_updated += 1
             changed = True
 
-        if heading != photo.heading_deg:
+        if photo.heading_deg is None and heading is not None and heading != photo.heading_deg:
             photo.heading_deg = heading
             changed = True
 
-        if pitch != photo.pitch_deg:
+        if photo.pitch_deg is None and pitch is not None and pitch != photo.pitch_deg:
             photo.pitch_deg = pitch
             changed = True
 
@@ -232,7 +231,7 @@ def _run(dry_run: bool, force: bool, user_id: int | None, limit: int | None) -> 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Backfyll heading_deg i Photo basert på originalfiler."
+        description="Backfyll manglende heading/pitch og reparer relativ høyde i Photo basert på originalfiler."
     )
     parser.add_argument("--dry-run", action="store_true", help="Vis bare hvilke bilder som blir oppdatert.")
     parser.add_argument("--force", action="store_true", help="Gjennomfør lagring til database (kreves med --dry-run false).")
