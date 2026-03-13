@@ -89,3 +89,24 @@ def test_field_plot_rejects_too_small_polygon(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Polygonet er for lite til å lagres som jordutkast"
+
+
+def test_field_plot_rejects_invalid_coordinate_range(client):
+    response = client.post(
+        "/api/v1/fields",
+        json={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [200.0, 59.0],
+                        [10.0012, 59.0],
+                        [10.0012, 59.0009],
+                    ]
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Koordinater er utenfor gyldig område"

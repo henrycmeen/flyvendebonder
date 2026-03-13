@@ -264,7 +264,10 @@ def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
 
 
 def _field_geometry_payload(geometry) -> tuple[str, float]:
-    normalized_coordinates = normalize_polygon_coordinates(geometry.coordinates)
+    try:
+        normalized_coordinates = normalize_polygon_coordinates(geometry.coordinates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     area_m2 = polygon_area_m2(normalized_coordinates)
     if area_m2 <= 1.0:
         raise HTTPException(status_code=400, detail="Polygonet er for lite til å lagres som jordutkast")
