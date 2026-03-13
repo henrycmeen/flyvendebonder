@@ -109,6 +109,58 @@ export interface FieldPlotDeleteResponse {
   field_id: number;
 }
 
+export type FlightMissionStatus = "ready";
+export type FlightMissionWarningSeverity = "info" | "warning";
+
+export interface FlightMissionParameters {
+  altitude_m: number;
+  line_spacing_m: number;
+  waypoint_spacing_m: number;
+  route_angle_deg: number;
+}
+
+export interface FlightMissionWarning {
+  code: string;
+  severity: FlightMissionWarningSeverity;
+  message: string;
+  field_id: number | null;
+}
+
+export interface FlightMissionField {
+  field_id: number;
+  name: string;
+  area_m2: number | null;
+  area_ha: number | null;
+  geometry: GeoJSONPolygon;
+}
+
+export interface GeoJSONFeatureCollection {
+  type: "FeatureCollection";
+  features: Record<string, unknown>[];
+}
+
+export interface FlightMission {
+  id: number;
+  property_id: number;
+  name: string;
+  status: FlightMissionStatus;
+  field_ids: number[];
+  parameters: FlightMissionParameters;
+  fields: FlightMissionField[];
+  warnings: FlightMissionWarning[];
+  route_geojson: GeoJSONFeatureCollection;
+  export_manifest: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  last_generated_at: string;
+}
+
+export interface FlightMissionListResponse {
+  property_id: number;
+  count: number;
+  missions: FlightMission[];
+}
+
 export type FieldCandidateSource = "geonorge";
 
 export interface FieldCandidate {
