@@ -546,6 +546,7 @@ export default function App() {
   const backendLogAbortRef = useRef<AbortController | null>(null);
   const gardskartJobAbortRef = useRef<AbortController | null>(null);
   const albumAbortRef = useRef<AbortController | null>(null);
+  const fieldCandidateAbortRef = useRef<AbortController | null>(null);
   const photoLoadSeqRef = useRef(0);
   const albumLoadSeqRef = useRef(0);
   const profileLoadSeqRef = useRef(0);
@@ -554,6 +555,7 @@ export default function App() {
   const backendLogLoadSeqRef = useRef(0);
   const gardskartJobLoadSeqRef = useRef(0);
   const bootstrapLoadSeqRef = useRef(0);
+  const fieldCandidateLoadSeqRef = useRef(0);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const activeProperties = useMemo<Property[]>(() => {
@@ -1513,6 +1515,17 @@ export default function App() {
   }, [currentProperty?.id, loadFieldPlots]);
 
   useEffect(() => {
+    fieldCandidateLoadSeqRef.current += 1;
+    fieldCandidateAbortRef.current?.abort();
+    fieldCandidateAbortRef.current = null;
+    setFieldCreateMode(false);
+    setActiveFieldDraft((current) => {
+      if (!current) return null;
+      return current.property_id === currentProperty?.id ? current : null;
+    });
+  }, [currentProperty?.id]);
+
+  useEffect(() => {
     if (adminSession?.authenticated) {
       return;
     }
@@ -2114,6 +2127,9 @@ export default function App() {
 
   const handleStartFieldCreate = useCallback(() => {
     if (!ensureAdminAccess("jordredigering")) return;
+    fieldCandidateLoadSeqRef.current += 1;
+    fieldCandidateAbortRef.current?.abort();
+    fieldCandidateAbortRef.current = null;
     setFieldCreateMode(true);
     setActiveFieldDraft(null);
     setFieldStatus("Klikk i kartet for å starte et nytt jordutkast.");
@@ -2123,6 +2139,9 @@ export default function App() {
   }, [addLog, currentProperty?.id, ensureAdminAccess]);
 
   const handleCancelFieldCreate = useCallback(() => {
+    fieldCandidateLoadSeqRef.current += 1;
+    fieldCandidateAbortRef.current?.abort();
+    fieldCandidateAbortRef.current = null;
     setFieldCreateMode(false);
     setFieldStatus("Oppretting av jordutkast avbrutt.");
   }, []);
@@ -2131,6 +2150,9 @@ export default function App() {
     (fieldId: number) => {
       const nextField = fieldPlots.find((item) => item.id === fieldId);
       if (!nextField) return;
+      fieldCandidateLoadSeqRef.current += 1;
+      fieldCandidateAbortRef.current?.abort();
+      fieldCandidateAbortRef.current = null;
       setFieldCreateMode(false);
       setActiveFieldDraft(toFieldPlotDraft(nextField));
       setFieldStatus(`Valgte ${nextField.name ?? `jord ${nextField.id}`}. Dra hjørnene i kartet for å justere formen.`);
@@ -2141,6 +2163,10 @@ export default function App() {
   const handleCreateFieldDraftAtPoint = useCallback(
     async (point: GeoPoint) => {
       if (!ensureAdminAccess("jordredigering")) return;
+      const seq = ++fieldCandidateLoadSeqRef.current;
+      fieldCandidateAbortRef.current?.abort();
+      const requestController = new AbortController();
+      fieldCandidateAbortRef.current = requestController;
       setFieldCreateMode(false);
       setFieldStatus("Leter etter jordgrense rundt klikkpunktet ...");
 
@@ -2148,10 +2174,13 @@ export default function App() {
         const { data, requestId } = await trackRequest(() =>
           apiGet<FieldCandidateListResponse>("/api/v1/properties/current/field-candidates/by-point", {
             query: { lat: point.lat, lng: point.lng },
+            signal: requestController.signal,
             cache: false,
             dedupe: false,
           }),
         );
+        if (seq !== fieldCandidateLoadSeqRef.current || requestController.signal.aborted) return;
+        fieldCandidateAbortRef.current = null;
 
         const nearest = data.fields[0] ?? null;
         if (nearest) {
@@ -2181,6 +2210,10 @@ export default function App() {
         });
       } catch (error) {
         const apiError = error as ApiError;
+        if (seq !== fieldCandidateLoadSeqRef.current || requestController.signal.aborted || isRequestAborted(apiError)) {
+          return;
+        }
+        fieldCandidateAbortRef.current = null;
         const fallbackDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
         setActiveFieldDraft(fallbackDraft);
         setFieldStatus(
