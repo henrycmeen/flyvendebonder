@@ -669,10 +669,9 @@ export function MapCanvas({
       if (source.distanceTo(targetLatLng) >= 4) {
         const line = L.polyline([source, targetLatLng], {
           className: "fb-media-viewline",
-          color: "var(--fb-map-analysis-line)",
-          weight: 2.3,
-          opacity: 0.95,
-          dashArray: "6 10",
+          color: "#f08d4f",
+          weight: 2.8,
+          opacity: 0.92,
           lineCap: "round",
           interactive: false,
           pane: "laserPane",
@@ -752,10 +751,9 @@ export function MapCanvas({
       viewLayerRef.current.addLayer(
         L.polyline([source, headingPoint], {
           className: "fb-media-viewline",
-          color: "var(--fb-map-analysis-line)",
-          weight: 2,
-          opacity: 0.92,
-          dashArray: "3 7",
+          color: "#f08d4f",
+          weight: 2.4,
+          opacity: 0.88,
           lineCap: "round",
           interactive: false,
           pane: "laserPane",
@@ -859,9 +857,14 @@ export function MapCanvas({
   }, [onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
 
   useEffect(() => {
+    const hoverCapable = supportsHoverPointer();
     const nextActiveIds = new Set<string>();
-    if (selectedPhotoId) nextActiveIds.add(selectedPhotoId);
-    if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
+    if (hoverCapable) {
+      if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
+    } else {
+      if (selectedPhotoId) nextActiveIds.add(selectedPhotoId);
+      if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
+    }
 
     const prevActiveIds = activeMarkerIdsRef.current;
     const changedIds = new Set<string>([...prevActiveIds, ...nextActiveIds]);
