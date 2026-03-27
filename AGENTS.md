@@ -16,11 +16,12 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 
 ## Standard arbeidsflyt
 1. Triager og prioriter arbeid i Linear først når saken trenger prosjektkontekst eller splitting.
-2. Knytt arbeid til GitHub-issue eller PR når endringen er repo-nær og reviewbar.
-3. Løs med små, målbare steg.
-4. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
-5. Merge til `main` når endringen er klar for live.
-6. Oppdater status i `docs/status/` ved større leveranser.
+2. Kjor repo-naert agentarbeid i Cline Kanban naer oppgaven passer for worktree-basert flyt.
+3. Knytt arbeid til GitHub-issue eller PR når endringen er repo-nær og reviewbar.
+4. Løs med små, målbare steg.
+5. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
+6. Merge til `main` når endringen er klar for live.
+7. Oppdater status i `docs/status/` ved større leveranser.
 
 ## Lokale kommandoer
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
@@ -52,6 +53,11 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - Mappen over repoet inneholder nå to vanlige git-kloner: `prod/` og `test/`.
 - `prod/` skal holdes tett på `origin/main`.
 - `test/` brukes til ny branch og pågående arbeid før PR/merge.
+
+## Agentflate
+- `Cline Kanban` er standard lokal agentflate for parallelle worktrees og diff-review.
+- `Linear` er fortsatt backlog og prioriteringsflate.
+- `GitHub` er fortsatt endelig PR- og mergeflate.
 
 ## Konvensjoner
 - Behold norsk språk i brukergrensesnittet.
