@@ -194,6 +194,35 @@ class FieldPlotDeleteResponse(BaseModel):
     field_id: int
 
 
+FieldHistoryEntryKind = Literal["mission", "capture", "processing_run"]
+
+
+class FieldHistoryEntryOut(BaseModel):
+    kind: FieldHistoryEntryKind
+    occurred_at: datetime
+    season: str
+    title: str
+    status: str
+    summary: str
+    mission_id: int | None = None
+    capture_id: int | None = None
+    processing_run_id: int | None = None
+    source: str | None = None
+    provider: str | None = None
+    photo_count: int | None = None
+    artifact_count: int = 0
+    artifact_kinds: list[str] = Field(default_factory=list)
+
+
+class FieldHistoryOut(BaseModel):
+    field: FieldPlotOut
+    mission_count: int = 0
+    capture_count: int = 0
+    processing_run_count: int = 0
+    delivery_count: int = 0
+    entries: list[FieldHistoryEntryOut] = Field(default_factory=list)
+
+
 FlightMissionStatus = Literal["ready"]
 FlightMissionWarningSeverity = Literal["info", "warning"]
 

@@ -45,6 +45,8 @@ from ..schemas import (
     FlightMissionPatch,
     FieldPlotCreate,
     FieldPlotDeleteResponse,
+    FieldHistoryEntryOut,
+    FieldHistoryOut,
     FieldPlotListResponse,
     FieldPlotOut,
     FieldPlotPatch,
@@ -304,6 +306,88 @@ def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
         area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
         created_at=item.created_at,
         updated_at=item.updated_at,
+    )
+
+
+def _field_ids_contains(raw_value: str, field_id: int) -> bool:
+    return field_id in {int(value) for value in json.loads(raw_value)}
+
+
+def _history_season_label(value: datetime) -> str:
+    return str(value.year)
+
+
+def _processing_artifact_kinds(item: ProcessingRun) -> list[str]:
+    kinds: list[str] = []
+    for artifact in item.artifacts:
+        if artifact.kind not in kinds:
+            kinds.append(artifact.kind)
+    return kinds
+
+
+def _field_history_entries(
+    *,
+    field: FieldPlot,
+    missions: list[FlightMission],
+    captures: list[FlightCapture],
+) -> list[FieldHistoryEntryOut]:
+    entries: list[FieldHistoryEntryOut] = []
+
+    for mission in missions:
+        warnings = json.loads(mission.warnings_json)
+        field_count = len(json.loads(mission.field_ids_json))
+        entries.append(
+            FieldHistoryEntryOut(
+                kind="mission",
+                occurred_at=mission.last_generated_at,
+                season=_history_season_label(mission.last_generated_at),
+                title=(mission.name or f"Oppdrag {mission.id}").strip(),
+                status=mission.status,
+                summary=f"{field_count} felt i oppdraget, {len(warnings)} advarsler",
+                mission_id=mission.id,
+            )
+        )
+
+    for capture in captures:
+        capture_timestamp = capture.captured_to or capture.captured_from or capture.created_at
+        entries.append(
+            FieldHistoryEntryOut(
+                kind="capture",
+                occurred_at=capture_timestamp,
+                season=_history_season_label(capture_timestamp),
+                title=(capture.name or f"Capture {capture.id}").strip(),
+                status=capture.status,
+                summary=f"{capture.photo_count} bilder i capture",
+                mission_id=capture.mission_id,
+                capture_id=capture.id,
+                source=capture.source,
+                photo_count=capture.photo_count,
+            )
+        )
+        for run in capture.processing_runs:
+            run_timestamp = run.finished_at or run.started_at or run.created_at
+            artifact_kinds = _processing_artifact_kinds(run)
+            entries.append(
+                FieldHistoryEntryOut(
+                    kind="processing_run",
+                    occurred_at=run_timestamp,
+                    season=_history_season_label(run_timestamp),
+                    title=f"Processing run {run.id}",
+                    status=run.status,
+                    summary=f"{run.provider} med {len(run.artifacts)} artefakter",
+                    mission_id=capture.mission_id,
+                    capture_id=capture.id,
+                    processing_run_id=run.id,
+                    provider=run.provider,
+                    artifact_count=len(run.artifacts),
+                    artifact_kinds=artifact_kinds,
+                )
+            )
+
+    return sorted(
+        entries,
+        key=lambda item: (item.occurred_at, item.processing_run_id or 0, item.capture_id or 0, item.mission_id or 0),
+        reverse=True,
     )
 
 
@@ -665,6 +749,54 @@ def list_field_plots(db: Session = Depends(get_db)) -> FieldPlotListResponse:
         property_id=property_obj.id,
         count=len(field_plots),
         fields=[_field_plot_out(item) for item in field_plots],
+    )
+
+
+@router.get("/fields/{field_id}/history", response_model=FieldHistoryOut)
+def get_field_history(field_id: int, db: Session = Depends(get_db)) -> FieldHistoryOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    field = (
+        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
+        .scalars()
+        .first()
+    )
+    if field is None:
+        raise HTTPException(status_code=404, detail="Fant ikke felt")
+
+    missions = (
+        db.execute(
+            select(FlightMission)
+            .where(FlightMission.property_id == property_obj.id)
+            .order_by(FlightMission.last_generated_at.desc(), FlightMission.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    field_missions = [item for item in missions if _field_ids_contains(item.field_ids_json, field.id)]
+
+    captures = (
+        db.execute(
+            select(FlightCapture)
+            .options(selectinload(FlightCapture.processing_runs).selectinload(ProcessingRun.artifacts))
+            .where(FlightCapture.property_id == property_obj.id)
+            .order_by(FlightCapture.updated_at.desc(), FlightCapture.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    field_captures = [item for item in captures if _field_ids_contains(item.field_ids_json, field.id)]
+
+    processing_runs = [run for capture in field_captures for run in capture.processing_runs]
+    delivery_count = sum(1 for run in processing_runs if run.status == "completed" and len(run.artifacts) > 0)
+
+    return FieldHistoryOut(
+        field=_field_plot_out(field),
+        mission_count=len(field_missions),
+        capture_count=len(field_captures),
+        processing_run_count=len(processing_runs),
+        delivery_count=delivery_count,
+        entries=_field_history_entries(field=field, missions=field_missions, captures=field_captures),
     )
 
 
