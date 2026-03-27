@@ -40,6 +40,21 @@ def build_capture_summary(photos: list[Photo]) -> tuple[datetime | None, datetim
     return ordered[0].captured_at, ordered[-1].captured_at
 
 
+def build_capture_photo_summary(photos: list[Photo]) -> dict:
+    ordered = sorted(photos, key=lambda item: (item.captured_at, item.id))
+    if not ordered:
+        return {
+            "first_photo_id": None,
+            "last_photo_id": None,
+            "is_contiguous": True,
+        }
+    return {
+        "first_photo_id": ordered[0].id,
+        "last_photo_id": ordered[-1].id,
+        "is_contiguous": [item.id for item in ordered] == [item.id for item in photos],
+    }
+
+
 def build_processing_input_manifest(
     *,
     capture: FlightCapture,

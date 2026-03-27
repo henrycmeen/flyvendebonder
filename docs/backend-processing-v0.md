@@ -31,6 +31,13 @@ Lagrer blant annet:
 - `field_ids`
 - `mission_id`
 
+Eksponerer også et lite capture-sammendrag i API-et:
+- `first_photo_id`
+- `last_photo_id`
+- `is_contiguous`
+
+Dette gjør captures mer lesbare som stabil flyvningsenhet uten at vi trenger en egen foto-koblingstabell i v1.
+
 ### `ProcessingRun`
 Representerer én asynkron jobb mot en prosesseringsmotor.
 
