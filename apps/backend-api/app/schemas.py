@@ -264,6 +264,8 @@ FieldCandidateSource = Literal["geonorge"]
 
 class FieldCandidateOut(BaseModel):
     source: FieldCandidateSource
+    source_endpoint: str | None = None
+    source_fetched_at: datetime | None = None
     name: str
     local_id: int | None = None
     matrikkelnummer: str | None = None

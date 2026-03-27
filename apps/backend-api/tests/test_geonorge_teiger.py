@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 from app.services.geonorge_teiger import build_field_candidates_from_geojson
@@ -137,3 +138,47 @@ def test_build_field_candidates_from_geojson_sorts_point_hits_by_distance():
 
     assert [item["distance_m"] for item in fields] == [4, 12]
     assert fields[0]["name"] == "70/17 · hovedteig"
+
+
+def test_build_field_candidates_from_geojson_preserves_source_provenance():
+    property_obj = SimpleNamespace(id=1, komm="4003", gnr=70, bnr=17, fnr=0)
+    fetched_at = datetime(2026, 3, 27, 12, 0, 0)
+    payload = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [9.66, 59.17],
+                            [9.661, 59.17],
+                            [9.661, 59.171],
+                            [9.66, 59.171],
+                        ]
+                    ],
+                },
+                "properties": {
+                    "kommunenummer": "4003",
+                    "gardsnummer": 70,
+                    "bruksnummer": 17,
+                    "festenummer": 0,
+                    "lokalid": 1,
+                    "matrikkelnummertekst": "70/17",
+                    "objekttype": "Teig",
+                },
+            }
+        ],
+    }
+
+    fields = build_field_candidates_from_geojson(
+        payload,
+        property_obj,
+        sort_mode="property",
+        source_endpoint="/geokoding",
+        source_fetched_at=fetched_at,
+    )
+
+    assert fields[0]["source_endpoint"] == "/geokoding"
+    assert fields[0]["source_fetched_at"] == fetched_at

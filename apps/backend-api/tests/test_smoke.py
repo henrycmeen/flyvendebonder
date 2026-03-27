@@ -222,9 +222,12 @@ def test_current_property_field_candidates_endpoint(client, monkeypatch):
     import app.api.v1 as v1
 
     async def fake_list_field_candidates_for_property(property_obj):
+        fetched_at = datetime.utcnow()
         return [
             {
                 "source": "geonorge",
+                "source_endpoint": "/geokoding",
+                "source_fetched_at": fetched_at,
                 "name": f"{property_obj.gnr}/{property_obj.bnr} · hovedteig",
                 "local_id": 42465981,
                 "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
@@ -238,7 +241,7 @@ def test_current_property_field_candidates_endpoint(client, monkeypatch):
                 },
                 "area_m2": 1000.0,
                 "area_ha": 0.1,
-                "source_updated_at": datetime.utcnow(),
+                "source_updated_at": fetched_at,
             }
         ]
 
@@ -249,6 +252,8 @@ def test_current_property_field_candidates_endpoint(client, monkeypatch):
     payload = response.json()
     assert payload["count"] == 1
     assert payload["fields"][0]["source"] == "geonorge"
+    assert payload["fields"][0]["source_endpoint"] == "/geokoding"
+    assert payload["fields"][0]["source_fetched_at"] is not None
     assert payload["fields"][0]["name"].endswith("hovedteig")
 
 

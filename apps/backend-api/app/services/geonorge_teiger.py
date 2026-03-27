@@ -19,6 +19,8 @@ def build_field_candidates_from_geojson(
     property_obj: Property,
     *,
     sort_mode: str,
+    source_endpoint: str | None = None,
+    source_fetched_at: datetime | None = None,
 ) -> list[dict[str, Any]]:
     features = payload.get("features") or []
     if not isinstance(features, list):
@@ -26,7 +28,12 @@ def build_field_candidates_from_geojson(
 
     candidates: list[dict[str, Any]] = []
     for feature in features:
-        candidate = _feature_to_candidate(feature, property_obj)
+        candidate = _feature_to_candidate(
+            feature,
+            property_obj,
+            source_endpoint=source_endpoint,
+            source_fetched_at=source_fetched_at,
+        )
         if candidate is None:
             continue
         candidates.append(candidate)
@@ -51,8 +58,9 @@ def build_field_candidates_from_geojson(
 
 
 async def list_field_candidates_for_property(property_obj: Property) -> list[dict[str, Any]]:
-    payload = await _fetch_json(
-        "/geokoding",
+    source_endpoint = "/geokoding"
+    payload, fetched_at = await _fetch_json(
+        source_endpoint,
         params={
             "kommunenummer": property_obj.komm,
             "gardsnummer": property_obj.gnr,
@@ -62,7 +70,13 @@ async def list_field_candidates_for_property(property_obj: Property) -> list[dic
             "utkoordsys": 4258,
         },
     )
-    return build_field_candidates_from_geojson(payload, property_obj, sort_mode="property")
+    return build_field_candidates_from_geojson(
+        payload,
+        property_obj,
+        sort_mode="property",
+        source_endpoint=source_endpoint,
+        source_fetched_at=fetched_at,
+    )
 
 
 async def lookup_field_candidates_by_point(
@@ -73,8 +87,9 @@ async def lookup_field_candidates_by_point(
     radius_m: int | None = None,
 ) -> list[dict[str, Any]]:
     effective_radius = radius_m or settings.geonorge_point_lookup_radius_m
-    payload = await _fetch_json(
-        "/punkt/omrader",
+    source_endpoint = "/punkt/omrader"
+    payload, fetched_at = await _fetch_json(
+        source_endpoint,
         params={
             "ost": lng,
             "nord": lat,
@@ -84,22 +99,35 @@ async def lookup_field_candidates_by_point(
             "maksTreff": settings.geonorge_point_lookup_max_hits,
         },
     )
-    return build_field_candidates_from_geojson(payload, property_obj, sort_mode="point")
+    return build_field_candidates_from_geojson(
+        payload,
+        property_obj,
+        sort_mode="point",
+        source_endpoint=source_endpoint,
+        source_fetched_at=fetched_at,
+    )
 
 
-async def _fetch_json(path: str, *, params: dict[str, Any]) -> dict[str, Any]:
+async def _fetch_json(path: str, *, params: dict[str, Any]) -> tuple[dict[str, Any], datetime]:
     url = f"{settings.geonorge_eiendom_api_url.rstrip('/')}{path}"
     async with httpx.AsyncClient(timeout=settings.geonorge_http_timeout_seconds) as client:
         response = await client.get(url, params=params)
 
     response.raise_for_status()
+    fetched_at = datetime.utcnow()
     payload = response.json()
     if not isinstance(payload, dict):
         raise ValueError("Ugyldig respons fra Geonorge")
-    return payload
+    return payload, fetched_at
 
 
-def _feature_to_candidate(feature: Any, property_obj: Property) -> dict[str, Any] | None:
+def _feature_to_candidate(
+    feature: Any,
+    property_obj: Property,
+    *,
+    source_endpoint: str | None = None,
+    source_fetched_at: datetime | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(feature, dict):
         return None
 
@@ -137,6 +165,8 @@ def _feature_to_candidate(feature: Any, property_obj: Property) -> dict[str, Any
 
     return {
         "source": "geonorge",
+        "source_endpoint": source_endpoint,
+        "source_fetched_at": source_fetched_at,
         "name": name,
         "local_id": local_id,
         "matrikkelnummer": matrikkelnummer,

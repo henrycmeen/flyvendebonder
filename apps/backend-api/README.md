@@ -33,6 +33,7 @@ python3 -m pytest -q tests/test_smoke.py
 - `PATCH /api/v1/photos/{photo_id}/metadata`
 - `GET /api/v1/properties/current`
 - `GET /api/v1/properties/current/gardskart-job`
+- `GET /api/v1/properties/current/field-candidates` returnerer også provenance-feltene `source_endpoint`, `source_fetched_at` og `source_updated_at` per kandidat.
 - `POST /api/v1/imports/photos`
 - `GET /api/v1/imports/{id}`
 - `GET /api/v1/assets/{asset_path}`
