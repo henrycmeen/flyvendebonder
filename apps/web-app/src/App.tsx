@@ -2845,6 +2845,11 @@ export default function App() {
     addLog("info", "Videojobb arkivert i køvisning", null, { jobId });
   }, [addLog]);
 
+  const handleDropMissingVideoArtifact = useCallback((jobId: string) => {
+    setVideoMapArtifacts((current) => current.filter((artifact) => artifact.jobId !== jobId));
+    addLog("info", "Fjernet utdatert videoartefakt fra kartet", null, { jobId });
+  }, [addLog]);
+
   const handleArchiveReviewedVideoJobs = useCallback((jobIds: string[]) => {
     if (jobIds.length === 0) return;
     setArchivedVideoJobIds((current) => mergeUniqueJobIds(current, jobIds));
@@ -3664,6 +3669,9 @@ export default function App() {
             }}
             onChangeView={(view) => {
               handleClosePhotoViewer();
+              if (view !== "map" && fieldCreateMode) {
+                handleCancelFieldCreate();
+              }
               setActiveView(view);
               addLog(
                 "info",
@@ -3741,7 +3749,12 @@ export default function App() {
                   onSaveDraft={handleSaveFieldDraft}
                   onDiscardDraft={handleDiscardFieldDraft}
                   onDeleteDraft={handleDeleteFieldDraft}
-                  onOpenPlanning={() => setActiveView("planning")}
+                  onOpenPlanning={() => {
+                    if (fieldCreateMode) {
+                      handleCancelFieldCreate();
+                    }
+                    setActiveView("planning");
+                  }}
                 />
               ) : null}
 
@@ -3794,6 +3807,7 @@ export default function App() {
                   onPropertyStatus={setPropertyStatus}
                   onPropertyTileError={handlePropertyTileError}
                   onBaseMapTileError={handleBaseMapTileError}
+                  onDropMissingVideoArtifact={handleDropMissingVideoArtifact}
                 />
               ) : activeView === "planning" ? (
                 <PlanningPage
@@ -3809,6 +3823,9 @@ export default function App() {
                   showZoomControls={showZoomControls}
                   onOpenMissionInMap={(missionId) => {
                     handleSelectFlightMission(missionId);
+                    if (fieldCreateMode) {
+                      handleCancelFieldCreate();
+                    }
                     setActiveView("map");
                   }}
                   onExportMission={handleExportFlightMission}

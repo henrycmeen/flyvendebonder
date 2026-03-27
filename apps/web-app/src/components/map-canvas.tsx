@@ -39,6 +39,7 @@ interface MapCanvasProps {
   onPropertyStatus: (text: string) => void;
   onPropertyTileError: (jobId: string) => void;
   onBaseMapTileError: (style: BaseMapStyle) => void;
+  onDropMissingVideoArtifact: (jobId: string) => void;
 }
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
@@ -507,6 +508,7 @@ export function MapCanvas({
   onPropertyStatus,
   onPropertyTileError,
   onBaseMapTileError,
+  onDropMissingVideoArtifact,
 }: MapCanvasProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -1413,6 +1415,7 @@ export function MapCanvas({
       const response = await fetch(geodataUrl, { signal: controller.signal });
       if (!response.ok) {
         if (response.status === 404 || response.status === 410) {
+          onDropMissingVideoArtifact(artifact.jobId);
           return;
         }
         throw new Error(`Kunne ikke hente geodata for ${artifact.jobId}`);
@@ -1575,7 +1578,7 @@ export function MapCanvas({
         window.clearTimeout(timeoutId);
       });
     };
-  }, [videoMapArtifacts]);
+  }, [onDropMissingVideoArtifact, videoMapArtifacts]);
 
   return (
     <div className="absolute inset-0 z-0">
