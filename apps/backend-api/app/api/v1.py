@@ -318,9 +318,9 @@ def _video_job_out(job) -> VideoJobOut:
     )
 
 
-def _require_video_job(db: Session, job_id: str):
+def _require_video_job(db: Session, *, user_id: int, job_id: str):
     job = get_video_job_record(db, job_id)
-    if job is None:
+    if job is None or job.user_id != user_id:
         raise HTTPException(status_code=404, detail="Fant ikke videojobb")
     return job
 
@@ -1239,7 +1239,6 @@ async def create_video_job(
             raise HTTPException(status_code=400, detail="config må være et objekt")
 
     filename = Path(file.filename or "video-upload").name or "video-upload"
-    await file.read()
     await file.close()
 
     user = _current_user(db)
@@ -1285,7 +1284,8 @@ def list_video_jobs(
 
 @router.get("/video-jobs/{job_id}", response_model=VideoJobEnvelope)
 def get_video_job(job_id: str, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> VideoJobEnvelope:
-    job = _require_video_job(db, job_id)
+    user = _current_user(db)
+    job = _require_video_job(db, user_id=user.id, job_id=job_id)
     return VideoJobEnvelope(job=_video_job_out(job))
 
 
@@ -1296,6 +1296,8 @@ def put_video_job_review(
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> VideoJobReviewOut:
+    user = _current_user(db)
+    _require_video_job(db, user_id=user.id, job_id=job_id)
     review = save_video_job_review(
         db,
         job_id=job_id,
@@ -1329,7 +1331,8 @@ def get_video_job_artifact(
     if media_type is None:
         raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")
 
-    _require_video_job(db, job_id)
+    user = _current_user(db)
+    _require_video_job(db, user_id=user.id, job_id=job_id)
     target = _video_job_artifact_path(job_id, artifact_name)
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")

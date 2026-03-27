@@ -120,3 +120,45 @@ def test_video_job_listing_returns_latest_jobs_first_and_can_filter(client):
     assert filtered["count"] >= 2
     assert all(item["mode"] == "frames" for item in filtered["jobs"])
     assert [item["job_id"] for item in filtered["jobs"][:2]] == [third["job_id"], first["job_id"]]
+
+
+def test_video_job_endpoints_are_scoped_to_current_user(client):
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.models import User
+    from app.services.video_jobs import create_video_job
+    from sqlalchemy import select
+
+    with SessionLocal() as db:
+        other_user = User(
+            full_name="Annen Bruker",
+            phone="+47 90000000",
+            email="annen@example.test",
+        )
+        db.add(other_user)
+        db.commit()
+        db.refresh(other_user)
+
+        foreign_job = create_video_job(
+            db,
+            app_data_root=get_settings().app_data_root,
+            user_id=other_user.id,
+            property_id=None,
+            filename="annen.mp4",
+            mode="frames",
+            config={"process": "frames"},
+        )
+
+    get_response = client.get(f"/api/v1/video-jobs/{foreign_job.id}")
+    assert get_response.status_code == 404
+
+    review_response = client.put(
+        f"/api/v1/video-jobs/{foreign_job.id}/review",
+        json={
+            "review_state": "kept",
+        },
+    )
+    assert review_response.status_code == 404
+
+    preview_response = client.get(f"/api/v1/video-jobs/{foreign_job.id}/preview.jpg")
+    assert preview_response.status_code == 404
