@@ -157,7 +157,7 @@ export function PlanningMap({
 
     const boundsPoints: L.LatLngExpression[] = [];
     units.forEach((unit) => {
-      const latLngs = toPolygonLatLngs(unit.geometry.coordinates);
+      const latLngs = toPolygonLatLngs(unit.geometry?.coordinates);
       if (latLngs.length < 4) return;
       const isSelected = unit.id === selectedUnitId;
       const isMissionSelected = selectedMissionUnitIdsSet.has(unit.id);
@@ -195,7 +195,7 @@ export function PlanningMap({
     } else if (selectedUnitId != null) {
       const selected = units.find((item) => item.id === selectedUnitId);
       if (selected) {
-        const latLngs = toPolygonLatLngs(selected.geometry.coordinates);
+        const latLngs = toPolygonLatLngs(selected.geometry?.coordinates);
         if (latLngs.length > 0) {
           map.fitBounds(L.latLngBounds(latLngs), { padding: [48, 48], maxZoom: 18 });
         }

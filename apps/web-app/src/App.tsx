@@ -624,7 +624,8 @@ export default function App() {
     if (!activeFlightMission) {
       return "Velg et oppdrag i venstre panel for å vise ruten i kartet.";
     }
-    return `${activeFlightMission.name} · ${activeFlightMission.fields.length} jord${activeFlightMission.fields.length === 1 ? "" : "er"} i oppdraget.`;
+    const fieldCount = Array.isArray(activeFlightMission.fields) ? activeFlightMission.fields.length : 0;
+    return `${activeFlightMission.name} · ${fieldCount} jord${fieldCount === 1 ? "" : "er"} i oppdraget.`;
   }, [activeFlightMission, flightMissions.length]);
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
@@ -2532,15 +2533,16 @@ export default function App() {
       setSelectedMissionFieldIds(data.field_ids);
       setActiveFlightMissionId(data.id);
       setShowMissionOverlay(true);
+      const warningCount = Array.isArray(data.warnings) ? data.warnings.length : 0;
       setFlightMissionStatus(
-        data.warnings.length > 0
-          ? `Oppdrag ${data.name} opprettet med ${data.warnings.length} varsel${data.warnings.length === 1 ? "" : "er"}.`
+        warningCount > 0
+          ? `Oppdrag ${data.name} opprettet med ${warningCount} varsel${warningCount === 1 ? "" : "er"}.`
           : `Oppdrag ${data.name} er klart for eksport.`,
       );
       addLog("info", "Flyoppdrag opprettet", requestId, {
         missionId: data.id,
         propertyId: data.property_id,
-        fieldCount: data.field_ids.length,
+        fieldCount: Array.isArray(data.field_ids) ? data.field_ids.length : 0,
       });
     } catch (error) {
       const apiError = error as ApiError;
