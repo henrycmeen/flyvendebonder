@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Scissors, TimerReset, Plane, RefreshCw } from "lucide-react";
+import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw } from "lucide-react";
 
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { PlanningMap } from "@/components/planning-map";
 import type {
   DroneProfile,
   DroneProfileListResponse,
+  FlightMission,
   FlightMissionParameters,
   FlightMissionPreview,
   GeoPoint,
@@ -30,10 +31,15 @@ interface PlanningPageProps {
   property: Property | null;
   propertyLabel: string | null;
   canEdit: boolean;
+  missions: FlightMission[];
+  activeMissionId: number | null;
+  missionExportBusyId: number | null;
   baseMapStyle: BaseMapStyle;
   mapGrayscale: boolean;
   mapVintage: boolean;
   showZoomControls: boolean;
+  onOpenMissionInMap: (missionId: number) => void;
+  onExportMission: (missionId: number) => void;
 }
 
 function formatArea(areaHa: number | null): string {
@@ -63,14 +69,44 @@ function missionStatusLabel(status: string | null): string {
   return "Ikke planlagt";
 }
 
+function missionSummary(mission: FlightMission): string {
+  const fields = Array.isArray(mission.fields) ? mission.fields : [];
+  const warnings = Array.isArray(mission.warnings) ? mission.warnings : [];
+  const routeDistanceM =
+    typeof mission.export_manifest === "object" &&
+    mission.export_manifest !== null &&
+    typeof mission.export_manifest.summary === "object" &&
+    mission.export_manifest.summary !== null &&
+    typeof (mission.export_manifest.summary as { route_distance_m?: unknown }).route_distance_m === "number"
+      ? ((mission.export_manifest.summary as { route_distance_m: number }).route_distance_m)
+      : null;
+
+  const parts = [`${fields.length} jord${fields.length === 1 ? "" : "er"}`];
+  if (routeDistanceM != null && Number.isFinite(routeDistanceM)) {
+    parts.push(`${routeDistanceM.toFixed(0)} m rute`);
+  }
+  if (typeof mission.estimated_duration_s === "number" && Number.isFinite(mission.estimated_duration_s)) {
+    parts.push(`${Math.round(mission.estimated_duration_s / 60)} min flytid`);
+  }
+  if (warnings.length > 0) {
+    parts.push(`${warnings.length} varsel${warnings.length === 1 ? "" : "er"}`);
+  }
+  return parts.join(" · ");
+}
+
 export function PlanningPage({
   property,
   propertyLabel,
   canEdit,
+  missions,
+  activeMissionId,
+  missionExportBusyId,
   baseMapStyle,
   mapGrayscale,
   mapVintage,
   showZoomControls,
+  onOpenMissionInMap,
+  onExportMission,
 }: PlanningPageProps) {
   const [units, setUnits] = useState<PlanningUnit[]>([]);
   const [unitsStatus, setUnitsStatus] = useState("Planenheter lastes …");
@@ -467,6 +503,63 @@ export function PlanningPage({
             <Plane className="h-4 w-4" />
             Lagre som flyoppdrag
           </Button>
+
+          <div className="space-y-2 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Flyoppdrag</p>
+                <p className="mt-1 text-sm font-semibold text-fb-text-primary">Lagrede planer og eksport</p>
+              </div>
+              <span className="text-xs text-fb-text-secondary">{missions.length} oppdrag</span>
+            </div>
+            {missions.length === 0 ? (
+              <p className="text-sm text-fb-text-secondary">Ingen lagrede oppdrag ennå.</p>
+            ) : (
+              missions.slice(0, 6).map((mission) => (
+                <div
+                  key={mission.id}
+                  className={cn(
+                    "rounded-2xl border px-3 py-2.5",
+                    activeMissionId === mission.id
+                      ? "border-fb-border-strong bg-[color:color-mix(in_srgb,var(--fb-season-solid)_7%,white)]"
+                      : "border-fb-border-subtle bg-fb-surface-page",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-fb-text-primary">{mission.name}</p>
+                      <p className="mt-0.5 text-xs text-fb-text-secondary">{missionSummary(mission)}</p>
+                    </div>
+                    <span className={cn("text-xs font-medium", durationTone(mission.duration_status))}>
+                      {missionStatusLabel(mission.duration_status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={activeMissionId === mission.id ? "default" : "outline"}
+                      onClick={() => onOpenMissionInMap(mission.id)}
+                    >
+                      {activeMissionId === mission.id ? "Vises i kart" : "Vis i kart"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onExportMission(mission.id)}
+                      loading={missionExportBusyId === mission.id}
+                      loadingLabel="Eksporterer"
+                      disabled={!canEdit}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Eksporter
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </section>
     </div>
