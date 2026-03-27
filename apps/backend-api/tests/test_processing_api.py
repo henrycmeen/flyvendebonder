@@ -136,12 +136,14 @@ def test_processing_run_and_artifact_lifecycle(client):
             "checksum": "sha256:demo",
             "is_public": False,
             "metadata": {"epsg": "EPSG:25833"},
+            "provenance": {"provider": "webodm", "source_run_status": "completed"},
         },
     )
     assert artifact_response.status_code == 201
     artifact = artifact_response.json()
     assert artifact["kind"] == "ortho"
     assert artifact["metadata"]["epsg"] == "EPSG:25833"
+    assert artifact["provenance"]["provider"] == "webodm"
     assert artifact["public_url"] is None
 
     list_response = client.get(f"/api/v1/processing-runs/{run['id']}/artifacts")
@@ -155,3 +157,36 @@ def test_processing_run_and_artifact_lifecycle(client):
     runs = all_runs.json()
     assert runs["count"] == 1
     assert runs["runs"][0]["artifact_count"] == 1
+
+
+def test_processing_artifact_rejects_unknown_kind(client):
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Invalid artifact capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    artifact_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "unknown",
+            "format": "cog",
+            "uri": "processing/unknown.bin",
+        },
+    )
+    assert artifact_response.status_code == 422

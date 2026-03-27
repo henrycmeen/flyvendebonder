@@ -262,6 +262,8 @@ class FlightMissionListResponse(BaseModel):
 FlightCaptureStatus = Literal["ready", "archived"]
 FlightCaptureSource = Literal["manual", "mission", "imported"]
 ProcessingRunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+ProcessingArtifactKind = Literal["ortho", "dsm", "dtm", "point_cloud", "thumb", "tiles", "mesh", "qa_report"]
+ProcessingArtifactFormat = Literal["cog", "geotiff", "pmtiles", "jpg", "png", "webp", "laz", "las", "obj", "json", "pdf"]
 
 
 class FlightCaptureCreate(BaseModel):
@@ -336,25 +338,27 @@ class ProcessingRunListResponse(BaseModel):
 
 
 class ProcessingArtifactCreate(BaseModel):
-    kind: str = Field(min_length=1, max_length=32)
-    format: str = Field(min_length=1, max_length=32)
+    kind: ProcessingArtifactKind
+    format: ProcessingArtifactFormat
     uri: str = Field(min_length=1, max_length=1024)
     bytes: int | None = Field(default=None, ge=0)
     checksum: str | None = Field(default=None, max_length=128)
     is_public: bool = False
     metadata: dict = Field(default_factory=dict)
+    provenance: dict = Field(default_factory=dict)
 
 
 class ProcessingArtifactOut(BaseModel):
     id: int
     processing_run_id: int
-    kind: str
-    format: str
+    kind: ProcessingArtifactKind
+    format: ProcessingArtifactFormat
     uri: str
     bytes: int | None = None
     checksum: str | None = None
     is_public: bool = False
     metadata: dict = Field(default_factory=dict)
+    provenance: dict = Field(default_factory=dict)
     public_url: str | None = None
     created_at: datetime
     updated_at: datetime

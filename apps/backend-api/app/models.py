@@ -219,6 +219,7 @@ class ProcessingArtifact(TimestampMixin, Base):
     checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    provenance_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
     processing_run: Mapped[ProcessingRun] = relationship(back_populates="artifacts")
 
