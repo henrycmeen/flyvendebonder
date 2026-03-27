@@ -189,6 +189,37 @@ def list_video_jobs(
     return list(db.execute(query).unique().scalars().all())
 
 
+def find_video_job_by_staging_item(
+    db: Session,
+    *,
+    user_id: int,
+    staging_job_id: str,
+    staging_item_id: int,
+) -> VideoJob | None:
+    candidates = (
+        db.execute(
+            select(VideoJob)
+            .options(joinedload(VideoJob.review))
+            .where(VideoJob.user_id == user_id)
+            .order_by(VideoJob.created_at.desc(), VideoJob.id.desc())
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+    for item in candidates:
+        try:
+            config = json.loads(item.config_json)
+        except json.JSONDecodeError:
+            continue
+        source = config.get("source")
+        if not isinstance(source, dict):
+            continue
+        if source.get("staging_job_id") == staging_job_id and source.get("staging_item_id") == staging_item_id:
+            return item
+    return None
+
+
 def save_video_job_review(
     db: Session,
     *,

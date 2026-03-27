@@ -25,6 +25,8 @@ def upgrade() -> None:
         sa.Column("property_id", sa.Integer(), nullable=True),
         sa.Column("source", sa.String(length=24), nullable=False, server_default="upload"),
         sa.Column("status", sa.String(length=24), nullable=False, server_default="staged"),
+        sa.Column("finalized_at", sa.DateTime(), nullable=True),
+        sa.Column("finalize_result_json", sa.Text(), nullable=False, server_default="{}"),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["property_id"], ["properties.id"], ondelete="SET NULL"),

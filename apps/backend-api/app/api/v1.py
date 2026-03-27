@@ -75,6 +75,7 @@ from ..schemas import (
     ImportRunOut,
     MediaStagingCountsOut,
     MediaStagingEnvelope,
+    MediaFinalizeEnvelope,
     MediaStagingItemOut,
     MediaStagingJobListResponse,
     MediaStagingJobOut,
@@ -108,6 +109,7 @@ from ..services.geonorge_teiger import (
 from ..services.imports import run_photo_ingest
 from ..services.media_staging import (
     create_media_staging_job as create_media_staging_job_record,
+    finalize_media_staging_job as finalize_media_staging_job_record,
     get_media_staging_job as get_media_staging_job_record,
     list_media_staging_jobs as list_media_staging_jobs_record,
 )
@@ -2243,6 +2245,28 @@ def get_media_staging_job(
     user = _current_user(db)
     job = _require_media_staging_job(db, user_id=user.id, job_id=job_id)
     return MediaStagingEnvelope(job=_media_staging_job_out(job))
+
+
+@router.post("/media-staging-jobs/{job_id}/finalize", response_model=MediaFinalizeEnvelope)
+def finalize_media_staging_job(
+    job_id: str,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> MediaFinalizeEnvelope:
+    user = _current_user(db)
+    try:
+        result = finalize_media_staging_job_record(
+            db,
+            app_data_root=settings.app_data_root,
+            user_id=user.id,
+            job_id=job_id,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Fant ikke stagingjobb":
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+    return MediaFinalizeEnvelope(result=result)
 
 
 @router.post("/video-jobs", response_model=VideoJobEnvelope, status_code=status.HTTP_201_CREATED)

@@ -675,6 +675,35 @@ class MediaStagingJobListResponse(BaseModel):
     jobs: list[MediaStagingJobOut]
 
 
+MediaFinalizeItemStatus = Literal["imported", "skipped", "created", "reused", "rejected", "failed"]
+
+
+class MediaFinalizeItemOut(BaseModel):
+    staging_item_id: int
+    filename: str
+    media_kind: MediaStagingKind
+    status: MediaFinalizeItemStatus
+    photo_id: str | None = None
+    video_job_id: str | None = None
+    detail: str | None = None
+
+
+class MediaFinalizeResultOut(BaseModel):
+    job_id: str
+    status: MediaStagingJobStatus
+    import_run_id: int | None = None
+    image_imported_count: int = 0
+    image_skipped_count: int = 0
+    video_jobs_created: int = 0
+    video_jobs_reused: int = 0
+    rejected_count: int = 0
+    items: list[MediaFinalizeItemOut] = Field(default_factory=list)
+
+
+class MediaFinalizeEnvelope(BaseModel):
+    result: MediaFinalizeResultOut
+
+
 class BackendLogLine(BaseModel):
     timestamp: str
     level: str

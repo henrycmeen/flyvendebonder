@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -10,6 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..models import MediaStagingJob, MediaStagingItem
+from .imports import SUPPORTED_EXTS, run_photo_ingest
+from .video_jobs import create_video_job, find_video_job_by_staging_item
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
@@ -134,3 +137,172 @@ def list_media_staging_jobs(
         .scalars()
         .all()
     )
+
+
+def finalize_media_staging_job(
+    db: Session,
+    *,
+    app_data_root: Path,
+    user_id: int,
+    job_id: str,
+) -> dict:
+    job = get_media_staging_job(db, user_id=user_id, job_id=job_id)
+    if job is None:
+        raise ValueError("Fant ikke stagingjobb")
+
+    cached_result = json.loads(job.finalize_result_json or "{}")
+    if job.status == "finalized" and cached_result:
+        return cached_result
+    if job.status != "staged":
+        raise ValueError("Stagingjobben kan ikke finaliseres i nåværende status")
+
+    image_items = [item for item in job.items if item.media_kind == "image"]
+    video_items = [item for item in job.items if item.media_kind == "video"]
+    rejected_items = [item for item in job.items if item.status == "rejected" or item.media_kind == "unknown"]
+
+    from ..models import Photo  # local import to avoid broad module coupling
+
+    existing_photos = (
+        db.execute(
+            select(Photo).where(Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]))
+        )
+        .scalars()
+        .all()
+        if image_items
+        else []
+    )
+    existing_photo_by_checksum = {item.source_hash: item for item in existing_photos}
+
+    staging_root = staging_job_dir(app_data_root, job.id)
+    import_run = None
+    if any(Path(item.filename).suffix.lower() in SUPPORTED_EXTS for item in image_items):
+        import_run = run_photo_ingest(
+            db,
+            staging_root,
+            user_id=job.user_id,
+            property_id=job.property_id,
+        )
+
+    imported_photos = (
+        db.execute(
+            select(Photo).where(Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]))
+        )
+        .scalars()
+        .all()
+        if image_items
+        else []
+    )
+    imported_photo_by_checksum = {item.source_hash: item for item in imported_photos}
+
+    item_results: list[dict] = []
+    for item in image_items:
+        suffix = Path(item.filename).suffix.lower()
+        if suffix not in SUPPORTED_EXTS:
+            item_results.append(
+                {
+                    "staging_item_id": item.id,
+                    "filename": item.filename,
+                    "media_kind": item.media_kind,
+                    "status": "failed",
+                    "photo_id": None,
+                    "video_job_id": None,
+                    "detail": "Bildeformatet støttes ikke av importløypa ennå",
+                }
+            )
+            continue
+        photo = imported_photo_by_checksum.get(item.checksum or "")
+        was_existing = item.checksum in existing_photo_by_checksum
+        item_results.append(
+            {
+                "staging_item_id": item.id,
+                "filename": item.filename,
+                "media_kind": item.media_kind,
+                "status": "skipped" if was_existing else "imported",
+                "photo_id": photo.id if photo is not None else None,
+                "video_job_id": None,
+                "detail": "Bildet fantes allerede" if was_existing else None,
+            }
+        )
+
+    for item in video_items:
+        existing_job = find_video_job_by_staging_item(
+            db,
+            user_id=job.user_id,
+            staging_job_id=job.id,
+            staging_item_id=item.id,
+        )
+        if existing_job is not None:
+            item_results.append(
+                {
+                    "staging_item_id": item.id,
+                    "filename": item.filename,
+                    "media_kind": item.media_kind,
+                    "status": "reused",
+                    "photo_id": None,
+                    "video_job_id": existing_job.id,
+                    "detail": "Videojobb fantes allerede for staging-itemet",
+                }
+            )
+            continue
+        created_job = create_video_job(
+            db,
+            app_data_root=app_data_root,
+            user_id=job.user_id,
+            property_id=job.property_id,
+            filename=item.filename,
+            mode="frames",
+            config={
+                "process": "frames",
+                "source": {
+                    "type": "media_staging_finalize_v1",
+                    "staging_job_id": job.id,
+                    "staging_item_id": item.id,
+                    "staged_path": item.staged_path,
+                    "checksum": item.checksum,
+                },
+            },
+        )
+        item_results.append(
+            {
+                "staging_item_id": item.id,
+                "filename": item.filename,
+                "media_kind": item.media_kind,
+                "status": "created",
+                "photo_id": None,
+                "video_job_id": created_job.id,
+                "detail": None,
+            }
+        )
+
+    for item in rejected_items:
+        item_results.append(
+            {
+                "staging_item_id": item.id,
+                "filename": item.filename,
+                "media_kind": item.media_kind,
+                "status": "rejected",
+                "photo_id": None,
+                "video_job_id": None,
+                "detail": item.error_detail or "Filen ble avvist i staging",
+            }
+        )
+
+    result = {
+        "job_id": job.id,
+        "status": "finalized",
+        "import_run_id": import_run.id if import_run is not None else None,
+        "image_imported_count": sum(1 for item in item_results if item["status"] == "imported"),
+        "image_skipped_count": sum(1 for item in item_results if item["status"] == "skipped"),
+        "video_jobs_created": sum(1 for item in item_results if item["status"] == "created"),
+        "video_jobs_reused": sum(1 for item in item_results if item["status"] == "reused"),
+        "rejected_count": sum(1 for item in item_results if item["status"] == "rejected"),
+        "items": item_results,
+    }
+
+    job.status = "finalized"
+    job.finalized_at = _utc_now()
+    job.finalize_result_json = json.dumps(result, ensure_ascii=False)
+    job.updated_at = _utc_now()
+    db.add(job)
+    db.commit()
+    return result
