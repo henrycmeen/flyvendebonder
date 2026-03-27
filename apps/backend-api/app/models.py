@@ -72,6 +72,9 @@ class Property(TimestampMixin, Base):
     photos: Mapped[list[Photo]] = relationship(back_populates="property")
     job_cache: Mapped[list[GardskartJobCache]] = relationship(back_populates="property")
     field_plots: Mapped[list[FieldPlot]] = relationship(back_populates="property", cascade="all, delete-orphan")
+    planning_units: Mapped[list[PlanningUnit]] = relationship(
+        back_populates="property", cascade="all, delete-orphan"
+    )
     flight_missions: Mapped[list[FlightMission]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
@@ -141,6 +144,28 @@ class FieldPlot(TimestampMixin, Base):
     area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     property: Mapped[Property] = relationship(back_populates="field_plots")
+    planning_units: Mapped[list[PlanningUnit]] = relationship(back_populates="source_field_plot")
+
+
+class PlanningUnit(TimestampMixin, Base):
+    __tablename__ = "planning_units"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    source_field_plot_id: Mapped[int] = mapped_column(
+        ForeignKey("field_plots.id", ondelete="CASCADE"), index=True
+    )
+    parent_unit_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("planning_units.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    geometry_json: Mapped[str] = mapped_column(Text, nullable=False)
+    area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    property: Mapped[Property] = relationship(back_populates="planning_units")
+    source_field_plot: Mapped[FieldPlot] = relationship(back_populates="planning_units")
 
 
 class FlightMission(TimestampMixin, Base):
@@ -152,6 +177,11 @@ class FlightMission(TimestampMixin, Base):
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="ready")
     field_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    planning_unit_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    drone_profile_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    drone_profile_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    estimated_duration_s: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_status: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
     parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
     field_snapshots_json: Mapped[str] = mapped_column(Text, nullable=False)
     route_geojson_json: Mapped[str] = mapped_column(Text, nullable=False)

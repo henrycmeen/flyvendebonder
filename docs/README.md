@@ -9,6 +9,7 @@
 - `docs/drift/stac-contract-v1.md` – første STAC-kontrakt for collections og items over processing-runs
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
+- `docs/drift/planlegging-workspace-v1.md` – første kontrakt for den nye planleggingsarbeidsflaten
 - `Linear` – backlog og prosjektstatus (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
 - `GitHub Issues` – repo-nære saker og historisk backlog (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `docs/status/` – statuslogg av det som er bygget
@@ -21,5 +22,6 @@
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
+- `docs/drift/planlegging-workspace-v1.md` – hvordan planenheter, splitting og flytidsestimat fungerer
 - `Linear` – prioritering og triage
 - `AGENTS.md` – interne arbeidsregler for repoet

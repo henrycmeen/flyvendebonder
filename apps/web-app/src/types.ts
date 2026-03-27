@@ -69,6 +69,11 @@ export interface GeoJSONPolygon {
   coordinates: number[][][];
 }
 
+export interface GeoJSONLineString {
+  type: "LineString";
+  coordinates: number[][];
+}
+
 export type FieldPlotStatus = "draft" | "confirmed";
 export type FieldPlotSource = "manual" | "suggested" | "imported";
 
@@ -111,6 +116,8 @@ export interface FieldPlotDeleteResponse {
 
 export type FlightMissionStatus = "ready";
 export type FlightMissionWarningSeverity = "info" | "warning";
+export type PlanningUnitStatus = "active" | "archived";
+export type FlightMissionDurationStatus = "ok" | "warning" | "over_limit";
 
 export interface FlightMissionParameters {
   altitude_m: number;
@@ -128,6 +135,7 @@ export interface FlightMissionWarning {
 
 export interface FlightMissionField {
   field_id: number;
+  planning_unit_id: number | null;
   name: string;
   area_m2: number | null;
   area_ha: number | null;
@@ -145,6 +153,11 @@ export interface FlightMission {
   name: string;
   status: FlightMissionStatus;
   field_ids: number[];
+  planning_unit_ids: number[];
+  drone_profile_id: string | null;
+  drone_profile_snapshot: Record<string, unknown>;
+  estimated_duration_s: number | null;
+  duration_status: FlightMissionDurationStatus | null;
   parameters: FlightMissionParameters;
   fields: FlightMissionField[];
   warnings: FlightMissionWarning[];
@@ -159,6 +172,72 @@ export interface FlightMissionListResponse {
   property_id: number;
   count: number;
   missions: FlightMission[];
+}
+
+export interface FlightMissionPreview {
+  name: string;
+  status: FlightMissionStatus;
+  field_ids: number[];
+  planning_unit_ids: number[];
+  drone_profile_id: string | null;
+  drone_profile_snapshot: Record<string, unknown>;
+  estimated_duration_s: number | null;
+  duration_status: FlightMissionDurationStatus | null;
+  parameters: FlightMissionParameters;
+  fields: FlightMissionField[];
+  warnings: FlightMissionWarning[];
+  route_geojson: GeoJSONFeatureCollection;
+  export_manifest: Record<string, unknown>;
+}
+
+export interface PlanningUnit {
+  id: number;
+  property_id: number;
+  source_field_plot_id: number;
+  parent_unit_id: number | null;
+  name: string;
+  status: PlanningUnitStatus;
+  geometry: GeoJSONPolygon;
+  area_m2: number | null;
+  area_ha: number | null;
+  source_field_name: string;
+  is_split: boolean;
+  latest_mission_id: number | null;
+  latest_mission_name: string | null;
+  latest_duration_status: FlightMissionDurationStatus | null;
+  latest_estimated_duration_s: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanningUnitListResponse {
+  property_id: number;
+  count: number;
+  units: PlanningUnit[];
+}
+
+export interface PlanningUnitSyncResponse extends PlanningUnitListResponse {
+  created_count: number;
+}
+
+export interface PlanningUnitSplitResponse {
+  archived_unit: PlanningUnit;
+  created_units: PlanningUnit[];
+}
+
+export interface DroneProfile {
+  id: string;
+  name: string;
+  cruise_speed_mps: number;
+  launch_overhead_s: number;
+  waypoint_turn_overhead_s: number;
+  max_flight_time_s: number;
+  reserve_percent: number;
+}
+
+export interface DroneProfileListResponse {
+  count: number;
+  profiles: DroneProfile[];
 }
 
 export type FieldCandidateSource = "geonorge";

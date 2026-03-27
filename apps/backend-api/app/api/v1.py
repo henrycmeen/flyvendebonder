@@ -24,6 +24,7 @@ from ..models import (
     FlightMission,
     IngestRun,
     MediaStagingJob,
+    PlanningUnit,
     Photo,
     PhotoAsset,
     PhotoAnalysis,
@@ -45,6 +46,7 @@ from ..schemas import (
     FlightMissionListResponse,
     FlightMissionOut,
     FlightMissionPatch,
+    FlightMissionPreviewOut,
     FieldPlotCreate,
     FieldPlotDeleteResponse,
     FieldHistoryEntryOut,
@@ -81,6 +83,13 @@ from ..schemas import (
     MediaStagingItemOut,
     MediaStagingJobListResponse,
     MediaStagingJobOut,
+    DroneProfileListResponse,
+    DroneProfileOut,
+    PlanningUnitListResponse,
+    PlanningUnitOut,
+    PlanningUnitSplitIn,
+    PlanningUnitSplitOut,
+    PlanningUnitSyncResponse,
     PhotoPageResponse,
     PhotoResponse,
     ProfileOut,
@@ -120,6 +129,15 @@ from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m
 from ..services.flight_missions import (
     build_flight_mission_export_bundle,
     build_flight_mission_payload,
+)
+from ..services.planning import (
+    get_drone_profile,
+    list_drone_profiles,
+    planning_unit_field_name,
+    planning_unit_payload_from_field,
+    planning_unit_payload_from_unit,
+    split_planning_unit,
+    sync_planning_units,
 )
 from ..services.photo_reprocess import reprocess_photos_for_user
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
@@ -456,8 +474,43 @@ def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
     )
 
 
+def _planning_unit_out(
+    item: PlanningUnit,
+    *,
+    source_field_name: str,
+    latest_mission_id: int | None = None,
+    latest_mission_name: str | None = None,
+    latest_duration_status: str | None = None,
+    latest_estimated_duration_s: float | None = None,
+) -> PlanningUnitOut:
+    area_m2 = round(item.area_m2, 2) if item.area_m2 is not None else None
+    return PlanningUnitOut(
+        id=item.id,
+        property_id=item.property_id,
+        source_field_plot_id=item.source_field_plot_id,
+        parent_unit_id=item.parent_unit_id,
+        name=(item.name or f"Planenhet {item.id}").strip(),
+        status=item.status,
+        geometry=json.loads(item.geometry_json),
+        area_m2=area_m2,
+        area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
+        source_field_name=source_field_name,
+        is_split=item.parent_unit_id is not None,
+        latest_mission_id=latest_mission_id,
+        latest_mission_name=latest_mission_name,
+        latest_duration_status=latest_duration_status,
+        latest_estimated_duration_s=latest_estimated_duration_s,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
 def _field_ids_contains(raw_value: str, field_id: int) -> bool:
     return field_id in {int(value) for value in json.loads(raw_value)}
+
+
+def _planning_unit_ids_contains(raw_value: str, planning_unit_id: int) -> bool:
+    return planning_unit_id in {int(value) for value in json.loads(raw_value)}
 
 
 def _history_season_label(value: datetime) -> str:
@@ -595,20 +648,45 @@ def _geojson_response(
 
 
 def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
+    export_manifest = json.loads(item.export_manifest_json)
+    summary = export_manifest.get("summary", {}) if isinstance(export_manifest, dict) else {}
     return FlightMissionOut(
         id=item.id,
         property_id=item.property_id,
         name=(item.name or f"Oppdrag {item.id}").strip(),
         status=item.status,
         field_ids=json.loads(item.field_ids_json),
+        planning_unit_ids=json.loads(item.planning_unit_ids_json),
+        drone_profile_id=item.drone_profile_id,
+        drone_profile_snapshot=json.loads(item.drone_profile_snapshot_json),
+        estimated_duration_s=item.estimated_duration_s if item.estimated_duration_s is not None else summary.get("estimated_duration_s"),
+        duration_status=item.duration_status or summary.get("duration_status"),
         parameters=json.loads(item.parameters_json),
         fields=json.loads(item.field_snapshots_json),
         warnings=json.loads(item.warnings_json),
         route_geojson=json.loads(item.route_geojson_json),
-        export_manifest=json.loads(item.export_manifest_json),
+        export_manifest=export_manifest,
         created_at=item.created_at,
         updated_at=item.updated_at,
         last_generated_at=item.last_generated_at,
+    )
+
+
+def _flight_mission_preview_out(payload: dict[str, object]) -> FlightMissionPreviewOut:
+    return FlightMissionPreviewOut(
+        name=str(payload["name"]),
+        status=str(payload["status"]),
+        field_ids=list(payload["field_ids"]),
+        planning_unit_ids=list(payload.get("planning_unit_ids", [])),
+        drone_profile_id=payload.get("drone_profile_id"),
+        drone_profile_snapshot=dict(payload.get("drone_profile_snapshot", {})),
+        estimated_duration_s=payload.get("estimated_duration_s"),
+        duration_status=payload.get("duration_status"),
+        parameters=payload["parameters"],
+        fields=payload["fields"],
+        warnings=payload["warnings"],
+        route_geojson=payload["route_geojson"],
+        export_manifest=payload["export_manifest"],
     )
 
 
@@ -979,6 +1057,100 @@ def _resolve_field_plots_for_mission(db: Session, property_obj: Property, field_
     return [field_by_id[field_id] for field_id in normalized_ids]
 
 
+def _resolve_planning_units_for_mission(
+    db: Session,
+    property_obj: Property,
+    planning_unit_ids: list[int],
+) -> list[PlanningUnit]:
+    normalized_ids: list[int] = []
+    for raw_id in planning_unit_ids:
+        unit_id = int(raw_id)
+        if unit_id not in normalized_ids:
+            normalized_ids.append(unit_id)
+
+    if not normalized_ids:
+        return []
+
+    unit_items = (
+        db.execute(
+            select(PlanningUnit)
+            .where(PlanningUnit.property_id == property_obj.id)
+            .where(PlanningUnit.status == "active")
+            .where(PlanningUnit.id.in_(normalized_ids))
+            .order_by(PlanningUnit.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    unit_by_id = {item.id: item for item in unit_items}
+    missing_ids = [unit_id for unit_id in normalized_ids if unit_id not in unit_by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fant ikke valgte planenheter for aktiv eiendom: {', '.join(str(item) for item in missing_ids)}",
+        )
+    return [unit_by_id[unit_id] for unit_id in normalized_ids]
+
+
+def _mission_geometry_sources(
+    *,
+    fields: list[FieldPlot],
+    planning_units: list[PlanningUnit],
+) -> list[dict[str, object]]:
+    if planning_units:
+        return [planning_unit_payload_from_unit(item) for item in planning_units]
+    return [planning_unit_payload_from_field(item) for item in fields]
+
+
+def _build_flight_mission_preview_payload(
+    db: Session,
+    *,
+    property_obj: Property,
+    payload: FlightMissionCreate | FlightMissionPatch,
+    existing: FlightMission | None = None,
+) -> dict[str, object]:
+    if existing is None:
+        field_ids = list(getattr(payload, "field_ids", []))
+        planning_unit_ids = list(getattr(payload, "planning_unit_ids", []))
+        drone_profile_id = getattr(payload, "drone_profile_id", None)
+        mission_name = payload.name
+        parameters = payload.parameters.model_dump()
+    else:
+        field_ids = payload.field_ids if payload.field_ids is not None else json.loads(existing.field_ids_json)
+        planning_unit_ids = (
+            payload.planning_unit_ids
+            if payload.planning_unit_ids is not None
+            else json.loads(existing.planning_unit_ids_json)
+        )
+        drone_profile_id = (
+            payload.drone_profile_id if "drone_profile_id" in payload.model_fields_set else existing.drone_profile_id
+        )
+        mission_name = payload.name if "name" in payload.model_fields_set else existing.name
+        parameters = json.loads(existing.parameters_json)
+        if payload.parameters is not None:
+            parameters = {
+                **parameters,
+                **payload.parameters.model_dump(exclude_unset=True),
+            }
+
+    field_items = _resolve_field_plots_for_mission(db, property_obj, field_ids) if field_ids else []
+    planning_unit_items = (
+        _resolve_planning_units_for_mission(db, property_obj, planning_unit_ids) if planning_unit_ids else []
+    )
+    drone_profile = get_drone_profile(drone_profile_id)
+    if drone_profile_id and drone_profile is None:
+        raise HTTPException(status_code=400, detail="Ukjent droneprofil")
+
+    return build_flight_mission_payload(
+        property_obj=property_obj,
+        fields=_mission_geometry_sources(fields=field_items, planning_units=planning_unit_items),
+        name=mission_name,
+        parameters=parameters,
+        planning_unit_ids=planning_unit_ids,
+        drone_profile=drone_profile,
+    )
+
+
 def _resolve_flight_capture_photos(
     db: Session,
     *,
@@ -1038,6 +1210,61 @@ def _resolve_flight_capture(
     if item is None:
         raise HTTPException(status_code=404, detail="Fant ikke flight capture")
     return item
+
+
+def _planning_unit_latest_mission_lookup(missions: list[FlightMission]) -> dict[int, FlightMission]:
+    lookup: dict[int, FlightMission] = {}
+    for mission in missions:
+        for planning_unit_id in json.loads(mission.planning_unit_ids_json):
+            unit_id = int(planning_unit_id)
+            current = lookup.get(unit_id)
+            if current is None or (mission.updated_at, mission.id) > (current.updated_at, current.id):
+                lookup[unit_id] = mission
+    return lookup
+
+
+def _planning_unit_list_response(
+    db: Session,
+    *,
+    property_obj: Property,
+    units: list[PlanningUnit],
+) -> PlanningUnitListResponse:
+    field_lookup = {
+        item.id: item
+        for item in db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.id.in_([unit.source_field_plot_id for unit in units] or [-1]),
+            )
+        )
+        .scalars()
+        .all()
+    }
+    missions = (
+        db.execute(
+            select(FlightMission)
+            .where(FlightMission.property_id == property_obj.id)
+            .order_by(FlightMission.updated_at.desc(), FlightMission.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    latest_mission_lookup = _planning_unit_latest_mission_lookup(missions)
+    items = []
+    for unit in units:
+        source_field = field_lookup.get(unit.source_field_plot_id)
+        latest_mission = latest_mission_lookup.get(unit.id)
+        items.append(
+            _planning_unit_out(
+                unit,
+                source_field_name=planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}",
+                latest_mission_id=latest_mission.id if latest_mission else None,
+                latest_mission_name=(latest_mission.name or f"Oppdrag {latest_mission.id}").strip() if latest_mission else None,
+                latest_duration_status=latest_mission.duration_status if latest_mission else None,
+                latest_estimated_duration_s=latest_mission.estimated_duration_s if latest_mission else None,
+            )
+        )
+    return PlanningUnitListResponse(property_id=property_obj.id, count=len(items), units=items)
 
 
 @router.get("/health")
@@ -1399,6 +1626,109 @@ def export_field_plots_geojson(
     )
 
 
+@router.get("/drone-profiles", response_model=DroneProfileListResponse)
+def list_planning_drone_profiles() -> DroneProfileListResponse:
+    profiles = [DroneProfileOut(**item) for item in list_drone_profiles()]
+    return DroneProfileListResponse(count=len(profiles), profiles=profiles)
+
+
+@router.post("/planning/properties/{property_id}/sync", response_model=PlanningUnitSyncResponse)
+def sync_property_planning_units(
+    property_id: int,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PlanningUnitSyncResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    if property_obj.id != property_id:
+        raise HTTPException(status_code=400, detail="Planlegging kan bare synkes for aktiv eiendom")
+
+    units, created_count = sync_planning_units(db, property_obj=property_obj)
+    db.commit()
+    response = _planning_unit_list_response(db, property_obj=property_obj, units=units)
+    return PlanningUnitSyncResponse(property_id=response.property_id, count=response.count, units=response.units, created_count=created_count)
+
+
+@router.get("/planning/properties/{property_id}/units", response_model=PlanningUnitListResponse)
+def list_property_planning_units(property_id: int, db: Session = Depends(get_db)) -> PlanningUnitListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    if property_obj.id != property_id:
+        raise HTTPException(status_code=400, detail="Planlegging kan bare vises for aktiv eiendom")
+
+    units = (
+        db.execute(
+            select(PlanningUnit)
+            .where(PlanningUnit.property_id == property_obj.id, PlanningUnit.status == "active")
+            .order_by(PlanningUnit.updated_at.desc(), PlanningUnit.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return _planning_unit_list_response(db, property_obj=property_obj, units=units)
+
+
+@router.post("/planning/units/{unit_id}/split", response_model=PlanningUnitSplitOut)
+def split_property_planning_unit(
+    unit_id: int,
+    payload: PlanningUnitSplitIn = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PlanningUnitSplitOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    unit = (
+        db.execute(
+            select(PlanningUnit)
+            .where(PlanningUnit.id == unit_id, PlanningUnit.property_id == property_obj.id, PlanningUnit.status == "active")
+        )
+        .scalars()
+        .first()
+    )
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv planenhet")
+
+    try:
+        split_parts = split_planning_unit(unit, line_coordinates=payload.line.coordinates)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    unit.status = "archived"
+    source_field = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.id == unit.source_field_plot_id,
+                FieldPlot.property_id == property_obj.id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    created_units: list[PlanningUnit] = []
+    for part in split_parts:
+        item = PlanningUnit(
+            property_id=property_obj.id,
+            source_field_plot_id=unit.source_field_plot_id,
+            parent_unit_id=unit.id,
+            name=part["name"],
+            status="active",
+            geometry_json=json.dumps(part["geometry"], ensure_ascii=False),
+            area_m2=part["area_m2"],
+        )
+        db.add(item)
+        created_units.append(item)
+
+    db.commit()
+    for item in created_units:
+        db.refresh(item)
+    db.refresh(unit)
+    source_field_name = planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}"
+    return PlanningUnitSplitOut(
+        archived_unit=_planning_unit_out(unit, source_field_name=source_field_name),
+        created_units=[_planning_unit_out(item, source_field_name=source_field_name) for item in created_units],
+    )
+
+
 @router.get("/flight-missions", response_model=FlightMissionListResponse)
 def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResponse:
     user = _current_user(db)
@@ -1419,6 +1749,17 @@ def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResp
     )
 
 
+@router.post("/flight-missions/preview", response_model=FlightMissionPreviewOut)
+def preview_flight_mission(
+    payload: FlightMissionCreate = Body(...),
+    db: Session = Depends(get_db),
+) -> FlightMissionPreviewOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
+    return _flight_mission_preview_out(mission_payload)
+
+
 @router.post("/flight-missions", response_model=FlightMissionOut, status_code=status.HTTP_201_CREATED)
 def create_flight_mission(
     payload: FlightMissionCreate = Body(...),
@@ -1427,19 +1768,18 @@ def create_flight_mission(
 ) -> FlightMissionOut:
     user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
-    field_items = _resolve_field_plots_for_mission(db, property_obj, payload.field_ids)
-    mission_payload = build_flight_mission_payload(
-        property_obj=property_obj,
-        fields=field_items,
-        name=payload.name,
-        parameters=payload.parameters.model_dump(),
-    )
+    mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
 
     item = FlightMission(
         property_id=property_obj.id,
         name=mission_payload["name"],
         status=mission_payload["status"],
         field_ids_json=json.dumps(mission_payload["field_ids"], ensure_ascii=False),
+        planning_unit_ids_json=json.dumps(mission_payload["planning_unit_ids"], ensure_ascii=False),
+        drone_profile_id=mission_payload["drone_profile_id"],
+        drone_profile_snapshot_json=json.dumps(mission_payload["drone_profile_snapshot"], ensure_ascii=False),
+        estimated_duration_s=mission_payload["estimated_duration_s"],
+        duration_status=mission_payload["duration_status"],
         parameters_json=json.dumps(mission_payload["parameters"], ensure_ascii=False),
         field_snapshots_json=json.dumps(mission_payload["fields"], ensure_ascii=False),
         route_geojson_json=json.dumps(mission_payload["route_geojson"], ensure_ascii=False),
@@ -1493,23 +1833,16 @@ def patch_flight_mission(
     if item is None:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
-    field_ids = payload.field_ids if payload.field_ids is not None else json.loads(item.field_ids_json)
-    parameters = json.loads(item.parameters_json)
-    if payload.parameters is not None:
-        parameters = {
-            **parameters,
-            **payload.parameters.model_dump(exclude_unset=True),
-        }
-    mission_payload = build_flight_mission_payload(
-        property_obj=property_obj,
-        fields=_resolve_field_plots_for_mission(db, property_obj, field_ids),
-        name=payload.name if "name" in payload.model_fields_set else item.name,
-        parameters=parameters,
-    )
+    mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload, existing=item)
 
     item.name = mission_payload["name"]
     item.status = mission_payload["status"]
     item.field_ids_json = json.dumps(mission_payload["field_ids"], ensure_ascii=False)
+    item.planning_unit_ids_json = json.dumps(mission_payload["planning_unit_ids"], ensure_ascii=False)
+    item.drone_profile_id = mission_payload["drone_profile_id"]
+    item.drone_profile_snapshot_json = json.dumps(mission_payload["drone_profile_snapshot"], ensure_ascii=False)
+    item.estimated_duration_s = mission_payload["estimated_duration_s"]
+    item.duration_status = mission_payload["duration_status"]
     item.parameters_json = json.dumps(mission_payload["parameters"], ensure_ascii=False)
     item.field_snapshots_json = json.dumps(mission_payload["fields"], ensure_ascii=False)
     item.route_geojson_json = json.dumps(mission_payload["route_geojson"], ensure_ascii=False)

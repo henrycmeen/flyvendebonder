@@ -60,6 +60,9 @@ function missionSummary(mission: FlightMission): string {
   if (routeDistanceM != null && Number.isFinite(routeDistanceM)) {
     parts.push(`${routeDistanceM.toFixed(0)} m rute`);
   }
+  if (typeof mission.estimated_duration_s === "number" && Number.isFinite(mission.estimated_duration_s)) {
+    parts.push(`${Math.round(mission.estimated_duration_s / 60)} min flytid`);
+  }
   if (mission.warnings.length > 0) {
     parts.push(`${mission.warnings.length} varsel${mission.warnings.length === 1 ? "" : "er"}`);
   }

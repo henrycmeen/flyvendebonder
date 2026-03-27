@@ -36,6 +36,7 @@ import { FilterPanel } from "@/components/filter-panel";
 import { MapLayerPanel } from "@/components/map-layer-panel";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
+import { PlanningPage } from "@/components/planning-page";
 import { PhotoMapInset } from "@/components/photo-map-inset";
 import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "album" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "import" | "video";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
@@ -121,6 +122,7 @@ function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr"
 }
 
 function resolveInitialView(rawView: string | null): AppView {
+  if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
   if (rawView === "import") {
     return BROWSER_MEDIA_IMPORT_ENABLED ? "import" : "map";
@@ -3771,6 +3773,8 @@ export default function App() {
                 "info",
                 view === "album"
                   ? "Album åpnet"
+                  : view === "planning"
+                    ? "Planlegging åpnet"
                   : view === "import"
                     ? "Import åpnet"
                     : view === "video"
@@ -3907,6 +3911,16 @@ export default function App() {
                   onPropertyStatus={setPropertyStatus}
                   onPropertyTileError={handlePropertyTileError}
                   onBaseMapTileError={handleBaseMapTileError}
+                />
+              ) : activeView === "planning" ? (
+                <PlanningPage
+                  property={currentProperty}
+                  propertyLabel={currentPropertyLabel}
+                  canEdit={isAdminAuthenticated}
+                  baseMapStyle={baseMapStyle}
+                  mapGrayscale={mapGrayscale}
+                  mapVintage={mapVintage}
+                  showZoomControls={showZoomControls}
                 />
               ) : activeView === "album" ? (
                 <AlbumPage

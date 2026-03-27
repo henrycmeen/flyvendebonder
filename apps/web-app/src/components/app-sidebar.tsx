@@ -1,4 +1,4 @@
-import { Images, Import, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Settings2 } from "lucide-react";
+import { Images, Import, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Route, Settings2 } from "lucide-react";
 
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
-type AppView = "map" | "album" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "import" | "video";
 
 interface LogEntry {
   id: string;
@@ -120,6 +120,14 @@ function SidebarNavigation({
               <MapIcon className="h-4 w-4 shrink-0" />
             </span>
             <span className="fb-sidebar-label">Kart</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Route className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Planlegging</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
