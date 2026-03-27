@@ -1,7 +1,7 @@
 """Add media staging jobs and items
 
-Revision ID: 20260327_11
-Revises: 20260327_10
+Revision ID: 20260327_12
+Revises: 20260327_11
 Create Date: 2026-03-27 11:55:00
 """
 
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260327_11"
-down_revision = "20260327_10"
+revision = "20260327_12"
+down_revision = "20260327_11"
 branch_labels = None
 depends_on = None
 
