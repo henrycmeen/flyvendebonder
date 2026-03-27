@@ -351,8 +351,8 @@ class ProcessingArtifactCreate(BaseModel):
 class ProcessingArtifactOut(BaseModel):
     id: int
     processing_run_id: int
-    kind: ProcessingArtifactKind
-    format: ProcessingArtifactFormat
+    kind: str
+    format: str
     uri: str
     bytes: int | None = None
     checksum: str | None = None

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 
 def _sample_polygon(offset: float = 0.0) -> dict:
     return {
@@ -190,3 +192,54 @@ def test_processing_artifact_rejects_unknown_kind(client):
         },
     )
     assert artifact_response.status_code == 422
+
+
+def test_processing_artifact_listing_keeps_legacy_values_readable(client):
+    from app.database import SessionLocal
+    from app.models import ProcessingArtifact, ProcessingRun
+    from sqlalchemy import select
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Legacy artifact capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    with SessionLocal() as db:
+        item = db.execute(select(ProcessingRun).where(ProcessingRun.id == run["id"])).scalar_one()
+        db.add(
+            ProcessingArtifact(
+                processing_run_id=item.id,
+                kind="orthomosaic",
+                format="tif",
+                uri="processing/legacy/capture-legacy.tif",
+                bytes=4096,
+                checksum=None,
+                is_public=False,
+                metadata_json=json.dumps({}, ensure_ascii=False),
+                provenance_json=json.dumps({"source": "legacy"}, ensure_ascii=False),
+            )
+        )
+        db.commit()
+
+    list_response = client.get(f"/api/v1/processing-runs/{run['id']}/artifacts")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["count"] == 1
+    assert payload["artifacts"][0]["kind"] == "orthomosaic"
+    assert payload["artifacts"][0]["format"] == "tif"
