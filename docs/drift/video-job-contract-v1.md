@@ -31,13 +31,14 @@ Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeh
 - `frames`-modus er støttet i praksis.
 - Jobben fullføres umiddelbart med et lite placeholder-resultat.
 - Artefakter lagres under `APP_DATA_ROOT/video-jobs/{job_id}/`.
-- Review lagres i et prosesslokalt register.
+- Jobbstatus og review lagres i databasen (`video_jobs`, `video_job_reviews`).
 
 ## Hvorfor denne formen
 
 - Frontenden var allerede bygget rundt `/api/v1/video-jobs`, men repo-backenden manglet hele kontrakten.
 - Vi trengte en ekte backend-overflate før vi bandt oss til `ffmpeg`, `OpenCV`, `WebODM` eller egen pipeline.
 - Denne varianten gjør det mulig å stabilisere UI og brukerflyt først, og så bytte ut motoren bak senere.
+- Ved å flytte state til databasen kan vi nå bygge videre med historikk, retry og kobling mot andre domener uten å miste jobber ved restart.
 
 ## Neste steg
 

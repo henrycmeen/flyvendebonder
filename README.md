@@ -90,6 +90,7 @@ API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ve
 
 ## Videojobb-kontrakt v1
 - Backend eksponerer nå en minimal `video-jobs`-kontrakt for frontendens videoflyt.
+- Jobbstatus og review lagres i databasen, mens placeholder-artefakter lagres på disk under app-data.
 - Endepunkter:
   - `POST /api/v1/video-jobs`
   - `GET /api/v1/video-jobs/{job_id}`

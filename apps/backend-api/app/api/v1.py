@@ -85,7 +85,12 @@ from ..services.tag_utils import (
     serialize_tag_groups,
     merge_tag_groups,
 )
-from ..services.video_jobs import video_job_registry
+from ..services.video_jobs import (
+    create_video_job as create_video_job_record,
+    get_video_job as get_video_job_record,
+    job_dir as video_job_dir,
+    save_video_job_review,
+)
 from ..services.view_overrides import set_manual_view_override
 
 router = APIRouter()
@@ -274,18 +279,43 @@ def _normalize_field_name(value: str | None) -> str | None:
 
 
 def _video_job_out(job) -> VideoJobOut:
-    return VideoJobOut.model_validate(job.to_dict())
+    review_payload = None
+    if job.review is not None:
+        review_payload = {
+            "job_id": job.review.job_id,
+            "created_at": job.review.created_at,
+            "mode": job.review.mode,
+            "review_state": job.review.review_state,
+            "placement": json.loads(job.review.placement_json) if job.review.placement_json else None,
+            "reviewed_at": job.review.reviewed_at,
+        }
+    result_frames = json.loads(job.result_frames_json)
+    return VideoJobOut.model_validate(
+        {
+            "job_id": job.id,
+            "filename": job.filename,
+            "mode": job.mode,
+            "status": job.status,
+            "created_at": job.created_at,
+            "updated_at": job.updated_at,
+            "message": job.message,
+            "config": json.loads(job.config_json),
+            "result_frames": result_frames,
+            "result": result_frames,
+            "review": review_payload,
+        }
+    )
 
 
-def _require_video_job(job_id: str):
-    job = video_job_registry.get_job(job_id)
+def _require_video_job(db: Session, job_id: str):
+    job = get_video_job_record(db, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Fant ikke videojobb")
     return job
 
 
 def _video_job_artifact_path(job_id: str, artifact_name: str) -> Path:
-    return settings.app_data_root / "video-jobs" / job_id / artifact_name
+    return video_job_dir(settings.app_data_root, job_id) / artifact_name
 
 
 def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
@@ -1178,6 +1208,7 @@ async def create_video_job(
     mode: str = Form(default="frames"),
     config: str | None = Form(default=None),
     _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
 ) -> VideoJobEnvelope:
     normalized_mode = (mode or "").strip().lower() or "frames"
     if normalized_mode not in {"frames", "map3d"}:
@@ -1200,8 +1231,14 @@ async def create_video_job(
     await file.read()
     await file.close()
 
-    job = video_job_registry.create_job(
+    user = _current_user(db)
+    property_obj = _current_property(db, user.id)
+
+    job = create_video_job_record(
+        db,
         app_data_root=settings.app_data_root,
+        user_id=user.id,
+        property_id=property_obj.id if property_obj else None,
         filename=filename,
         mode=normalized_mode,
         config=parsed_config,
@@ -1210,8 +1247,8 @@ async def create_video_job(
 
 
 @router.get("/video-jobs/{job_id}", response_model=VideoJobEnvelope)
-def get_video_job(job_id: str, _admin_session=Depends(require_admin_session)) -> VideoJobEnvelope:
-    job = _require_video_job(job_id)
+def get_video_job(job_id: str, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> VideoJobEnvelope:
+    job = _require_video_job(db, job_id)
     return VideoJobEnvelope(job=_video_job_out(job))
 
 
@@ -1220,8 +1257,10 @@ def put_video_job_review(
     job_id: str,
     payload: VideoJobReviewIn,
     _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
 ) -> VideoJobReviewOut:
-    review = video_job_registry.save_review(
+    review = save_video_job_review(
+        db,
         job_id=job_id,
         created_at=payload.created_at,
         mode=payload.mode,
@@ -1230,7 +1269,16 @@ def put_video_job_review(
     )
     if review is None:
         raise HTTPException(status_code=404, detail="Fant ikke videojobb")
-    return VideoJobReviewOut.model_validate(review.to_dict())
+    return VideoJobReviewOut.model_validate(
+        {
+            "job_id": review.job_id,
+            "created_at": review.created_at,
+            "mode": review.mode,
+            "review_state": review.review_state,
+            "placement": json.loads(review.placement_json) if review.placement_json else None,
+            "reviewed_at": review.reviewed_at,
+        }
+    )
 
 
 @router.get("/video-jobs/{job_id}/{artifact_name}")
@@ -1238,12 +1286,13 @@ def get_video_job_artifact(
     job_id: str,
     artifact_name: str,
     _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
 ) -> Response:
     media_type = _VIDEO_JOB_ARTIFACT_MEDIA_TYPES.get(artifact_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")
 
-    _require_video_job(job_id)
+    _require_video_job(db, job_id)
     target = _video_job_artifact_path(job_id, artifact_name)
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")

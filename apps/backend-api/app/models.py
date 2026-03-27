@@ -44,6 +44,7 @@ class User(TimestampMixin, Base):
 
     properties: Mapped[list[Property]] = relationship(back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list[Photo]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Property(TimestampMixin, Base):
@@ -68,6 +69,7 @@ class Property(TimestampMixin, Base):
     flight_missions: Mapped[list[FlightMission]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
+    video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="property")
 
     __table_args__ = (
         UniqueConstraint("user_id", "komm", "gnr", "bnr", "fnr", name="uq_property_owner"),
@@ -209,3 +211,45 @@ class IngestRun(Base):
     files_imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     files_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class VideoJob(TimestampMixin, Base):
+    __tablename__ = "video_jobs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[Optional[int]] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"), index=True)
+
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    mode: Mapped[str] = mapped_column(String(24), nullable=False, default="frames")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    result_frames_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+    user: Mapped[User] = relationship(back_populates="video_jobs")
+    property: Mapped[Optional[Property]] = relationship(back_populates="video_jobs")
+    review: Mapped[Optional[VideoJobReview]] = relationship(
+        back_populates="job",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        Index("idx_video_jobs_user_created", "user_id", "created_at"),
+    )
+
+
+class VideoJobReview(Base):
+    __tablename__ = "video_job_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("video_jobs.id", ondelete="CASCADE"), unique=True, index=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    mode: Mapped[Optional[str]] = mapped_column(String(24), nullable=True)
+    review_state: Mapped[str] = mapped_column(String(24), nullable=False)
+    placement_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    job: Mapped[VideoJob] = relationship(back_populates="review")
