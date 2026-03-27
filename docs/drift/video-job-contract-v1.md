@@ -23,6 +23,7 @@ Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeh
   - støtter enkel filtrering med `limit`, `mode` og `status`
 - `GET /api/v1/video-jobs/{job_id}`
   - returnerer samme jobbsammendrag som frontend kan polle
+  - inkluderer også eksplisitt `result_map3d`/route-artefakter med ferdige URL-er
 - `PUT /api/v1/video-jobs/{job_id}/review`
   - lagrer `review_state` og eventuell `placement`
 - `GET /api/v1/video-jobs/{job_id}/preview.jpg`
@@ -35,6 +36,7 @@ Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeh
 - Jobben fullføres umiddelbart med et lite placeholder-resultat.
 - Artefakter lagres under `APP_DATA_ROOT/video-jobs/{job_id}/`.
 - Jobbstatus og review lagres i databasen (`video_jobs`, `video_job_reviews`).
+- Jobbpayloaden eksponerer både `result_frames` og `result_map3d`, slik at klienten slipper å derivere artefakt-URL-er selv.
 
 ## Hvorfor denne formen
 

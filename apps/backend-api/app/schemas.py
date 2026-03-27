@@ -449,6 +449,15 @@ class VideoFramesResultOut(BaseModel):
     archive_url: str | None = None
 
 
+class VideoRouteArtifactOut(BaseModel):
+    stitch_job_id: str | None = None
+    preview_image: str | None = None
+    mesh_url: str | None = None
+    geodata_geojson: str | None = None
+    metadata_json: str | None = None
+    epsg: str | None = None
+
+
 class VideoJobReviewIn(BaseModel):
     created_at: datetime | None = None
     mode: str | None = None
@@ -475,6 +484,7 @@ class VideoJobOut(BaseModel):
     message: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
     result_frames: VideoFramesResultOut | None = None
+    result_map3d: VideoRouteArtifactOut | None = None
     result: VideoFramesResultOut | dict[str, Any] | None = None
     review: VideoJobReviewOut | None = None
 

@@ -33,12 +33,17 @@ def test_video_job_roundtrip_and_artifacts(client):
     assert job["result_frames"]["frame_count"] == 90
     assert len(job["result_frames"]["sample_frames"]) == 3
     assert job["result"]["selected_frame_count"] == 3
+    assert job["result_map3d"]["preview_image"] == f"/api/v1/video-jobs/{job_id}/preview.jpg"
+    assert job["result_map3d"]["geodata_geojson"] == f"/api/v1/video-jobs/{job_id}/geodata.geojson"
+    assert job["result_map3d"]["metadata_json"] == f"/api/v1/video-jobs/{job_id}/metadata.json"
 
     get_response = client.get(f"/api/v1/video-jobs/{job_id}")
     assert get_response.status_code == 200
     fetched = get_response.json()["job"]
     assert fetched["job_id"] == job_id
     assert fetched["result_frames"]["route_distance_m"] == 215.0
+    assert fetched["result_map3d"]["stitch_job_id"] == job_id
+    assert fetched["result_map3d"]["epsg"] == "EPSG:4326"
 
     preview_response = client.get(f"/api/v1/video-jobs/{job_id}/preview.jpg")
     assert preview_response.status_code == 200

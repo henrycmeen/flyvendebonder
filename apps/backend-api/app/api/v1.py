@@ -292,6 +292,14 @@ def _video_job_out(job) -> VideoJobOut:
             "reviewed_at": job.review.reviewed_at,
         }
     result_frames = json.loads(job.result_frames_json)
+    result_map3d = {
+        "stitch_job_id": job.id,
+        "preview_image": f"/api/v1/video-jobs/{job.id}/preview.jpg",
+        "mesh_url": None,
+        "geodata_geojson": f"/api/v1/video-jobs/{job.id}/geodata.geojson",
+        "metadata_json": f"/api/v1/video-jobs/{job.id}/metadata.json",
+        "epsg": "EPSG:4326",
+    }
     return VideoJobOut.model_validate(
         {
             "job_id": job.id,
@@ -303,6 +311,7 @@ def _video_job_out(job) -> VideoJobOut:
             "message": job.message,
             "config": json.loads(job.config_json),
             "result_frames": result_frames,
+            "result_map3d": result_map3d,
             "result": result_frames,
             "review": review_payload,
         }
