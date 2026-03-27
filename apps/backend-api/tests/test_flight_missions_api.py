@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 
-from app.services.flight_missions import _segment_points
+import pytest
+from sqlalchemy import select
+
+from app.services.flight_missions import EXPORT_BUNDLE_FORMAT, _segment_points, build_flight_mission_export_bundle
 
 
 def _sample_polygon(offset: float = 0.0) -> dict:
@@ -94,6 +98,89 @@ def test_flight_mission_roundtrip_and_export_bundle(client):
         "route.geojson",
         "uke-12-oppdatert.readme.txt",
     ]
+    manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["format"] == EXPORT_BUNDLE_FORMAT
+    assert manifest["summary"]["field_count"] == 2
+    route_geojson = json.loads(archive.read("route.geojson"))
+    assert route_geojson["type"] == "FeatureCollection"
+    assert any(feature["geometry"]["type"] == "LineString" for feature in route_geojson["features"])
+
+
+def test_build_flight_mission_export_bundle_rejects_manifest_field_count_mismatch():
+    with pytest.raises(ValueError, match="Eksportmanifest og jorddata er ute av synk"):
+        build_flight_mission_export_bundle(
+            mission_id=1,
+            mission_name="Valideringstest",
+            fields=[
+                {
+                    "field_id": 10,
+                    "name": "Nordjordet",
+                    "area_m2": 1000.0,
+                    "area_ha": 0.1,
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [10.0, 59.0],
+                            [10.001, 59.0],
+                            [10.001, 59.001],
+                            [10.0, 59.001],
+                            [10.0, 59.0],
+                        ]],
+                    },
+                }
+            ],
+            route_geojson={
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"kind": "route"},
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [[10.0, 59.0], [10.001, 59.001]],
+                        },
+                    }
+                ],
+            },
+            export_manifest={
+                "format": EXPORT_BUNDLE_FORMAT,
+                "mission_name": "Valideringstest",
+                "summary": {"field_count": 0},
+            },
+        )
+
+
+def test_flight_mission_export_returns_400_when_route_snapshot_is_invalid(client):
+    field = _create_field(client, name="Nordjordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Korrupt eksport",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    from app.database import SessionLocal
+    from app.models import FlightMission
+
+    with SessionLocal() as db:
+        item = db.execute(select(FlightMission).where(FlightMission.id == mission["id"])).scalar_one()
+        item.route_geojson_json = json.dumps({"type": "FeatureCollection", "features": []}, ensure_ascii=False)
+        db.commit()
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export")
+
+    assert export_response.status_code == 400
+    assert export_response.json()["detail"] == "Oppdraget kan ikke eksporteres: Eksporten mangler minst én rute-linje"
 
 
 def test_flight_mission_returns_warning_for_outside_recommended_altitude(client):

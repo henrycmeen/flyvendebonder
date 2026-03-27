@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserOut(BaseModel):
@@ -259,11 +259,144 @@ class FlightMissionListResponse(BaseModel):
     missions: list[FlightMissionOut]
 
 
+FlightCaptureStatus = Literal["ready", "archived"]
+FlightCaptureSource = Literal["manual", "mission", "imported"]
+ProcessingRunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+
+
+class FlightCaptureCreate(BaseModel):
+    name: str | None = None
+    mission_id: int | None = None
+    source: FlightCaptureSource = "manual"
+    photo_ids: list[str] = Field(min_length=1)
+    notes: str | None = None
+
+
+class FlightCaptureOut(BaseModel):
+    id: int
+    user_id: int
+    property_id: int
+    mission_id: int | None = None
+    name: str | None = None
+    source: FlightCaptureSource
+    status: FlightCaptureStatus
+    photo_ids: list[str]
+    photo_count: int
+    field_ids: list[int] = Field(default_factory=list)
+    captured_from: datetime | None = None
+    captured_to: datetime | None = None
+    notes: str | None = None
+    processing_run_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class FlightCaptureListResponse(BaseModel):
+    property_id: int
+    count: int
+    captures: list[FlightCaptureOut]
+
+
+class ProcessingRunCreate(BaseModel):
+    capture_id: int
+    provider: str = Field(min_length=1, max_length=32)
+    requested_outputs: list[str] = Field(default_factory=list)
+    provider_config: dict = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def _validate_provider(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("provider kan ikke være tom")
+        return normalized
+
+
+class ProcessingRunPatch(BaseModel):
+    status: ProcessingRunStatus | None = None
+    external_job_id: str | None = None
+    error_detail: str | None = None
+    provider_config: dict | None = None
+
+
+class ProcessingRunOut(BaseModel):
+    id: int
+    capture_id: int
+    provider: str
+    status: ProcessingRunStatus
+    external_job_id: str | None = None
+    requested_outputs: list[str] = Field(default_factory=list)
+    provider_config: dict = Field(default_factory=dict)
+    input_manifest: dict = Field(default_factory=dict)
+    error_detail: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_synced_at: datetime | None = None
+    artifact_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProcessingRunListResponse(BaseModel):
+    property_id: int
+    count: int
+    runs: list[ProcessingRunOut]
+
+
+class ProcessingArtifactCreate(BaseModel):
+    kind: str = Field(min_length=1, max_length=32)
+    format: str = Field(min_length=1, max_length=32)
+    uri: str = Field(min_length=1, max_length=1024)
+    bytes: int | None = Field(default=None, ge=0)
+    checksum: str | None = Field(default=None, max_length=128)
+    is_public: bool = False
+    metadata: dict = Field(default_factory=dict)
+
+    @field_validator("kind", "format", "uri")
+    @classmethod
+    def _validate_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("feltet kan ikke være tomt")
+        return normalized
+
+    @field_validator("checksum")
+    @classmethod
+    def _validate_checksum(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class ProcessingArtifactOut(BaseModel):
+    id: int
+    processing_run_id: int
+    kind: str
+    format: str
+    uri: str
+    bytes: int | None = None
+    checksum: str | None = None
+    is_public: bool = False
+    metadata: dict = Field(default_factory=dict)
+    public_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProcessingArtifactListResponse(BaseModel):
+    processing_run_id: int
+    count: int
+    artifacts: list[ProcessingArtifactOut]
+
+
 FieldCandidateSource = Literal["geonorge"]
 
 
 class FieldCandidateOut(BaseModel):
     source: FieldCandidateSource
+    source_endpoint: str | None = None
+    source_fetched_at: datetime | None = None
     name: str
     local_id: int | None = None
     matrikkelnummer: str | None = None

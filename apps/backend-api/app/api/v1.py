@@ -13,18 +13,32 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, sta
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..database import get_db
 from ..logging_utils import read_recent_logs, request_id_ctx
-from ..models import FieldPlot, FlightMission, IngestRun, Photo, PhotoAnalysis, Property, User
+from ..models import (
+    FieldPlot,
+    FlightCapture,
+    FlightMission,
+    IngestRun,
+    Photo,
+    PhotoAnalysis,
+    ProcessingArtifact,
+    ProcessingRun,
+    Property,
+    User,
+)
 from ..schemas import (
     AdminLoginRequest,
     AdminSessionStatusResponse,
     BackendLogLine,
     BackendLogsResponse,
     FieldCandidateListResponse,
+    FlightCaptureCreate,
+    FlightCaptureListResponse,
+    FlightCaptureOut,
     FlightMissionCreate,
     FlightMissionListResponse,
     FlightMissionOut,
@@ -36,6 +50,13 @@ from ..schemas import (
     FieldPlotPatch,
     GardskartJobResponse,
     PhotoAnalysisActionResponse,
+    ProcessingArtifactCreate,
+    ProcessingArtifactListResponse,
+    ProcessingArtifactOut,
+    ProcessingRunCreate,
+    ProcessingRunListResponse,
+    ProcessingRunOut,
+    ProcessingRunPatch,
     PhotoMetadataActionResponse,
     PhotoMetadataPatchRequest,
     PhotoAnalysisRefreshResponse,
@@ -73,6 +94,13 @@ from ..services.flight_missions import (
 )
 from ..services.photo_reprocess import reprocess_photos_for_user
 from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
+from ..services.processing import (
+    artifact_public_url,
+    build_capture_summary,
+    build_processing_input_manifest,
+    processing_run_should_finish,
+    processing_run_should_start,
+)
 from ..services.tag_utils import (
     extract_meta_float,
     normalize_user_tags,
@@ -315,6 +343,64 @@ def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
     )
 
 
+def _flight_capture_out(item: FlightCapture) -> FlightCaptureOut:
+    return FlightCaptureOut(
+        id=item.id,
+        user_id=item.user_id,
+        property_id=item.property_id,
+        mission_id=item.mission_id,
+        name=item.name,
+        source=item.source,
+        status=item.status,
+        photo_ids=json.loads(item.photo_ids_json),
+        photo_count=item.photo_count,
+        field_ids=json.loads(item.field_ids_json),
+        captured_from=item.captured_from,
+        captured_to=item.captured_to,
+        notes=item.notes,
+        processing_run_count=len(item.processing_runs),
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
+    return ProcessingArtifactOut(
+        id=item.id,
+        processing_run_id=item.processing_run_id,
+        kind=item.kind,
+        format=item.format,
+        uri=item.uri,
+        bytes=item.bytes,
+        checksum=item.checksum,
+        is_public=item.is_public,
+        metadata=json.loads(item.metadata_json),
+        public_url=artifact_public_url(item),
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _processing_run_out(item: ProcessingRun) -> ProcessingRunOut:
+    return ProcessingRunOut(
+        id=item.id,
+        capture_id=item.capture_id,
+        provider=item.provider,
+        status=item.status,
+        external_job_id=item.external_job_id,
+        requested_outputs=json.loads(item.requested_outputs_json),
+        provider_config=json.loads(item.provider_config_json),
+        input_manifest=json.loads(item.input_manifest_json),
+        error_detail=item.error_detail,
+        started_at=item.started_at,
+        finished_at=item.finished_at,
+        last_synced_at=item.last_synced_at,
+        artifact_count=len(item.artifacts),
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
 def _resolve_field_plots_for_mission(db: Session, property_obj: Property, field_ids: list[int]) -> list[FieldPlot]:
     normalized_ids: list[int] = []
     for raw_id in field_ids:
@@ -344,6 +430,67 @@ def _resolve_field_plots_for_mission(db: Session, property_obj: Property, field_
         )
 
     return [field_by_id[field_id] for field_id in normalized_ids]
+
+
+def _resolve_flight_capture_photos(
+    db: Session,
+    *,
+    user_id: int,
+    property_obj: Property,
+    photo_ids: list[str],
+) -> list[Photo]:
+    normalized_ids: list[str] = []
+    for raw_id in photo_ids:
+        photo_id = str(raw_id).strip()
+        if photo_id and photo_id not in normalized_ids:
+            normalized_ids.append(photo_id)
+
+    if not normalized_ids:
+        raise HTTPException(status_code=400, detail="Capture må inneholde minst ett bilde")
+
+    photo_items = (
+        db.execute(
+            select(Photo)
+            .where(Photo.user_id == user_id)
+            .where(Photo.id.in_(normalized_ids))
+            .order_by(Photo.captured_at.asc(), Photo.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    photo_by_id = {item.id: item for item in photo_items}
+    missing_ids = [photo_id for photo_id in normalized_ids if photo_id not in photo_by_id]
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"Fant ikke valgte bilder: {missing_ids}")
+
+    ordered = [photo_by_id[photo_id] for photo_id in normalized_ids]
+    wrong_property = [photo.id for photo in ordered if photo.property_id != property_obj.id]
+    if wrong_property:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Alle bilder i en capture må tilhøre aktiv eiendom: {wrong_property}",
+        )
+    return ordered
+
+
+def _resolve_flight_capture(
+    db: Session,
+    *,
+    property_obj: Property,
+    capture_id: int,
+) -> FlightCapture:
+    item = (
+        db.execute(
+            select(FlightCapture)
+            .options(selectinload(FlightCapture.processing_runs))
+            .where(FlightCapture.id == capture_id, FlightCapture.property_id == property_obj.id)
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke flight capture")
+    return item
 
 
 @router.get("/health")
@@ -745,13 +892,16 @@ def export_flight_mission(
     if item is None:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
-    export_bytes = build_flight_mission_export_bundle(
-        mission_id=item.id,
-        mission_name=(item.name or f"Oppdrag {item.id}"),
-        fields=json.loads(item.field_snapshots_json),
-        route_geojson=json.loads(item.route_geojson_json),
-        export_manifest=json.loads(item.export_manifest_json),
-    )
+    try:
+        export_bytes = build_flight_mission_export_bundle(
+            mission_id=item.id,
+            mission_name=(item.name or f"Oppdrag {item.id}"),
+            fields=json.loads(item.field_snapshots_json),
+            route_geojson=json.loads(item.route_geojson_json),
+            export_manifest=json.loads(item.export_manifest_json),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Oppdraget kan ikke eksporteres: {exc}") from exc
     expires_at = datetime.utcnow() + timedelta(minutes=5)
     filename = f"flyvendebonder-oppdrag-{item.id}.zip"
     response = Response(content=export_bytes, media_type="application/zip")
@@ -759,6 +909,260 @@ def export_flight_mission(
     response.headers["Cache-Control"] = "private, max-age=300"
     response.headers["Expires"] = expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
     return response
+
+
+@router.get("/flight-captures", response_model=FlightCaptureListResponse)
+def list_flight_captures(db: Session = Depends(get_db)) -> FlightCaptureListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    captures = (
+        db.execute(
+            select(FlightCapture)
+            .options(selectinload(FlightCapture.processing_runs))
+            .where(FlightCapture.property_id == property_obj.id)
+            .order_by(FlightCapture.updated_at.desc(), FlightCapture.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return FlightCaptureListResponse(
+        property_id=property_obj.id,
+        count=len(captures),
+        captures=[_flight_capture_out(item) for item in captures],
+    )
+
+
+@router.post("/flight-captures", response_model=FlightCaptureOut, status_code=status.HTTP_201_CREATED)
+def create_flight_capture(
+    payload: FlightCaptureCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> FlightCaptureOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    photos = _resolve_flight_capture_photos(db, user_id=user.id, property_obj=property_obj, photo_ids=payload.photo_ids)
+
+    mission = None
+    field_ids: list[int] = []
+    if payload.mission_id is not None:
+        mission = (
+            db.execute(
+                select(FlightMission).where(
+                    FlightMission.id == payload.mission_id,
+                    FlightMission.property_id == property_obj.id,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if mission is None:
+            raise HTTPException(status_code=404, detail="Fant ikke oppdrag for flight capture")
+        field_ids = json.loads(mission.field_ids_json)
+
+    captured_from, captured_to = build_capture_summary(photos)
+    item = FlightCapture(
+        user_id=user.id,
+        property_id=property_obj.id,
+        mission_id=mission.id if mission else None,
+        name=_normalize_field_name(payload.name) or (mission.name if mission else None),
+        source="mission" if mission and payload.source == "manual" else payload.source,
+        status="ready",
+        photo_ids_json=json.dumps([photo.id for photo in photos], ensure_ascii=False),
+        photo_count=len(photos),
+        field_ids_json=json.dumps(field_ids, ensure_ascii=False),
+        captured_from=captured_from,
+        captured_to=captured_to,
+        notes=_normalize_field_name(payload.notes),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    db.refresh(item, attribute_names=["processing_runs"])
+    return _flight_capture_out(item)
+
+
+@router.get("/flight-captures/{capture_id}", response_model=FlightCaptureOut)
+def get_flight_capture(capture_id: int, db: Session = Depends(get_db)) -> FlightCaptureOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = _resolve_flight_capture(db, property_obj=property_obj, capture_id=capture_id)
+    return _flight_capture_out(item)
+
+
+@router.get("/processing-runs", response_model=ProcessingRunListResponse)
+def list_processing_runs(db: Session = Depends(get_db)) -> ProcessingRunListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    runs = (
+        db.execute(
+            select(ProcessingRun)
+            .join(FlightCapture, ProcessingRun.capture_id == FlightCapture.id)
+            .options(selectinload(ProcessingRun.artifacts))
+            .where(FlightCapture.property_id == property_obj.id)
+            .order_by(ProcessingRun.updated_at.desc(), ProcessingRun.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return ProcessingRunListResponse(
+        property_id=property_obj.id,
+        count=len(runs),
+        runs=[_processing_run_out(item) for item in runs],
+    )
+
+
+@router.post("/processing-runs", response_model=ProcessingRunOut, status_code=status.HTTP_201_CREATED)
+def create_processing_run(
+    payload: ProcessingRunCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> ProcessingRunOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    capture = _resolve_flight_capture(db, property_obj=property_obj, capture_id=payload.capture_id)
+
+    input_manifest = build_processing_input_manifest(
+        capture=capture,
+        requested_outputs=payload.requested_outputs,
+        provider_config=payload.provider_config,
+    )
+    item = ProcessingRun(
+        capture_id=capture.id,
+        provider=payload.provider.strip(),
+        status="queued",
+        requested_outputs_json=json.dumps(payload.requested_outputs, ensure_ascii=False),
+        provider_config_json=json.dumps(payload.provider_config, ensure_ascii=False),
+        input_manifest_json=json.dumps(input_manifest, ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    db.refresh(item, attribute_names=["artifacts"])
+    return _processing_run_out(item)
+
+
+@router.get("/processing-runs/{run_id}", response_model=ProcessingRunOut)
+def get_processing_run(run_id: int, db: Session = Depends(get_db)) -> ProcessingRunOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(ProcessingRun)
+            .join(FlightCapture, ProcessingRun.capture_id == FlightCapture.id)
+            .options(selectinload(ProcessingRun.artifacts))
+            .where(ProcessingRun.id == run_id, FlightCapture.property_id == property_obj.id)
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke processing-run")
+    return _processing_run_out(item)
+
+
+@router.patch("/processing-runs/{run_id}", response_model=ProcessingRunOut)
+def patch_processing_run(
+    run_id: int,
+    payload: ProcessingRunPatch = Body(default_factory=ProcessingRunPatch),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> ProcessingRunOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(ProcessingRun)
+            .join(FlightCapture, ProcessingRun.capture_id == FlightCapture.id)
+            .options(selectinload(ProcessingRun.artifacts))
+            .where(ProcessingRun.id == run_id, FlightCapture.property_id == property_obj.id)
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke processing-run")
+
+    if payload.status is not None:
+        item.status = payload.status
+        item.started_at = processing_run_should_start(payload.status, item.started_at)
+        item.finished_at = processing_run_should_finish(payload.status, item.finished_at)
+        item.last_synced_at = datetime.utcnow()
+    if payload.external_job_id is not None:
+        item.external_job_id = payload.external_job_id.strip() or None
+    if payload.error_detail is not None:
+        item.error_detail = payload.error_detail.strip() or None
+    if payload.provider_config is not None:
+        item.provider_config_json = json.dumps(payload.provider_config, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(item)
+    db.refresh(item, attribute_names=["artifacts"])
+    return _processing_run_out(item)
+
+
+@router.get("/processing-runs/{run_id}/artifacts", response_model=ProcessingArtifactListResponse)
+def list_processing_artifacts(run_id: int, db: Session = Depends(get_db)) -> ProcessingArtifactListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    run = (
+        db.execute(
+            select(ProcessingRun)
+            .join(FlightCapture, ProcessingRun.capture_id == FlightCapture.id)
+            .options(selectinload(ProcessingRun.artifacts))
+            .where(ProcessingRun.id == run_id, FlightCapture.property_id == property_obj.id)
+        )
+        .scalars()
+        .first()
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="Fant ikke processing-run")
+    return ProcessingArtifactListResponse(
+        processing_run_id=run.id,
+        count=len(run.artifacts),
+        artifacts=[_processing_artifact_out(item) for item in run.artifacts],
+    )
+
+
+@router.post(
+    "/processing-runs/{run_id}/artifacts",
+    response_model=ProcessingArtifactOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_processing_artifact(
+    run_id: int,
+    payload: ProcessingArtifactCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> ProcessingArtifactOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    run = (
+        db.execute(
+            select(ProcessingRun)
+            .join(FlightCapture, ProcessingRun.capture_id == FlightCapture.id)
+            .options(selectinload(ProcessingRun.artifacts))
+            .where(ProcessingRun.id == run_id, FlightCapture.property_id == property_obj.id)
+        )
+        .scalars()
+        .first()
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="Fant ikke processing-run")
+
+    item = ProcessingArtifact(
+        processing_run_id=run.id,
+        kind=payload.kind.strip(),
+        format=payload.format.strip(),
+        uri=payload.uri.strip(),
+        bytes=payload.bytes,
+        checksum=payload.checksum.strip() if payload.checksum else None,
+        is_public=payload.is_public,
+        metadata_json=json.dumps(payload.metadata, ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _processing_artifact_out(item)
 
 
 @router.get("/photos", response_model=PhotoResponse)

@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+
+from ..models import FlightCapture, Photo, ProcessingArtifact, ProcessingRun
+
+
+def build_capture_summary(photos: list[Photo]) -> tuple[datetime | None, datetime | None]:
+    if not photos:
+        return None, None
+    ordered = sorted(photos, key=lambda item: (item.captured_at, item.id))
+    return ordered[0].captured_at, ordered[-1].captured_at
+
+
+def build_processing_input_manifest(
+    *,
+    capture: FlightCapture,
+    requested_outputs: list[str],
+    provider_config: dict,
+) -> dict:
+    return {
+        "capture_id": capture.id,
+        "user_id": capture.user_id,
+        "property_id": capture.property_id,
+        "mission_id": capture.mission_id,
+        "photo_ids": json.loads(capture.photo_ids_json),
+        "photo_count": capture.photo_count,
+        "field_ids": json.loads(capture.field_ids_json),
+        "captured_from": capture.captured_from.isoformat() if capture.captured_from else None,
+        "captured_to": capture.captured_to.isoformat() if capture.captured_to else None,
+        "requested_outputs": requested_outputs,
+        "provider_config": provider_config,
+    }
+
+
+def processing_run_should_start(status: str, started_at: datetime | None) -> datetime | None:
+    if status in {"running", "completed", "failed", "cancelled"} and started_at is None:
+        return datetime.utcnow()
+    return started_at
+
+
+def processing_run_should_finish(status: str, finished_at: datetime | None) -> datetime | None:
+    if status in {"completed", "failed", "cancelled"}:
+        return finished_at or datetime.utcnow()
+    return None
+
+
+def artifact_public_url(artifact: ProcessingArtifact) -> str | None:
+    if artifact.is_public:
+        return artifact.uri
+    return None

@@ -118,3 +118,19 @@ API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ve
   ```bash
   curl -X POST "http://127.0.0.1:8787/api/v1/analysis/refresh?force=true"
   ```
+
+## Processing-pipeline
+Backenden har nå et første generelt processing-spor som binder sammen bilder, oppdrag og fremtidige tunge motorer som ODM/WebODM.
+
+- `FlightCapture`: grupperer mange `Photo`-objekter til én prosesserbar flyvning/dataset
+- `ProcessingRun`: beskriver én asynkron jobb mot en motor som `webodm` eller senere `odm`
+- `ProcessingArtifact`: lagrer output som ortho, DSM, point-cloud, thumbs og rapporter
+
+Første API-spor:
+- `POST /api/v1/flight-captures`
+- `GET /api/v1/flight-captures`
+- `POST /api/v1/processing-runs`
+- `PATCH /api/v1/processing-runs/{id}`
+- `POST /api/v1/processing-runs/{id}/artifacts`
+
+Se også: `docs/backend-processing-v0.md`

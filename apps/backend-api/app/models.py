@@ -44,6 +44,9 @@ class User(TimestampMixin, Base):
 
     properties: Mapped[list[Property]] = relationship(back_populates="user", cascade="all, delete-orphan")
     photos: Mapped[list[Photo]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    flight_captures: Mapped[list[FlightCapture]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Property(TimestampMixin, Base):
@@ -66,6 +69,9 @@ class Property(TimestampMixin, Base):
     job_cache: Mapped[list[GardskartJobCache]] = relationship(back_populates="property")
     field_plots: Mapped[list[FieldPlot]] = relationship(back_populates="property", cascade="all, delete-orphan")
     flight_missions: Mapped[list[FlightMission]] = relationship(
+        back_populates="property", cascade="all, delete-orphan"
+    )
+    flight_captures: Mapped[list[FlightCapture]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
 
@@ -144,6 +150,77 @@ class FlightMission(TimestampMixin, Base):
     last_generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     property: Mapped[Property] = relationship(back_populates="flight_missions")
+    flight_captures: Mapped[list[FlightCapture]] = relationship(back_populates="mission")
+
+
+class FlightCapture(TimestampMixin, Base):
+    __tablename__ = "flight_captures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    mission_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("flight_missions.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="ready")
+    photo_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    field_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    captured_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    captured_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="flight_captures")
+    property: Mapped[Property] = relationship(back_populates="flight_captures")
+    mission: Mapped[Optional[FlightMission]] = relationship(back_populates="flight_captures")
+    processing_runs: Mapped[list[ProcessingRun]] = relationship(
+        back_populates="capture", cascade="all, delete-orphan"
+    )
+
+
+class ProcessingRun(TimestampMixin, Base):
+    __tablename__ = "processing_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("flight_captures.id", ondelete="CASCADE"), index=True)
+
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
+    external_job_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    requested_outputs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    provider_config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    input_manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    capture: Mapped[FlightCapture] = relationship(back_populates="processing_runs")
+    artifacts: Mapped[list[ProcessingArtifact]] = relationship(
+        back_populates="processing_run", cascade="all, delete-orphan"
+    )
+
+
+class ProcessingArtifact(TimestampMixin, Base):
+    __tablename__ = "processing_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    processing_run_id: Mapped[int] = mapped_column(
+        ForeignKey("processing_runs.id", ondelete="CASCADE"), index=True
+    )
+
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    format: Mapped[str] = mapped_column(String(32), nullable=False)
+    uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+    processing_run: Mapped[ProcessingRun] = relationship(back_populates="artifacts")
 
 
 class PhotoAsset(Base):
