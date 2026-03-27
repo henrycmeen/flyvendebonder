@@ -102,9 +102,9 @@ def test_flight_capture_deduplicates_and_tracks_summary(client):
         "smoke-2025-07-18-02",
         "smoke-2025-07-18-00",
     ]
-    assert created["first_photo_id"] == "smoke-2025-07-18-02"
-    assert created["last_photo_id"] == "smoke-2025-07-18-00"
-    assert created["is_contiguous"] is True
+    assert created["first_photo_id"] == "smoke-2025-07-18-00"
+    assert created["last_photo_id"] == "smoke-2025-07-18-02"
+    assert created["is_contiguous"] is False
 
 
 def test_processing_run_and_artifact_lifecycle(client):
@@ -187,6 +187,30 @@ def test_processing_run_and_artifact_lifecycle(client):
     runs = all_runs.json()
     assert runs["count"] == 1
     assert runs["runs"][0]["artifact_count"] == 1
+
+
+def test_flight_capture_summary_uses_chronological_order(client):
+    create_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "photo_ids": [
+                "smoke-2025-07-18-02",
+                "smoke-2025-07-18-00",
+            ],
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["first_photo_id"] == "smoke-2025-07-18-00"
+    assert created["last_photo_id"] == "smoke-2025-07-18-02"
+    assert created["is_contiguous"] is False
+
+    get_response = client.get(f"/api/v1/flight-captures/{created['id']}")
+    assert get_response.status_code == 200
+    fetched = get_response.json()
+    assert fetched["first_photo_id"] == "smoke-2025-07-18-00"
+    assert fetched["last_photo_id"] == "smoke-2025-07-18-02"
+    assert fetched["is_contiguous"] is False
 
 
 def test_processing_artifact_rejects_unknown_kind(client):

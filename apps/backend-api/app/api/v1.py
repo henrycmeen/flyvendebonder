@@ -345,13 +345,23 @@ def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
     )
 
 
-def _flight_capture_out(item: FlightCapture) -> FlightCaptureOut:
+def _flight_capture_out(db: Session, item: FlightCapture) -> FlightCaptureOut:
     photo_ids = json.loads(item.photo_ids_json)
     photo_summary = {
         "first_photo_id": photo_ids[0] if photo_ids else None,
         "last_photo_id": photo_ids[-1] if photo_ids else None,
-        "is_contiguous": len(photo_ids) == len(set(photo_ids)),
+        "is_contiguous": True,
     }
+    if photo_ids:
+        photo_items = (
+            db.execute(select(Photo).where(Photo.id.in_(photo_ids)).order_by(Photo.captured_at.asc(), Photo.id.asc()))
+            .scalars()
+            .all()
+        )
+        photo_by_id = {item.id: item for item in photo_items}
+        ordered_photos = [photo_by_id[photo_id] for photo_id in photo_ids if photo_id in photo_by_id]
+        if len(ordered_photos) == len(photo_ids):
+            photo_summary = build_capture_photo_summary(ordered_photos)
     return FlightCaptureOut(
         id=item.id,
         user_id=item.user_id,
@@ -942,7 +952,7 @@ def list_flight_captures(db: Session = Depends(get_db)) -> FlightCaptureListResp
     return FlightCaptureListResponse(
         property_id=property_obj.id,
         count=len(captures),
-        captures=[_flight_capture_out(item) for item in captures],
+        captures=[_flight_capture_out(db, item) for item in captures],
     )
 
 
@@ -993,7 +1003,7 @@ def create_flight_capture(
     db.commit()
     db.refresh(item)
     db.refresh(item, attribute_names=["processing_runs"])
-    return _flight_capture_out(item)
+    return _flight_capture_out(db, item)
 
 
 @router.get("/flight-captures/{capture_id}", response_model=FlightCaptureOut)
@@ -1001,7 +1011,7 @@ def get_flight_capture(capture_id: int, db: Session = Depends(get_db)) -> Flight
     user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     item = _resolve_flight_capture(db, property_obj=property_obj, capture_id=capture_id)
-    return _flight_capture_out(item)
+    return _flight_capture_out(db, item)
 
 
 @router.get("/processing-runs", response_model=ProcessingRunListResponse)
