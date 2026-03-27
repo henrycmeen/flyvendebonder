@@ -10,5 +10,6 @@
 
 ## Prioriterte startpunkter
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
+- `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `GitHub Issues` – backlog/issue-område
 - `AGENTS.md` – interne arbeidsregler for repoet

@@ -88,6 +88,18 @@ Kjør full stack-smoke når endringen påvirker frontend, routing eller API-over
 
 API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ved første oppstart.
 
+## Videojobb-kontrakt v1
+- Backend eksponerer nå en minimal `video-jobs`-kontrakt for frontendens videoflyt.
+- Endepunkter:
+  - `POST /api/v1/video-jobs`
+  - `GET /api/v1/video-jobs/{job_id}`
+  - `PUT /api/v1/video-jobs/{job_id}/review`
+  - `GET /api/v1/video-jobs/{job_id}/preview.jpg`
+  - `GET /api/v1/video-jobs/{job_id}/geodata.geojson`
+  - `GET /api/v1/video-jobs/{job_id}/metadata.json`
+- Første versjon returnerer et bevisst placeholder-resultat for `frames`-modus, slik at UI, review og kartplassering kan fungere før ekte videoprosessering er koblet på.
+- Se også: `docs/drift/video-job-contract-v1.md`
+
 ## Bildedata og analyse
 - Regenerer demo-data fra dronebilder:
   ```bash
