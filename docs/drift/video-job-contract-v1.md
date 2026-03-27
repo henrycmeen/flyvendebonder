@@ -18,6 +18,9 @@ Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeh
   - `multipart/form-data`
   - felter: `file`, `mode`, `config`
   - returnerer `job.job_id`, status, config og `result_frames`
+- `GET /api/v1/video-jobs`
+  - returnerer siste jobber for aktiv bruker
+  - støtter enkel filtrering med `limit`, `mode` og `status`
 - `GET /api/v1/video-jobs/{job_id}`
   - returnerer samme jobbsammendrag som frontend kan polle
 - `PUT /api/v1/video-jobs/{job_id}/review`

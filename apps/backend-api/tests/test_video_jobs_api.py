@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 
 
-def _create_video_job(client) -> dict:
+def _create_video_job(client, *, filename: str = "feltflyvning.mp4", mode: str = "frames") -> dict:
     response = client.post(
         "/api/v1/video-jobs",
-        files={"file": ("feltflyvning.mp4", b"fake-video-binary", "video/mp4")},
+        files={"file": (filename, b"fake-video-binary", "video/mp4")},
         data={
-            "mode": "frames",
+            "mode": mode,
             "config": json.dumps(
                 {
-                    "process": "frames",
+                    "process": mode,
                     "interval_seconds": 4.0,
                     "map_display_mode": "overlay_existing",
                 }
@@ -95,3 +95,23 @@ def test_video_job_rejects_invalid_config_payload(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "config må være et objekt"
+
+
+def test_video_job_listing_returns_latest_jobs_first_and_can_filter(client):
+    first = _create_video_job(client, filename="eldst.mp4", mode="frames")
+    second = _create_video_job(client, filename="midten.mp4", mode="map3d")
+    third = _create_video_job(client, filename="nyest.mp4", mode="frames")
+
+    list_response = client.get("/api/v1/video-jobs")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["count"] >= 3
+    listed_ids = [item["job_id"] for item in payload["jobs"][:3]]
+    assert listed_ids == [third["job_id"], second["job_id"], first["job_id"]]
+
+    filtered_response = client.get("/api/v1/video-jobs?mode=frames&limit=10")
+    assert filtered_response.status_code == 200
+    filtered = filtered_response.json()
+    assert filtered["count"] >= 2
+    assert all(item["mode"] == "frames" for item in filtered["jobs"])
+    assert [item["job_id"] for item in filtered["jobs"][:2]] == [third["job_id"], first["job_id"]]

@@ -167,6 +167,28 @@ def get_video_job(db: Session, job_id: str) -> VideoJob | None:
     ).scalar_one_or_none()
 
 
+def list_video_jobs(
+    db: Session,
+    *,
+    user_id: int,
+    limit: int = 20,
+    mode: str | None = None,
+    status: str | None = None,
+) -> list[VideoJob]:
+    query = (
+        select(VideoJob)
+        .options(joinedload(VideoJob.review))
+        .where(VideoJob.user_id == user_id)
+        .order_by(VideoJob.created_at.desc(), VideoJob.id.desc())
+        .limit(limit)
+    )
+    if mode is not None:
+        query = query.where(VideoJob.mode == mode)
+    if status is not None:
+        query = query.where(VideoJob.status == status)
+    return list(db.execute(query).unique().scalars().all())
+
+
 def save_video_job_review(
     db: Session,
     *,

@@ -51,6 +51,7 @@ from ..schemas import (
     TimelineResponse,
     UserOut,
     VideoJobEnvelope,
+    VideoJobListResponse,
     VideoJobOut,
     VideoJobReviewIn,
     VideoJobReviewOut,
@@ -89,6 +90,7 @@ from ..services.video_jobs import (
     create_video_job as create_video_job_record,
     get_video_job as get_video_job_record,
     job_dir as video_job_dir,
+    list_video_jobs as list_video_job_records,
     save_video_job_review,
 )
 from ..services.view_overrides import set_manual_view_override
@@ -1244,6 +1246,32 @@ async def create_video_job(
         config=parsed_config,
     )
     return VideoJobEnvelope(job=_video_job_out(job))
+
+
+@router.get("/video-jobs", response_model=VideoJobListResponse)
+def list_video_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    mode: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> VideoJobListResponse:
+    user = _current_user(db)
+    normalized_mode = mode.strip().lower() if mode else None
+    normalized_status = status_filter.strip().lower() if status_filter else None
+    if normalized_mode is not None and normalized_mode not in {"frames", "map3d"}:
+        raise HTTPException(status_code=400, detail="Ugyldig videomodus")
+    if normalized_status is not None and normalized_status not in {"pending", "processing", "done", "failed"}:
+        raise HTTPException(status_code=400, detail="Ugyldig videostatus")
+
+    jobs = list_video_job_records(
+        db,
+        user_id=user.id,
+        limit=limit,
+        mode=normalized_mode,
+        status=normalized_status,
+    )
+    return VideoJobListResponse(count=len(jobs), jobs=[_video_job_out(item) for item in jobs])
 
 
 @router.get("/video-jobs/{job_id}", response_model=VideoJobEnvelope)

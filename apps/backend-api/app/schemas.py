@@ -481,3 +481,8 @@ class VideoJobOut(BaseModel):
 
 class VideoJobEnvelope(BaseModel):
     job: VideoJobOut
+
+
+class VideoJobListResponse(BaseModel):
+    count: int
+    jobs: list[VideoJobOut]
