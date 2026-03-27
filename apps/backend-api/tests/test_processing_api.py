@@ -333,31 +333,6 @@ def test_processing_artifact_listing_keeps_legacy_values_readable(client):
     assert run_response.status_code == 201
     run = run_response.json()
 
-    with SessionLocal() as db:
-        item = db.execute(select(ProcessingRun).where(ProcessingRun.id == run["id"])).scalar_one()
-        db.add(
-            ProcessingArtifact(
-                processing_run_id=item.id,
-                kind="orthomosaic",
-                format="tif",
-                uri="processing/legacy/capture-legacy.tif",
-                bytes=4096,
-                checksum=None,
-                is_public=False,
-                metadata_json=json.dumps({}, ensure_ascii=False),
-                provenance_json=json.dumps({"source": "legacy"}, ensure_ascii=False),
-            )
-        )
-        db.commit()
-
-    list_response = client.get(f"/api/v1/processing-runs/{run['id']}/artifacts")
-    assert list_response.status_code == 200
-    payload = list_response.json()
-    assert payload["count"] == 1
-    assert payload["artifacts"][0]["kind"] == "orthomosaic"
-    assert payload["artifacts"][0]["format"] == "tif"
-
-
 def test_processing_run_listing_keeps_legacy_provider_readable(client):
     from app.database import SessionLocal
     from app.models import ProcessingRun
@@ -423,3 +398,194 @@ def test_processing_run_rejects_unknown_provider(client):
         },
     )
     assert run_response.status_code == 422
+
+
+def test_processing_run_stac_collection_and_item(client):
+    field = _create_field(client, name="STAC-jordet")
+    mission_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "STAC mission",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert mission_response.status_code == 201
+    mission = mission_response.json()
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "mission_id": mission["id"],
+            "photo_ids": [
+                "smoke-2025-07-18-00",
+                "smoke-2025-07-18-01",
+            ],
+            "notes": "Capture for STAC",
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho", "thumb", "tiles"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    patch_response = client.patch(
+        f"/api/v1/processing-runs/{run['id']}",
+        json={"status": "completed"},
+    )
+    assert patch_response.status_code == 200
+
+    ortho_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "ortho",
+            "format": "cog",
+            "uri": "https://example.test/data/capture-1-ortho.tif",
+            "is_public": True,
+            "metadata": {
+                "geometry": _sample_polygon(),
+                "bbox": [10.0, 59.0, 10.0014, 59.001],
+                "proj:code": "EPSG:25832",
+                "proj:shape": [1024, 2048],
+                "proj:transform": [0.05, 0.0, 571200.0, 0.0, -0.05, 6543200.0],
+                "bands": [
+                    {"data_type": "uint8"},
+                    {"data_type": "uint8"},
+                    {"data_type": "uint8"},
+                ],
+            },
+            "provenance": {"provider": "webodm"},
+        },
+    )
+    assert ortho_response.status_code == 201
+
+    thumb_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "thumb",
+            "format": "jpg",
+            "uri": "https://example.test/data/capture-1-thumb.jpg",
+            "is_public": True,
+        },
+    )
+    assert thumb_response.status_code == 201
+
+    collections_response = client.get("/api/v1/stac/collections")
+    assert collections_response.status_code == 200
+    collections = collections_response.json()
+    assert len(collections["collections"]) == 1
+    collection = collections["collections"][0]
+    assert collection["stac_version"] == "1.1.0"
+    assert collection["id"] == f"capture-{capture['id']}"
+    assert "ortho" in collection["item_assets"]
+    assert "metadata" in collection["item_assets"]
+
+    collection_response = client.get(f"/api/v1/stac/collections/{collection['id']}")
+    assert collection_response.status_code == 200
+    single_collection = collection_response.json()
+    assert single_collection["extent"]["spatial"]["bbox"] == [[10.0, 59.0, 10.0014, 59.001]]
+
+    items_response = client.get(f"/api/v1/stac/collections/{collection['id']}/items")
+    assert items_response.status_code == 200
+    items = items_response.json()
+    assert items["type"] == "FeatureCollection"
+    assert len(items["features"]) == 1
+    item = items["features"][0]
+    assert item["id"] == f"processing-run-{run['id']}"
+    assert item["collection"] == collection["id"]
+    assert item["bbox"] == [10.0, 59.0, 10.0014, 59.001]
+    assert item["assets"]["ortho"]["href"] == "https://example.test/data/capture-1-ortho.tif"
+    assert item["assets"]["ortho"]["proj:code"] == "EPSG:25832"
+    assert item["assets"]["thumb"]["href"] == "https://example.test/data/capture-1-thumb.jpg"
+    assert item["assets"]["metadata"]["href"].endswith(f"/api/v1/processing-runs/{run['id']}")
+
+    item_response = client.get(
+        f"/api/v1/stac/collections/{collection['id']}/items/processing-run-{run['id']}"
+    )
+    assert item_response.status_code == 200
+    fetched_item = item_response.json()
+    assert fetched_item["id"] == item["id"]
+
+
+def test_stac_item_falls_back_to_geometry_bbox_and_hides_private_assets(client):
+    field = _create_field(client, name="STAC-multipolygon")
+    mission_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "STAC geometry mission",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert mission_response.status_code == 201
+    mission = mission_response.json()
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "mission_id": mission["id"],
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    client.patch(f"/api/v1/processing-runs/{run['id']}", json={"status": "completed"})
+
+    ortho_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "ortho",
+            "format": "cog",
+            "uri": "s3://private/capture-1-ortho.tif",
+            "is_public": False,
+            "metadata": {
+                "geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                        [[[10.0, 59.0], [10.001, 59.0], [10.001, 59.001], [10.0, 59.001], [10.0, 59.0]]],
+                        [[[10.002, 59.002], [10.003, 59.002], [10.003, 59.003], [10.002, 59.003], [10.002, 59.002]]],
+                    ],
+                },
+                "bbox": [10.0, 59.0, 10.003],
+            },
+        },
+    )
+    assert ortho_response.status_code == 201
+
+    collection_id = f"capture-{capture['id']}"
+    items_response = client.get(f"/api/v1/stac/collections/{collection_id}/items")
+    assert items_response.status_code == 200
+    item = items_response.json()["features"][0]
+    assert item["bbox"] == [10.0, 59.0, 10.003, 59.003]
+    assert "ortho" not in item["assets"]

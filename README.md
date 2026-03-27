@@ -139,3 +139,18 @@ Første API-spor:
 
 Se også: `docs/backend-processing-v0.md`
 Se også: `docs/backend-processing-provider-v1.md`
+
+## STAC v1
+Flyvendebønder har nå et første STAC-spor for raster- og flight-artefakter.
+
+- `Collection` = én `FlightCapture`
+- `Item` = én `ProcessingRun` med `ortho` som hovedasset
+- `GeoJSON` beholdes som eksportformat for felt, polygoner og ruter
+
+Endepunkter:
+- `GET /api/v1/stac/collections`
+- `GET /api/v1/stac/collections/{collection_id}`
+- `GET /api/v1/stac/collections/{collection_id}/items`
+- `GET /api/v1/stac/collections/{collection_id}/items/{item_id}`
+
+Se også: `docs/drift/stac-contract-v1.md`
