@@ -50,29 +50,55 @@ def _extract_metadata(path: Path) -> FileMetadata:
     return extract_image_metadata(path)
 
 
-def _default_targets(db: Session) -> tuple[User, Property | None]:
-    user = db.execute(select(User).order_by(User.id)).scalars().first()
+def _default_targets(
+    db: Session,
+    *,
+    user_id: int | None = None,
+    property_id: int | None = None,
+) -> tuple[User, Property | None]:
+    if user_id is not None:
+        user = db.execute(select(User).where(User.id == user_id)).scalars().first()
+    else:
+        user = db.execute(select(User).order_by(User.id)).scalars().first()
     if not user:
         raise ValueError("Ingen bruker i databasen")
 
-    property_obj = (
-        db.execute(
-            select(Property)
-            .where(Property.user_id == user.id)
-            .where((Property.active_to.is_(None)) | (Property.active_to >= date.today()))
-            .order_by(Property.id)
+    if property_id is not None:
+        property_obj = (
+            db.execute(
+                select(Property).where(
+                    Property.id == property_id,
+                    Property.user_id == user.id,
+                )
+            )
+            .scalars()
+            .first()
         )
-        .scalars()
-        .first()
-    )
+    else:
+        property_obj = (
+            db.execute(
+                select(Property)
+                .where(Property.user_id == user.id)
+                .where((Property.active_to.is_(None)) | (Property.active_to >= date.today()))
+                .order_by(Property.id)
+            )
+            .scalars()
+            .first()
+        )
     return user, property_obj
 
 
-def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
+def run_photo_ingest(
+    db: Session,
+    source_path: Path,
+    *,
+    user_id: int | None = None,
+    property_id: int | None = None,
+) -> IngestRun:
     if not source_path.exists() or not source_path.is_dir():
         raise FileNotFoundError(f"Katalog finnes ikke: {source_path}")
 
-    user, property_obj = _default_targets(db)
+    user, property_obj = _default_targets(db, user_id=user_id, property_id=property_id)
     run = IngestRun(source_path=str(source_path), started_at=datetime.utcnow())
     db.add(run)
     db.commit()

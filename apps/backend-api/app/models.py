@@ -304,6 +304,8 @@ class MediaStagingJob(TimestampMixin, Base):
 
     source: Mapped[str] = mapped_column(String(24), nullable=False, default="upload")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="staged")
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finalize_result_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
     user: Mapped[User] = relationship(back_populates="media_staging_jobs")
     property: Mapped[Optional[Property]] = relationship(back_populates="media_staging_jobs")
