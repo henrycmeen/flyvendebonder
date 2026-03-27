@@ -375,6 +375,7 @@ def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
         checksum=item.checksum,
         is_public=item.is_public,
         metadata=json.loads(item.metadata_json),
+        provenance=json.loads(item.provenance_json),
         public_url=artifact_public_url(item),
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -1151,13 +1152,14 @@ def create_processing_artifact(
 
     item = ProcessingArtifact(
         processing_run_id=run.id,
-        kind=payload.kind.strip(),
-        format=payload.format.strip(),
+        kind=payload.kind,
+        format=payload.format,
         uri=payload.uri.strip(),
         bytes=payload.bytes,
         checksum=payload.checksum.strip() if payload.checksum else None,
         is_public=payload.is_public,
         metadata_json=json.dumps(payload.metadata, ensure_ascii=False),
+        provenance_json=json.dumps(payload.provenance, ensure_ascii=False),
     )
     db.add(item)
     db.commit()

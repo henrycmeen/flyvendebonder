@@ -55,6 +55,14 @@ Lagrer blant annet:
 - `uri`
 - `checksum`
 - `metadata`
+- `provenance`
+
+V0.1-kontrakten bruker nå et lite, eksplisitt sett artifact-typer og formater:
+
+- typer: `ortho`, `dsm`, `dtm`, `point_cloud`, `thumb`, `tiles`, `mesh`, `qa_report`
+- formater: `cog`, `geotiff`, `pmtiles`, `jpg`, `png`, `webp`, `laz`, `las`, `obj`, `json`, `pdf`
+
+Dette er bevisst smalt for å holde artifacts kompatible med senere STAC-/raster-spor uten at backend må kjenne hele katalogmodellen allerede nå.
 
 ## Første API
 
