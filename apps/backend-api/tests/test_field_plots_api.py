@@ -135,3 +135,117 @@ def test_field_plot_geojson_export_includes_contract_metadata(client):
     assert payload["flyvendebonder_contract"]["coordinate_reference_system"] == "OGC:CRS84"
     assert payload["features"][0]["properties"]["field_id"] == created["id"]
     assert payload["features"][0]["properties"]["status"] == "confirmed"
+
+
+def test_field_history_summarizes_mission_capture_and_processing(client):
+    field_response = client.post(
+        "/api/v1/fields",
+        json={
+            "name": "Historikkjordet",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": _sample_polygon(),
+        },
+    )
+    assert field_response.status_code == 201
+    field = field_response.json()
+
+    mission_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Historikkoppdrag",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert mission_response.status_code == 201
+    mission = mission_response.json()
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "mission_id": mission["id"],
+            "photo_ids": [
+                "smoke-2025-07-18-00",
+                "smoke-2025-07-18-01",
+            ],
+            "notes": "Capture for historikk",
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho", "thumb"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    patch_response = client.patch(
+        f"/api/v1/processing-runs/{run['id']}",
+        json={"status": "completed"},
+    )
+    assert patch_response.status_code == 200
+
+    artifact_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "ortho",
+            "format": "cog",
+            "uri": "processing/history/ortho.tif",
+            "metadata": {"epsg": "EPSG:25832"},
+            "provenance": {"provider": "webodm"},
+        },
+    )
+    assert artifact_response.status_code == 201
+
+    history_response = client.get(f"/api/v1/fields/{field['id']}/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+
+    assert history["field"]["id"] == field["id"]
+    assert history["mission_count"] == 1
+    assert history["capture_count"] == 1
+    assert history["processing_run_count"] == 1
+    assert history["delivery_count"] == 1
+    assert history["entries"][0]["kind"] == "processing_run"
+    assert {entry["kind"] for entry in history["entries"]} == {"processing_run", "capture", "mission"}
+    assert history["entries"][0]["provider"] == "webodm"
+    assert history["entries"][0]["artifact_kinds"] == ["ortho"]
+    capture_entry = next(entry for entry in history["entries"] if entry["kind"] == "capture")
+    mission_entry = next(entry for entry in history["entries"] if entry["kind"] == "mission")
+    assert capture_entry["photo_count"] == 2
+    assert mission_entry["mission_id"] == mission["id"]
+
+
+def test_field_history_returns_empty_entries_for_field_without_activity(client):
+    field_response = client.post(
+        "/api/v1/fields",
+        json={
+            "name": "Tomt historikkfelt",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": _sample_polygon(0.01),
+        },
+    )
+    assert field_response.status_code == 201
+    field = field_response.json()
+
+    history_response = client.get(f"/api/v1/fields/{field['id']}/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history["mission_count"] == 0
+    assert history["capture_count"] == 0
+    assert history["processing_run_count"] == 0
+    assert history["delivery_count"] == 0
+    assert history["entries"] == []
