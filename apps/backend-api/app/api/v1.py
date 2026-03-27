@@ -113,6 +113,7 @@ from ..services.stac import (
     STAC_PROJECTION_EXTENSION,
     STAC_VERSION,
     geometry_bbox,
+    _normalize_bbox_values,
     processing_run_temporal,
     stac_asset_key,
     stac_bbox_to_geometry,
@@ -486,7 +487,7 @@ def _stac_item_geometry(
     geometry = metadata.get("geometry")
     bbox = metadata.get("bbox")
     if isinstance(geometry, dict):
-        normalized_bbox = [float(value) for value in (bbox or geometry_bbox(geometry))]
+        normalized_bbox = _normalize_bbox_values(bbox) or geometry_bbox(geometry)
         return geometry, normalized_bbox
     if isinstance(bbox, list) and len(bbox) == 4:
         normalized_bbox = [float(value) for value in bbox]
@@ -506,10 +507,13 @@ def _stac_item_assets(request: Request, run: ProcessingRun) -> dict[str, StacAss
         asset_key = stac_asset_key(artifact)
         if asset_key is None:
             continue
+        public_href = artifact_public_url(artifact)
+        if public_href is None:
+            continue
         asset_template = STAC_ITEM_ASSETS[asset_key]
         metadata = json.loads(artifact.metadata_json)
         asset_payload: dict = {
-            "href": artifact_public_url(artifact) or artifact.uri,
+            "href": public_href,
             "type": asset_template["type"],
             "title": asset_template["title"],
             "description": asset_template["description"],

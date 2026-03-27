@@ -311,3 +311,73 @@ def test_processing_run_stac_collection_and_item(client):
     assert item_response.status_code == 200
     fetched_item = item_response.json()
     assert fetched_item["id"] == item["id"]
+
+
+def test_stac_item_falls_back_to_geometry_bbox_and_hides_private_assets(client):
+    field = _create_field(client, name="STAC-multipolygon")
+    mission_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "STAC geometry mission",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert mission_response.status_code == 201
+    mission = mission_response.json()
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "mission_id": mission["id"],
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    client.patch(f"/api/v1/processing-runs/{run['id']}", json={"status": "completed"})
+
+    ortho_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "ortho",
+            "format": "cog",
+            "uri": "s3://private/capture-1-ortho.tif",
+            "is_public": False,
+            "metadata": {
+                "geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                        [[[10.0, 59.0], [10.001, 59.0], [10.001, 59.001], [10.0, 59.001], [10.0, 59.0]]],
+                        [[[10.002, 59.002], [10.003, 59.002], [10.003, 59.003], [10.002, 59.003], [10.002, 59.002]]],
+                    ],
+                },
+                "bbox": [10.0, 59.0, 10.003],
+            },
+        },
+    )
+    assert ortho_response.status_code == 201
+
+    collection_id = f"capture-{capture['id']}"
+    items_response = client.get(f"/api/v1/stac/collections/{collection_id}/items")
+    assert items_response.status_code == 200
+    item = items_response.json()["features"][0]
+    assert item["bbox"] == [10.0, 59.0, 10.003, 59.003]
+    assert "ortho" not in item["assets"]

@@ -91,9 +91,33 @@ def stac_bbox_to_geometry(bbox: list[float]) -> dict:
     }
 
 
+def _normalize_bbox_values(value) -> list[float] | None:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    try:
+        return [float(item) for item in value]
+    except (TypeError, ValueError):
+        return None
+
+
+def _geometry_points(value) -> list[list[float]]:
+    if not isinstance(value, list):
+        return []
+    if len(value) >= 2 and not isinstance(value[0], list) and not isinstance(value[1], list):
+        try:
+            return [[float(value[0]), float(value[1])]]
+        except (TypeError, ValueError):
+            return []
+
+    points: list[list[float]] = []
+    for item in value:
+        points.extend(_geometry_points(item))
+    return points
+
+
 def geometry_bbox(geometry: dict) -> list[float]:
     coordinates = geometry.get("coordinates") or []
-    points = [point for ring in coordinates for point in ring]
+    points = _geometry_points(coordinates)
     if not points:
         raise ValueError("Geometry mangler koordinater")
     lng_values = [float(point[0]) for point in points]
