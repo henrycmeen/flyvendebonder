@@ -102,6 +102,15 @@ API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ve
 - Første versjon returnerer et bevisst placeholder-resultat for `frames`-modus, slik at UI, review og kartplassering kan fungere før ekte videoprosessering er koblet på.
 - Se også: `docs/drift/video-job-contract-v1.md`
 
+## GeoJSON-kontrakt v1
+- Backend eksponerer nå første versjonerte GeoJSON-eksport for vektordata.
+- Endepunkter:
+  - `GET /api/v1/fields/export.geojson`
+  - `GET /api/v1/flight-missions/{mission_id}/route.geojson`
+- Kontrakten bruker GeoJSON `FeatureCollection` med utenlandske toppfelter for `flyvendebonder_contract`.
+- Koordinater følger `OGC:CRS84` / GeoJSON-konvensjon med `longitude, latitude`.
+- Se også: `docs/drift/geojson-contract-v1.md`
+
 ## Bildedata og analyse
 - Regenerer demo-data fra dronebilder:
   ```bash

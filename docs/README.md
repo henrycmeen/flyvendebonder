@@ -7,6 +7,8 @@
 - `docs/innsikt/` – markeds/teknisk innsikt og notater
 - `docs/backend-processing-v0.md` – første processing-arkitektur for flight captures, jobs og artefakter
 - `docs/drift/stac-contract-v1.md` – første STAC-kontrakt for collections og items over processing-runs
+- `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
+- `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `GitHub Issues` – aktiv backlog (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `docs/status/` – statuslogg av det som er bygget
 
@@ -15,5 +17,6 @@
 - `docs/drift/stac-contract-v1.md` – hvordan STAC-sporet kobles til flight captures og artefakter
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
+- `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `GitHub Issues` – backlog/issue-område
 - `AGENTS.md` – interne arbeidsregler for repoet

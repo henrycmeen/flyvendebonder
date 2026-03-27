@@ -162,6 +162,8 @@ _VIDEO_JOB_ARTIFACT_MEDIA_TYPES = {
     "geodata.geojson": "application/geo+json",
     "metadata.json": "application/json",
 }
+_GEOJSON_CONTRACT_NAME = "flyvendebonder.geojson"
+_GEOJSON_CONTRACT_VERSION = "v1"
 
 
 def _current_user(db: Session) -> User:
@@ -413,6 +415,44 @@ def _field_geometry_payload(geometry) -> tuple[str, float]:
 
 def _field_candidate_response(property_id: int, fields: list[dict]) -> FieldCandidateListResponse:
     return FieldCandidateListResponse(property_id=property_id, count=len(fields), fields=fields)
+
+
+def _geojson_contract_metadata(*, resource: str, export_path: str, import_paths: list[str]) -> dict[str, object]:
+    return {
+        "name": _GEOJSON_CONTRACT_NAME,
+        "version": _GEOJSON_CONTRACT_VERSION,
+        "resource": resource,
+        "coordinate_reference_system": "OGC:CRS84",
+        "coordinate_order": "longitude_latitude",
+        "export_path": export_path,
+        "import_paths": import_paths,
+        "stac_note": "STAC brukes separat for raster- og flight-artefakter i HEN-55.",
+    }
+
+
+def _geojson_response(
+    *,
+    resource: str,
+    export_path: str,
+    import_paths: list[str],
+    features: list[dict],
+    extra: dict[str, object] | None = None,
+) -> Response:
+    payload: dict[str, object] = {
+        "type": "FeatureCollection",
+        "features": features,
+        "flyvendebonder_contract": _geojson_contract_metadata(
+            resource=resource,
+            export_path=export_path,
+            import_paths=import_paths,
+        ),
+    }
+    if extra:
+        payload.update(extra)
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False),
+        media_type="application/geo+json",
+    )
 
 
 def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
@@ -1096,6 +1136,62 @@ def delete_field_plot(
     return FieldPlotDeleteResponse(status="deleted", field_id=field_id)
 
 
+@router.get("/fields/export.geojson")
+def export_field_plots_geojson(
+    status_filter: str | None = Query(default=None, alias="status"),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> Response:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    query = (
+        select(FieldPlot)
+        .where(FieldPlot.property_id == property_obj.id)
+        .order_by(FieldPlot.updated_at.desc(), FieldPlot.id.desc())
+    )
+    normalized_status = status_filter.strip().lower() if status_filter else None
+    if normalized_status is not None:
+        if normalized_status not in {"draft", "confirmed"}:
+            raise HTTPException(status_code=400, detail="Ugyldig feltstatus")
+        query = query.where(FieldPlot.status == normalized_status)
+
+    items = db.execute(query).scalars().all()
+    features = [
+        {
+            "type": "Feature",
+            "properties": {
+                "field_id": item.id,
+                "property_id": item.property_id,
+                "name": item.name,
+                "source": item.source,
+                "status": item.status,
+                "area_m2": round(item.area_m2, 2) if item.area_m2 is not None else None,
+                "area_ha": round((item.area_m2 or 0) / 10_000, 4) if item.area_m2 is not None else None,
+                "created_at": item.created_at.isoformat(),
+                "updated_at": item.updated_at.isoformat(),
+            },
+            "geometry": json.loads(item.geometry_json),
+        }
+        for item in items
+    ]
+    return _geojson_response(
+        resource="field_plots",
+        export_path="/api/v1/fields/export.geojson",
+        import_paths=["/api/v1/fields", "/api/v1/fields/{field_id}"],
+        features=features,
+        extra={
+            "property": {
+                "id": property_obj.id,
+                "komm": property_obj.komm,
+                "gnr": property_obj.gnr,
+                "bnr": property_obj.bnr,
+                "fnr": property_obj.fnr,
+                "label": property_obj.label,
+            },
+        },
+    )
+
+
 @router.get("/flight-missions", response_model=FlightMissionListResponse)
 def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResponse:
     user = _current_user(db)
@@ -1257,6 +1353,44 @@ def export_flight_mission(
     response.headers["Cache-Control"] = "private, max-age=300"
     response.headers["Expires"] = expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
     return response
+
+
+@router.get("/flight-missions/{mission_id}/route.geojson")
+def export_flight_mission_route_geojson(
+    mission_id: int,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> Response:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    item = (
+        db.execute(
+            select(FlightMission).where(
+                FlightMission.id == mission_id,
+                FlightMission.property_id == property_obj.id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+
+    route_geojson = json.loads(item.route_geojson_json)
+    return _geojson_response(
+        resource="flight_mission_route",
+        export_path=f"/api/v1/flight-missions/{mission_id}/route.geojson",
+        import_paths=["/api/v1/flight-missions", "/api/v1/flight-missions/{mission_id}"],
+        features=route_geojson["features"],
+        extra={
+            "mission": {
+                "id": item.id,
+                "name": item.name or f"Oppdrag {item.id}",
+                "property_id": item.property_id,
+                "status": item.status,
+            },
+        },
+    )
 
 
 @router.get("/flight-captures", response_model=FlightCaptureListResponse)
@@ -1580,8 +1714,6 @@ def get_stac_item(
         if item.id == item_id:
             return item
     raise HTTPException(status_code=404, detail="Fant ikke STAC-item")
-
-
 @router.get("/photos", response_model=PhotoResponse)
 def get_photos(
     user_id: int | None = Query(default=None),
