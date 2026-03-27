@@ -98,6 +98,7 @@ from ..services.processing import (
     artifact_public_url,
     build_capture_summary,
     build_processing_input_manifest,
+    processing_provider_profile,
     processing_run_should_finish,
     processing_run_should_start,
 )
@@ -383,6 +384,8 @@ def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
 
 
 def _processing_run_out(item: ProcessingRun) -> ProcessingRunOut:
+    provider_config = json.loads(item.provider_config_json)
+    provider_config.setdefault("_provider_profile", processing_provider_profile(item.provider))
     return ProcessingRunOut(
         id=item.id,
         capture_id=item.capture_id,
@@ -390,7 +393,7 @@ def _processing_run_out(item: ProcessingRun) -> ProcessingRunOut:
         status=item.status,
         external_job_id=item.external_job_id,
         requested_outputs=json.loads(item.requested_outputs_json),
-        provider_config=json.loads(item.provider_config_json),
+        provider_config=provider_config,
         input_manifest=json.loads(item.input_manifest_json),
         error_detail=item.error_detail,
         started_at=item.started_at,
@@ -1024,6 +1027,7 @@ def create_processing_run(
 
     input_manifest = build_processing_input_manifest(
         capture=capture,
+        provider=payload.provider,
         requested_outputs=payload.requested_outputs,
         provider_config=payload.provider_config,
     )

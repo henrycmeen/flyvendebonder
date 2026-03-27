@@ -126,6 +126,10 @@ Backenden har nå et første generelt processing-spor som binder sammen bilder, 
 - `ProcessingRun`: beskriver én asynkron jobb mot en motor som `webodm` eller senere `odm`
 - `ProcessingArtifact`: lagrer output som ortho, DSM, point-cloud, thumbs og rapporter
 
+Anbefalt første motor:
+- `webodm` som første API-lag for jobbopprettelse, polling og resultatsporing
+- `odm_cli` beholdes som et senere, mer direkte spor for tuning og verts-nær kontroll
+
 Første API-spor:
 - `POST /api/v1/flight-captures`
 - `GET /api/v1/flight-captures`
@@ -134,3 +138,4 @@ Første API-spor:
 - `POST /api/v1/processing-runs/{id}/artifacts`
 
 Se også: `docs/backend-processing-v0.md`
+Se også: `docs/backend-processing-provider-v1.md`

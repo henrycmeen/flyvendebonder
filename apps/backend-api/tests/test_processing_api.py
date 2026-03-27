@@ -108,9 +108,13 @@ def test_processing_run_and_artifact_lifecycle(client):
     assert run_response.status_code == 201
     run = run_response.json()
     assert run["status"] == "queued"
+    assert run["provider"] == "webodm"
     assert run["input_manifest"]["capture_id"] == capture["id"]
+    assert run["input_manifest"]["provider"] == "webodm"
+    assert run["input_manifest"]["provider_profile"]["api_mode"] == "poll"
     assert run["input_manifest"]["photo_count"] == 2
     assert run["requested_outputs"] == ["ortho", "dsm", "thumb"]
+    assert run["provider_config"]["_provider_profile"]["adapter"] == "nodeodm-compatible"
 
     patch_response = client.patch(
         f"/api/v1/processing-runs/{run['id']}",
@@ -190,3 +194,25 @@ def test_processing_artifact_rejects_unknown_kind(client):
         },
     )
     assert artifact_response.status_code == 422
+
+
+def test_processing_run_rejects_unknown_provider(client):
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Invalid provider capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "random_engine",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 422

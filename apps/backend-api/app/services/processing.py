@@ -5,6 +5,25 @@ from datetime import datetime
 
 from ..models import FlightCapture, Photo, ProcessingArtifact, ProcessingRun
 
+SUPPORTED_PROCESSING_PROVIDERS = ("webodm", "odm_cli")
+DEFAULT_PROCESSING_PROVIDER = "webodm"
+
+
+def processing_provider_profile(provider: str) -> dict:
+    if provider == "webodm":
+        return {
+            "api_mode": "poll",
+            "adapter": "nodeodm-compatible",
+            "recommended_for": ["first_integration", "local_docker", "job_tracking"],
+        }
+    if provider == "odm_cli":
+        return {
+            "api_mode": "process",
+            "adapter": "native_cli",
+            "recommended_for": ["advanced_tuning", "direct_host_control"],
+        }
+    raise ValueError(f"Ukjent processing-provider: {provider}")
+
 
 def build_capture_summary(photos: list[Photo]) -> tuple[datetime | None, datetime | None]:
     if not photos:
@@ -16,10 +35,13 @@ def build_capture_summary(photos: list[Photo]) -> tuple[datetime | None, datetim
 def build_processing_input_manifest(
     *,
     capture: FlightCapture,
+    provider: str,
     requested_outputs: list[str],
     provider_config: dict,
 ) -> dict:
     return {
+        "provider": provider,
+        "provider_profile": processing_provider_profile(provider),
         "capture_id": capture.id,
         "user_id": capture.user_id,
         "property_id": capture.property_id,
