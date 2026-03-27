@@ -370,6 +370,68 @@ class ProcessingArtifactListResponse(BaseModel):
     artifacts: list[ProcessingArtifactOut]
 
 
+class StacLink(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    rel: str
+    href: str
+    type: str | None = None
+    title: str | None = None
+
+
+class StacAsset(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    href: str | None = None
+    type: str | None = None
+    title: str | None = None
+    description: str | None = None
+    roles: list[str] = Field(default_factory=list)
+
+
+class StacCollectionOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["Collection"]
+    stac_version: str
+    stac_extensions: list[str] = Field(default_factory=list)
+    id: str
+    title: str
+    description: str
+    license: str
+    extent: dict
+    links: list[StacLink] = Field(default_factory=list)
+    item_assets: dict[str, StacAsset] = Field(default_factory=dict)
+
+
+class StacCollectionListResponse(BaseModel):
+    collections: list[StacCollectionOut] = Field(default_factory=list)
+    links: list[StacLink] = Field(default_factory=list)
+
+
+class StacItemOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["Feature"]
+    stac_version: str
+    stac_extensions: list[str] = Field(default_factory=list)
+    id: str
+    collection: str
+    geometry: dict
+    bbox: list[float]
+    properties: dict
+    links: list[StacLink] = Field(default_factory=list)
+    assets: dict[str, StacAsset] = Field(default_factory=dict)
+
+
+class StacItemCollectionOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["FeatureCollection"]
+    features: list[StacItemOut] = Field(default_factory=list)
+    links: list[StacLink] = Field(default_factory=list)
+
+
 FieldCandidateSource = Literal["geonorge"]
 
 

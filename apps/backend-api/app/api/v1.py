@@ -61,6 +61,12 @@ from ..schemas import (
     PhotoMetadataPatchRequest,
     PhotoAnalysisRefreshResponse,
     PhotoReprocessResponse,
+    StacAsset,
+    StacCollectionListResponse,
+    StacCollectionOut,
+    StacItemCollectionOut,
+    StacItemOut,
+    StacLink,
     ImportRequest,
     ImportRunOut,
     PhotoPageResponse,
@@ -100,6 +106,21 @@ from ..services.processing import (
     build_processing_input_manifest,
     processing_run_should_finish,
     processing_run_should_start,
+)
+from ..services.stac import (
+    STAC_COLLECTION_LICENSE,
+    STAC_ITEM_ASSETS,
+    STAC_PROJECTION_EXTENSION,
+    STAC_VERSION,
+    geometry_bbox,
+    processing_run_temporal,
+    stac_asset_key,
+    stac_bbox_to_geometry,
+    stac_collection_description,
+    stac_collection_id,
+    stac_collection_title,
+    stac_item_id,
+    union_bboxes,
 )
 from ..services.tag_utils import (
     extract_meta_float,
@@ -400,6 +421,239 @@ def _processing_run_out(item: ProcessingRun) -> ProcessingRunOut:
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+def _stac_href(request: Request, path: str) -> str:
+    return str(request.base_url).rstrip("/") + path
+
+
+def _field_plot_lookup(db: Session, property_obj: Property, field_ids: list[int]) -> dict[int, FieldPlot]:
+    if not field_ids:
+        return {}
+    items = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.id.in_(field_ids),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {item.id: item for item in items}
+
+
+def _capture_bbox_from_fields(field_lookup: dict[int, FieldPlot], field_ids: list[int]) -> list[float] | None:
+    boxes: list[list[float]] = []
+    for field_id in field_ids:
+        item = field_lookup.get(field_id)
+        if item is None:
+            continue
+        geometry = json.loads(item.geometry_json)
+        boxes.append(geometry_bbox(geometry))
+    if boxes:
+        return union_bboxes(boxes)
+    return None
+
+
+def _capture_bbox_from_photos(db: Session, capture: FlightCapture) -> list[float] | None:
+    photo_ids = json.loads(capture.photo_ids_json)
+    if not photo_ids:
+        return None
+    photos = (
+        db.execute(select(Photo).where(Photo.id.in_(photo_ids)))
+        .scalars()
+        .all()
+    )
+    if not photos:
+        return None
+    return [
+        min(photo.lng for photo in photos),
+        min(photo.lat for photo in photos),
+        max(photo.lng for photo in photos),
+        max(photo.lat for photo in photos),
+    ]
+
+
+def _stac_item_geometry(
+    *,
+    db: Session,
+    capture: FlightCapture,
+    ortho_artifact: ProcessingArtifact,
+    field_lookup: dict[int, FieldPlot],
+) -> tuple[dict, list[float]]:
+    metadata = json.loads(ortho_artifact.metadata_json)
+    geometry = metadata.get("geometry")
+    bbox = metadata.get("bbox")
+    if isinstance(geometry, dict):
+        normalized_bbox = [float(value) for value in (bbox or geometry_bbox(geometry))]
+        return geometry, normalized_bbox
+    if isinstance(bbox, list) and len(bbox) == 4:
+        normalized_bbox = [float(value) for value in bbox]
+        return stac_bbox_to_geometry(normalized_bbox), normalized_bbox
+
+    capture_bbox = _capture_bbox_from_fields(field_lookup, json.loads(capture.field_ids_json))
+    if capture_bbox is None:
+        capture_bbox = _capture_bbox_from_photos(db, capture)
+    if capture_bbox is None:
+        raise HTTPException(status_code=409, detail="Flight capture mangler geometri for STAC-eksport")
+    return stac_bbox_to_geometry(capture_bbox), capture_bbox
+
+
+def _stac_item_assets(request: Request, run: ProcessingRun) -> dict[str, StacAsset]:
+    assets: dict[str, StacAsset] = {}
+    for artifact in run.artifacts:
+        asset_key = stac_asset_key(artifact)
+        if asset_key is None:
+            continue
+        asset_template = STAC_ITEM_ASSETS[asset_key]
+        metadata = json.loads(artifact.metadata_json)
+        asset_payload: dict = {
+            "href": artifact_public_url(artifact) or artifact.uri,
+            "type": asset_template["type"],
+            "title": asset_template["title"],
+            "description": asset_template["description"],
+            "roles": list(asset_template["roles"]),
+        }
+        if asset_key == "ortho":
+            for metadata_key in ("proj:code", "proj:shape", "proj:transform", "bands"):
+                if metadata_key in metadata:
+                    asset_payload[metadata_key] = metadata[metadata_key]
+        assets[asset_key] = StacAsset.model_validate(asset_payload)
+
+    assets["metadata"] = StacAsset(
+        href=_stac_href(request, f"/api/v1/processing-runs/{run.id}"),
+        type=STAC_ITEM_ASSETS["metadata"]["type"],
+        title=STAC_ITEM_ASSETS["metadata"]["title"],
+        description=STAC_ITEM_ASSETS["metadata"]["description"],
+        roles=list(STAC_ITEM_ASSETS["metadata"]["roles"]),
+    )
+    return assets
+
+
+def _stac_item_out(
+    *,
+    request: Request,
+    db: Session,
+    capture: FlightCapture,
+    run: ProcessingRun,
+    field_lookup: dict[int, FieldPlot],
+) -> StacItemOut | None:
+    ortho_artifact = next((artifact for artifact in run.artifacts if artifact.kind == "ortho"), None)
+    if ortho_artifact is None:
+        return None
+
+    geometry, bbox = _stac_item_geometry(
+        db=db,
+        capture=capture,
+        ortho_artifact=ortho_artifact,
+        field_lookup=field_lookup,
+    )
+    collection_id = stac_collection_id(capture)
+    item_id = stac_item_id(run)
+    datetime_value, start_datetime, end_datetime = processing_run_temporal(capture, run)
+    properties = {
+        "datetime": datetime_value,
+        "start_datetime": start_datetime,
+        "end_datetime": end_datetime,
+    }
+    item_path = f"/api/v1/stac/collections/{collection_id}/items/{item_id}"
+    return StacItemOut(
+        type="Feature",
+        stac_version=STAC_VERSION,
+        stac_extensions=[STAC_PROJECTION_EXTENSION],
+        id=item_id,
+        collection=collection_id,
+        geometry=geometry,
+        bbox=bbox,
+        properties=properties,
+        links=[
+            StacLink(rel="self", href=_stac_href(request, item_path), type="application/geo+json"),
+            StacLink(
+                rel="collection",
+                href=_stac_href(request, f"/api/v1/stac/collections/{collection_id}"),
+                type="application/json",
+            ),
+        ],
+        assets=_stac_item_assets(request, run),
+    )
+
+
+def _stac_items_for_capture(
+    request: Request,
+    db: Session,
+    property_obj: Property,
+    capture: FlightCapture,
+) -> list[StacItemOut]:
+    field_lookup = _field_plot_lookup(db, property_obj, json.loads(capture.field_ids_json))
+    items: list[StacItemOut] = []
+    for run in sorted(capture.processing_runs, key=lambda item: (item.created_at, item.id)):
+        item = _stac_item_out(request=request, db=db, capture=capture, run=run, field_lookup=field_lookup)
+        if item is not None:
+            items.append(item)
+    return items
+
+
+def _stac_collection_out(
+    request: Request,
+    capture: FlightCapture,
+    items: list[StacItemOut],
+) -> StacCollectionOut:
+    if not items:
+        raise HTTPException(status_code=404, detail="Flight capture har ingen STAC-klare items")
+
+    bbox = union_bboxes([item.bbox for item in items])
+    start_candidates = [item.properties.get("start_datetime") or item.properties.get("datetime") for item in items]
+    end_candidates = [item.properties.get("end_datetime") or item.properties.get("datetime") for item in items]
+    start_values = [value for value in start_candidates if value]
+    end_values = [value for value in end_candidates if value]
+    collection_id = stac_collection_id(capture)
+    return StacCollectionOut(
+        type="Collection",
+        stac_version=STAC_VERSION,
+        stac_extensions=[STAC_PROJECTION_EXTENSION],
+        id=collection_id,
+        title=stac_collection_title(capture),
+        description=stac_collection_description(capture),
+        license=STAC_COLLECTION_LICENSE,
+        extent={
+            "spatial": {"bbox": [bbox]},
+            "temporal": {"interval": [[min(start_values) if start_values else None, max(end_values) if end_values else None]]},
+        },
+        links=[
+            StacLink(
+                rel="self",
+                href=_stac_href(request, f"/api/v1/stac/collections/{collection_id}"),
+                type="application/json",
+            ),
+            StacLink(
+                rel="items",
+                href=_stac_href(request, f"/api/v1/stac/collections/{collection_id}/items"),
+                type="application/geo+json",
+            ),
+        ],
+        item_assets={
+            asset_key: StacAsset.model_validate(asset_payload)
+            for asset_key, asset_payload in STAC_ITEM_ASSETS.items()
+        },
+    )
+
+
+def _resolve_stac_capture(
+    db: Session,
+    property_obj: Property,
+    collection_id: str,
+) -> FlightCapture:
+    if not collection_id.startswith("capture-"):
+        raise HTTPException(status_code=404, detail="Fant ikke STAC-collection")
+    try:
+        capture_id = int(collection_id.removeprefix("capture-"))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Fant ikke STAC-collection") from exc
+    item = _resolve_flight_capture(db, property_obj=property_obj, capture_id=capture_id)
+    if not any(artifact.kind == "ortho" for run in item.processing_runs for artifact in run.artifacts):
+        raise HTTPException(status_code=404, detail="Flight capture har ingen STAC-klare items")
+    return item
 
 
 def _resolve_field_plots_for_mission(db: Session, property_obj: Property, field_ids: list[int]) -> list[FieldPlot]:
@@ -1165,6 +1419,72 @@ def create_processing_artifact(
     db.commit()
     db.refresh(item)
     return _processing_artifact_out(item)
+
+
+@router.get("/stac/collections", response_model=StacCollectionListResponse)
+def list_stac_collections(request: Request, db: Session = Depends(get_db)) -> StacCollectionListResponse:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    captures = (
+        db.execute(
+            select(FlightCapture)
+            .options(selectinload(FlightCapture.processing_runs).selectinload(ProcessingRun.artifacts))
+            .where(FlightCapture.property_id == property_obj.id)
+            .order_by(FlightCapture.updated_at.desc(), FlightCapture.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    collections: list[StacCollectionOut] = []
+    for capture in captures:
+        items = _stac_items_for_capture(request, db, property_obj, capture)
+        if not items:
+            continue
+        collections.append(_stac_collection_out(request, capture, items))
+
+    return StacCollectionListResponse(
+        collections=collections,
+        links=[StacLink(rel="self", href=_stac_href(request, "/api/v1/stac/collections"), type="application/json")],
+    )
+
+
+@router.get("/stac/collections/{collection_id}", response_model=StacCollectionOut)
+def get_stac_collection(collection_id: str, request: Request, db: Session = Depends(get_db)) -> StacCollectionOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    capture = _resolve_stac_capture(db, property_obj, collection_id)
+    items = _stac_items_for_capture(request, db, property_obj, capture)
+    return _stac_collection_out(request, capture, items)
+
+
+@router.get("/stac/collections/{collection_id}/items", response_model=StacItemCollectionOut)
+def list_stac_items(collection_id: str, request: Request, db: Session = Depends(get_db)) -> StacItemCollectionOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    capture = _resolve_stac_capture(db, property_obj, collection_id)
+    items = _stac_items_for_capture(request, db, property_obj, capture)
+    return StacItemCollectionOut(
+        type="FeatureCollection",
+        features=items,
+        links=[StacLink(rel="self", href=_stac_href(request, f"/api/v1/stac/collections/{collection_id}/items"), type="application/geo+json")],
+    )
+
+
+@router.get("/stac/collections/{collection_id}/items/{item_id}", response_model=StacItemOut)
+def get_stac_item(
+    collection_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> StacItemOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    capture = _resolve_stac_capture(db, property_obj, collection_id)
+    items = _stac_items_for_capture(request, db, property_obj, capture)
+    for item in items:
+        if item.id == item_id:
+            return item
+    raise HTTPException(status_code=404, detail="Fant ikke STAC-item")
 
 
 @router.get("/photos", response_model=PhotoResponse)
