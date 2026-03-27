@@ -3,6 +3,7 @@
 *.swp
 *.swo
 .vscode/
+.cline/
 node_modules/
 dist/
 build/

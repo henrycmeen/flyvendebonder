@@ -1,0 +1,12 @@
+archive/
+.git/
+.staging/
+build/
+dist/
+node_modules/
+apps/backend-api/data/
+apps/backend-api/logs/
+apps/backend-api/storage/
+apps/shared-assets/dronevideo.mp4
+apps/web-app/dist/
+apps/web-app/node_modules/

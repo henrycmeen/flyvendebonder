@@ -8,10 +8,25 @@
 - `apps/shared-assets/`: felles assets (logo/video)
 - `docs/`: innsikt, brand og driftsdokumentasjon
 - `docs/status/`: samlet status på siste funksjoner/arbeid
-- `Linear`: arbeidsflate for backlog, prioritering og status (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
+- `Linear`: backlog, prioritering og prosjektstatus (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
+- `Cline Kanban`: lokal agentflate for worktrees, diff-review og PR-klargjoring
 - `GitHub Issues`: repo-nære saker og speiling av utvalgte arbeidsoppgaver (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `archive/`: historiske versjoner av tidligere sideoppsett
 - `scripts/`: staging og deploy scripts
+
+## Agentflyt
+Flyvendebonder bruker na `Linear` for planlegging og `Cline Kanban` for faktisk agentarbeid i repoet.
+
+- Start Kanban fra repo-roten:
+  ```bash
+  ./scripts/run-cline-kanban.sh
+  ```
+- Alternativt direkte:
+  ```bash
+  cline --kanban
+  ```
+- Se operativ flyt i `docs/drift/agentarbeid-flyt.md`
+- Se maskin- og MCP-oppsett i `docs/drift/cline-kanban-oppsett.md`
 
 ## Lokal kjøring
 Enklest:
