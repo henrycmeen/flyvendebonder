@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserOut(BaseModel):
@@ -303,6 +303,14 @@ class ProcessingRunCreate(BaseModel):
     requested_outputs: list[str] = Field(default_factory=list)
     provider_config: dict = Field(default_factory=dict)
 
+    @field_validator("provider")
+    @classmethod
+    def _validate_provider(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("provider kan ikke være tom")
+        return normalized
+
 
 class ProcessingRunPatch(BaseModel):
     status: ProcessingRunStatus | None = None
@@ -343,6 +351,22 @@ class ProcessingArtifactCreate(BaseModel):
     checksum: str | None = Field(default=None, max_length=128)
     is_public: bool = False
     metadata: dict = Field(default_factory=dict)
+
+    @field_validator("kind", "format", "uri")
+    @classmethod
+    def _validate_required_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("feltet kan ikke være tomt")
+        return normalized
+
+    @field_validator("checksum")
+    @classmethod
+    def _validate_checksum(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class ProcessingArtifactOut(BaseModel):

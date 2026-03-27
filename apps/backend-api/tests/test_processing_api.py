@@ -155,3 +155,62 @@ def test_processing_run_and_artifact_lifecycle(client):
     runs = all_runs.json()
     assert runs["count"] == 1
     assert runs["runs"][0]["artifact_count"] == 1
+
+
+def test_processing_run_rejects_blank_provider_after_trim(client):
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Blank provider capture",
+            "photo_ids": [
+                "smoke-2025-07-18-00",
+                "smoke-2025-07-18-01",
+            ],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "   ",
+        },
+    )
+    assert run_response.status_code == 422
+
+
+def test_processing_artifact_rejects_blank_fields_after_trim(client):
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Blank artifact capture",
+            "photo_ids": [
+                "smoke-2025-07-18-00",
+                "smoke-2025-07-18-01",
+            ],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    artifact_response = client.post(
+        f"/api/v1/processing-runs/{run['id']}/artifacts",
+        json={
+            "kind": "   ",
+            "format": "cog",
+            "uri": "   ",
+        },
+    )
+    assert artifact_response.status_code == 422
