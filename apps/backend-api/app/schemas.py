@@ -317,7 +317,7 @@ class ProcessingRunPatch(BaseModel):
 class ProcessingRunOut(BaseModel):
     id: int
     capture_id: int
-    provider: ProcessingProvider
+    provider: str
     status: ProcessingRunStatus
     external_job_id: str | None = None
     requested_outputs: list[str] = Field(default_factory=list)

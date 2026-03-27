@@ -385,7 +385,7 @@ def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
 
 def _processing_run_out(item: ProcessingRun) -> ProcessingRunOut:
     provider_config = json.loads(item.provider_config_json)
-    provider_config.setdefault("_provider_profile", processing_provider_profile(item.provider))
+    provider_config.setdefault("_provider_profile", processing_provider_profile(item.provider, allow_legacy=True))
     return ProcessingRunOut(
         id=item.id,
         capture_id=item.capture_id,

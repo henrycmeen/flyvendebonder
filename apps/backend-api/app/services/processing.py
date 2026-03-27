@@ -9,18 +9,26 @@ SUPPORTED_PROCESSING_PROVIDERS = ("webodm", "odm_cli")
 DEFAULT_PROCESSING_PROVIDER = "webodm"
 
 
-def processing_provider_profile(provider: str) -> dict:
+def processing_provider_profile(provider: str, *, allow_legacy: bool = False) -> dict:
     if provider == "webodm":
         return {
             "api_mode": "poll",
             "adapter": "nodeodm-compatible",
             "recommended_for": ["first_integration", "local_docker", "job_tracking"],
         }
-    if provider == "odm_cli":
+    if provider in {"odm_cli", "odm"}:
         return {
             "api_mode": "process",
             "adapter": "native_cli",
             "recommended_for": ["advanced_tuning", "direct_host_control"],
+            **({"legacy_provider": provider} if provider != "odm_cli" else {}),
+        }
+    if allow_legacy:
+        return {
+            "api_mode": "legacy",
+            "adapter": "legacy",
+            "recommended_for": ["read_compatibility"],
+            "legacy_provider": provider,
         }
     raise ValueError(f"Ukjent processing-provider: {provider}")
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 
 def _sample_polygon(offset: float = 0.0) -> dict:
     return {
@@ -194,6 +196,51 @@ def test_processing_artifact_rejects_unknown_kind(client):
         },
     )
     assert artifact_response.status_code == 422
+
+
+def test_processing_run_listing_keeps_legacy_provider_readable(client):
+    from app.database import SessionLocal
+    from app.models import ProcessingRun
+    from sqlalchemy import select
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Legacy provider capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    with SessionLocal() as db:
+        item = db.execute(select(ProcessingRun).where(ProcessingRun.id == run["id"])).scalar_one()
+        item.provider = "odm"
+        item.provider_config_json = json.dumps({}, ensure_ascii=False)
+        db.commit()
+
+    list_response = client.get("/api/v1/processing-runs")
+    assert list_response.status_code == 200
+    listing = list_response.json()
+    assert listing["runs"][0]["provider"] == "odm"
+    assert listing["runs"][0]["provider_config"]["_provider_profile"]["adapter"] == "native_cli"
+
+    get_response = client.get(f"/api/v1/processing-runs/{run['id']}")
+    assert get_response.status_code == 200
+    fetched = get_response.json()
+    assert fetched["provider"] == "odm"
+    assert fetched["provider_config"]["_provider_profile"]["legacy_provider"] == "odm"
 
 
 def test_processing_run_rejects_unknown_provider(client):
