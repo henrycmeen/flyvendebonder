@@ -261,6 +261,7 @@ class FlightMissionListResponse(BaseModel):
 
 FlightCaptureStatus = Literal["ready", "archived"]
 FlightCaptureSource = Literal["manual", "mission", "imported"]
+ProcessingProvider = Literal["webodm", "odm_cli"]
 ProcessingRunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 ProcessingArtifactKind = Literal["ortho", "dsm", "dtm", "point_cloud", "thumb", "tiles", "mesh", "qa_report"]
 ProcessingArtifactFormat = Literal["cog", "geotiff", "pmtiles", "jpg", "png", "webp", "laz", "las", "obj", "json", "pdf"]
@@ -301,7 +302,7 @@ class FlightCaptureListResponse(BaseModel):
 
 class ProcessingRunCreate(BaseModel):
     capture_id: int
-    provider: str = Field(min_length=1, max_length=32)
+    provider: ProcessingProvider = "webodm"
     requested_outputs: list[str] = Field(default_factory=list)
     provider_config: dict = Field(default_factory=dict)
 

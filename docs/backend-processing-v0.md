@@ -99,3 +99,13 @@ Dette gjør produktet mer helhetlig på tre måter:
 2. La `HEN-73` forbedre hvordan bilder grupperes til captures.
 3. La `HEN-74` innføre faktisk adapter/polling mot valgt motor.
 4. La `HEN-75` koble artifacts videre til STAC og rasterlevering.
+
+## Providerbeslutning v1
+Første anbefalte motor er `webodm`.
+
+Begrunnelse:
+- passer bedre til vår `ProcessingRun`-modell med jobb-ID og polling
+- gir oss et ryddig API-lag før vi eventuelt tar mer direkte verts-kontroll
+- holder `odm_cli` som senere, mer avansert spor i stedet for å gjøre backend ansvarlig for hele prosessløpet med en gang
+
+Se `docs/backend-processing-provider-v1.md` for den korte beslutningen.

@@ -110,9 +110,13 @@ def test_processing_run_and_artifact_lifecycle(client):
     assert run_response.status_code == 201
     run = run_response.json()
     assert run["status"] == "queued"
+    assert run["provider"] == "webodm"
     assert run["input_manifest"]["capture_id"] == capture["id"]
+    assert run["input_manifest"]["provider"] == "webodm"
+    assert run["input_manifest"]["provider_profile"]["api_mode"] == "poll"
     assert run["input_manifest"]["photo_count"] == 2
     assert run["requested_outputs"] == ["ortho", "dsm", "thumb"]
+    assert run["provider_config"]["_provider_profile"]["adapter"] == "nodeodm-compatible"
 
     patch_response = client.patch(
         f"/api/v1/processing-runs/{run['id']}",
@@ -302,3 +306,70 @@ def test_processing_artifact_listing_keeps_legacy_values_readable(client):
     assert payload["count"] == 1
     assert payload["artifacts"][0]["kind"] == "orthomosaic"
     assert payload["artifacts"][0]["format"] == "tif"
+
+
+def test_processing_run_listing_keeps_legacy_provider_readable(client):
+    from app.database import SessionLocal
+    from app.models import ProcessingRun
+    from sqlalchemy import select
+
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Legacy provider capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "webodm",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()
+
+    with SessionLocal() as db:
+        item = db.execute(select(ProcessingRun).where(ProcessingRun.id == run["id"])).scalar_one()
+        item.provider = "odm"
+        item.provider_config_json = json.dumps({}, ensure_ascii=False)
+        db.commit()
+
+    list_response = client.get("/api/v1/processing-runs")
+    assert list_response.status_code == 200
+    listing = list_response.json()
+    assert listing["runs"][0]["provider"] == "odm"
+    assert listing["runs"][0]["provider_config"]["_provider_profile"]["adapter"] == "native_cli"
+
+    get_response = client.get(f"/api/v1/processing-runs/{run['id']}")
+    assert get_response.status_code == 200
+    fetched = get_response.json()
+    assert fetched["provider"] == "odm"
+    assert fetched["provider_config"]["_provider_profile"]["legacy_provider"] == "odm"
+
+
+def test_processing_run_rejects_unknown_provider(client):
+    capture_response = client.post(
+        "/api/v1/flight-captures",
+        json={
+            "name": "Invalid provider capture",
+            "photo_ids": ["smoke-2025-07-18-00"],
+        },
+    )
+    assert capture_response.status_code == 201
+    capture = capture_response.json()
+
+    run_response = client.post(
+        "/api/v1/processing-runs",
+        json={
+            "capture_id": capture["id"],
+            "provider": "random_engine",
+            "requested_outputs": ["ortho"],
+        },
+    )
+    assert run_response.status_code == 422
