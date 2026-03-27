@@ -288,6 +288,9 @@ class FlightCaptureOut(BaseModel):
     field_ids: list[int] = Field(default_factory=list)
     captured_from: datetime | None = None
     captured_to: datetime | None = None
+    first_photo_id: str | None = None
+    last_photo_id: str | None = None
+    is_contiguous: bool = True
     notes: str | None = None
     processing_run_count: int = 0
     created_at: datetime

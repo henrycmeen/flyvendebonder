@@ -97,6 +97,7 @@ from ..services.photos import load_photos_for_date, load_photos_page, timeline_d
 from ..services.processing import (
     artifact_public_url,
     build_capture_summary,
+    build_capture_photo_summary,
     build_processing_input_manifest,
     processing_provider_profile,
     processing_run_should_finish,
@@ -345,6 +346,12 @@ def _flight_mission_out(item: FlightMission) -> FlightMissionOut:
 
 
 def _flight_capture_out(item: FlightCapture) -> FlightCaptureOut:
+    photo_ids = json.loads(item.photo_ids_json)
+    photo_summary = {
+        "first_photo_id": photo_ids[0] if photo_ids else None,
+        "last_photo_id": photo_ids[-1] if photo_ids else None,
+        "is_contiguous": len(photo_ids) == len(set(photo_ids)),
+    }
     return FlightCaptureOut(
         id=item.id,
         user_id=item.user_id,
@@ -353,11 +360,14 @@ def _flight_capture_out(item: FlightCapture) -> FlightCaptureOut:
         name=item.name,
         source=item.source,
         status=item.status,
-        photo_ids=json.loads(item.photo_ids_json),
+        photo_ids=photo_ids,
         photo_count=item.photo_count,
         field_ids=json.loads(item.field_ids_json),
         captured_from=item.captured_from,
         captured_to=item.captured_to,
+        first_photo_id=photo_summary["first_photo_id"],
+        last_photo_id=photo_summary["last_photo_id"],
+        is_contiguous=photo_summary["is_contiguous"],
         notes=item.notes,
         processing_run_count=len(item.processing_runs),
         created_at=item.created_at,
@@ -964,6 +974,7 @@ def create_flight_capture(
         field_ids = json.loads(mission.field_ids_json)
 
     captured_from, captured_to = build_capture_summary(photos)
+    _photo_summary = build_capture_photo_summary(photos)
     item = FlightCapture(
         user_id=user.id,
         property_id=property_obj.id,
