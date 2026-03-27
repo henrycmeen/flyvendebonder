@@ -7,8 +7,9 @@ import zipfile
 from datetime import datetime
 from typing import Any
 
-from ..models import FieldPlot, Property
+from ..models import Property
 from .field_plots import normalize_polygon_coordinates, polygon_area_m2
+from .planning import planning_duration_status
 from .quality_metrics import meters_per_degree_latitude, meters_per_degree_longitude
 
 RECOMMENDED_ALTITUDE_RANGE_M = (20.0, 120.0)
@@ -21,9 +22,11 @@ EXPORT_BUNDLE_FORMAT = "flyvendebonder.flight-mission-bundle.v1"
 def build_flight_mission_payload(
     *,
     property_obj: Property,
-    fields: list[FieldPlot],
+    fields: list[dict[str, Any]],
     name: str | None,
     parameters: dict[str, Any],
+    planning_unit_ids: list[int] | None = None,
+    drone_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_parameters = _normalize_parameters(parameters)
     warnings = _parameter_warnings(normalized_parameters)
@@ -34,13 +37,16 @@ def build_flight_mission_payload(
     total_distance_m = 0.0
 
     for field in fields:
-        geometry = json.loads(field.geometry_json)
+        geometry = field["geometry"]
         coordinates = normalize_polygon_coordinates(geometry["coordinates"])
-        area_m2 = round(field.area_m2 or polygon_area_m2(coordinates), 2)
-        field_name = (field.name or f"Jord {field.id}").strip()
+        area_m2 = round(field.get("area_m2") or polygon_area_m2(coordinates), 2)
+        field_name = str(field.get("name") or f"Jord {field.get('field_id', '?')}").strip()
+        field_id = int(field["field_id"])
+        planning_unit_id = field.get("planning_unit_id")
 
         snapshot = {
-            "field_id": field.id,
+            "field_id": field_id,
+            "planning_unit_id": planning_unit_id,
             "name": field_name,
             "area_m2": area_m2,
             "area_ha": round(area_m2 / 10_000, 4) if area_m2 is not None else None,
@@ -54,7 +60,7 @@ def build_flight_mission_payload(
                     "holes_not_supported",
                     "warning",
                     "Oppdragsgeneratoren bruker bare yttergrensen i første versjon. Hull må kontrolleres manuelt.",
-                    field_id=field.id,
+                    field_id=field_id,
                 )
             )
 
@@ -64,7 +70,7 @@ def build_flight_mission_payload(
                     "field_too_small",
                     "warning",
                     "Jordet er svært lite. Eksporten bør kontrolleres manuelt før flyging.",
-                    field_id=field.id,
+                    field_id=field_id,
                 )
             )
 
@@ -80,7 +86,7 @@ def build_flight_mission_payload(
                     "route_generation_failed",
                     "warning",
                     "Klarte ikke å lage en brukbar sweep-rute for jordet. Finjuster geometri eller parametre.",
-                    field_id=field.id,
+                    field_id=field_id,
                 )
             )
             continue
@@ -91,7 +97,8 @@ def build_flight_mission_payload(
             {
                 "type": "Feature",
                 "properties": {
-                    "field_id": field.id,
+                    "field_id": field_id,
+                    "planning_unit_id": planning_unit_id,
                     "field_name": field_name,
                     "kind": "route",
                     "altitude_m": normalized_parameters["altitude_m"],
@@ -108,7 +115,8 @@ def build_flight_mission_payload(
                 {
                     "type": "Feature",
                     "properties": {
-                        "field_id": field.id,
+                        "field_id": field_id,
+                        "planning_unit_id": planning_unit_id,
                         "field_name": field_name,
                         "kind": "waypoint",
                         "sequence": index,
@@ -121,6 +129,12 @@ def build_flight_mission_payload(
     route_geojson = {"type": "FeatureCollection", "features": route_features}
     generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     mission_name = (name or f"Oppdrag {property_obj.gnr}/{property_obj.bnr}").strip()
+    estimated_duration_s = estimate_mission_duration(
+        route_distance_m=total_distance_m,
+        waypoint_count=total_waypoints,
+        drone_profile=drone_profile,
+    )
+    duration_status = planning_duration_status(estimated_duration_s, drone_profile)
     manifest = {
         "format": EXPORT_BUNDLE_FORMAT,
         "generated_at": generated_at,
@@ -137,8 +151,11 @@ def build_flight_mission_payload(
             "field_count": len(field_snapshots),
             "waypoint_count": total_waypoints,
             "route_distance_m": round(total_distance_m, 1),
+            "estimated_duration_s": estimated_duration_s,
+            "duration_status": duration_status,
         },
         "parameters": normalized_parameters,
+        "drone_profile": drone_profile or {},
         "warnings": warnings,
         "export_notes": [
             "GeoJSON-bunten er første eksportprofil i Flyvendebønder.",
@@ -149,7 +166,12 @@ def build_flight_mission_payload(
     return {
         "name": mission_name,
         "status": "ready",
-        "field_ids": [field.id for field in fields],
+        "field_ids": [int(field["field_id"]) for field in fields],
+        "planning_unit_ids": list(planning_unit_ids or []),
+        "drone_profile_id": drone_profile.get("id") if drone_profile else None,
+        "drone_profile_snapshot": drone_profile or {},
+        "estimated_duration_s": estimated_duration_s,
+        "duration_status": duration_status,
         "parameters": normalized_parameters,
         "fields": field_snapshots,
         "warnings": warnings,
@@ -267,6 +289,23 @@ def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, float]:
         "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
         "route_angle_deg": round(float(parameters["route_angle_deg"]), 2),
     }
+
+
+def estimate_mission_duration(
+    *,
+    route_distance_m: float,
+    waypoint_count: int,
+    drone_profile: dict[str, Any] | None,
+) -> float | None:
+    if drone_profile is None:
+        return None
+
+    cruise_speed_mps = max(0.1, float(drone_profile["cruise_speed_mps"]))
+    launch_overhead_s = max(0.0, float(drone_profile["launch_overhead_s"]))
+    waypoint_turn_overhead_s = max(0.0, float(drone_profile["waypoint_turn_overhead_s"]))
+    estimated_duration_s = (route_distance_m / cruise_speed_mps) + launch_overhead_s
+    estimated_duration_s += waypoint_turn_overhead_s * max(waypoint_count - 1, 0)
+    return round(estimated_duration_s, 1)
 
 
 def _parameter_warnings(parameters: dict[str, float]) -> list[dict[str, Any]]:

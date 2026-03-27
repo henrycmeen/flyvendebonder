@@ -178,6 +178,23 @@ Første API-spor:
 Se også: `docs/backend-processing-v0.md`
 Se også: `docs/backend-processing-provider-v1.md`
 
+## Planlegging workspace v1
+Flyvendebønder har nå en egen arbeidsflate `Planlegging` for oppdragsforberedelse før flyging.
+
+- bekreftede jorder synkes inn som `PlanningUnit` for aktiv eiendom
+- store jorder kan deles manuelt i to deljorder direkte i kartet
+- droneprofiler gir estimert flytid og status (`ok`, `warning`, `over_limit`)
+- planer kan forhåndsberegnes via preview og lagres som vanlige `FlightMission`
+
+Nye API-er:
+- `POST /api/v1/planning/properties/{property_id}/sync`
+- `GET /api/v1/planning/properties/{property_id}/units`
+- `POST /api/v1/planning/units/{unit_id}/split`
+- `GET /api/v1/drone-profiles`
+- `POST /api/v1/flight-missions/preview`
+
+Se også: `docs/drift/planlegging-workspace-v1.md`
+
 ## STAC v1
 Flyvendebønder har nå et første STAC-spor for raster- og flight-artefakter.
 

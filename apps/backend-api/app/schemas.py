@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class UserOut(BaseModel):
@@ -147,6 +147,11 @@ class GeoJSONPoint(BaseModel):
     coordinates: list[float]
 
 
+class GeoJSONLineString(BaseModel):
+    type: Literal["LineString"]
+    coordinates: list[list[float]]
+
+
 class GeoJSONPolygon(BaseModel):
     type: str
     coordinates: list[list[list[float]]]
@@ -195,6 +200,8 @@ class FieldPlotDeleteResponse(BaseModel):
 
 
 FieldHistoryEntryKind = Literal["mission", "capture", "processing_run"]
+PlanningUnitStatus = Literal["active", "archived"]
+FlightMissionDurationStatus = Literal["ok", "warning", "over_limit"]
 
 
 class FieldHistoryEntryOut(BaseModel):
@@ -223,6 +230,60 @@ class FieldHistoryOut(BaseModel):
     entries: list[FieldHistoryEntryOut] = Field(default_factory=list)
 
 
+class PlanningUnitOut(BaseModel):
+    id: int
+    property_id: int
+    source_field_plot_id: int
+    parent_unit_id: int | None = None
+    name: str
+    status: PlanningUnitStatus
+    geometry: GeoJSONPolygon
+    area_m2: float | None = None
+    area_ha: float | None = None
+    source_field_name: str
+    is_split: bool = False
+    latest_mission_id: int | None = None
+    latest_mission_name: str | None = None
+    latest_duration_status: FlightMissionDurationStatus | None = None
+    latest_estimated_duration_s: float | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlanningUnitListResponse(BaseModel):
+    property_id: int
+    count: int
+    units: list[PlanningUnitOut]
+
+
+class PlanningUnitSyncResponse(PlanningUnitListResponse):
+    created_count: int = 0
+
+
+class PlanningUnitSplitIn(BaseModel):
+    line: GeoJSONLineString
+
+
+class PlanningUnitSplitOut(BaseModel):
+    archived_unit: PlanningUnitOut
+    created_units: list[PlanningUnitOut]
+
+
+class DroneProfileOut(BaseModel):
+    id: str
+    name: str
+    cruise_speed_mps: float
+    launch_overhead_s: int
+    waypoint_turn_overhead_s: int
+    max_flight_time_s: int
+    reserve_percent: float
+
+
+class DroneProfileListResponse(BaseModel):
+    count: int
+    profiles: list[DroneProfileOut]
+
+
 FlightMissionStatus = Literal["ready"]
 FlightMissionWarningSeverity = Literal["info", "warning"]
 
@@ -236,13 +297,23 @@ class FlightMissionParameters(BaseModel):
 
 class FlightMissionCreate(BaseModel):
     name: str | None = None
-    field_ids: list[int] = Field(min_length=1)
+    field_ids: list[int] = Field(default_factory=list)
+    planning_unit_ids: list[int] = Field(default_factory=list)
+    drone_profile_id: str | None = None
     parameters: FlightMissionParameters = Field(default_factory=FlightMissionParameters)
+
+    @model_validator(mode="after")
+    def _validate_field_or_planning_units(self) -> "FlightMissionCreate":
+        if not self.field_ids and not self.planning_unit_ids:
+            raise ValueError("Oppdrag må inneholde minst ett jord eller én planenhet")
+        return self
 
 
 class FlightMissionPatch(BaseModel):
     name: str | None = None
     field_ids: list[int] | None = None
+    planning_unit_ids: list[int] | None = None
+    drone_profile_id: str | None = None
     parameters: FlightMissionParameters | None = None
 
 
@@ -255,6 +326,7 @@ class FlightMissionWarningOut(BaseModel):
 
 class FlightMissionFieldOut(BaseModel):
     field_id: int
+    planning_unit_id: int | None = None
     name: str
     area_m2: float | None = None
     area_ha: float | None = None
@@ -272,6 +344,11 @@ class FlightMissionOut(BaseModel):
     name: str
     status: FlightMissionStatus
     field_ids: list[int]
+    planning_unit_ids: list[int] = Field(default_factory=list)
+    drone_profile_id: str | None = None
+    drone_profile_snapshot: dict[str, Any] = Field(default_factory=dict)
+    estimated_duration_s: float | None = None
+    duration_status: FlightMissionDurationStatus | None = None
     parameters: FlightMissionParameters
     fields: list[FlightMissionFieldOut]
     warnings: list[FlightMissionWarningOut]
@@ -286,6 +363,22 @@ class FlightMissionListResponse(BaseModel):
     property_id: int
     count: int
     missions: list[FlightMissionOut]
+
+
+class FlightMissionPreviewOut(BaseModel):
+    name: str
+    status: FlightMissionStatus
+    field_ids: list[int]
+    planning_unit_ids: list[int] = Field(default_factory=list)
+    drone_profile_id: str | None = None
+    drone_profile_snapshot: dict[str, Any] = Field(default_factory=dict)
+    estimated_duration_s: float | None = None
+    duration_status: FlightMissionDurationStatus | None = None
+    parameters: FlightMissionParameters
+    fields: list[FlightMissionFieldOut]
+    warnings: list[FlightMissionWarningOut]
+    route_geojson: GeoJSONFeatureCollection
+    export_manifest: dict
 
 
 FlightCaptureStatus = Literal["ready", "archived"]
