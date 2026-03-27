@@ -92,11 +92,14 @@ export function PlanningPage({
     () => units.find((item) => item.id === selectedUnitId) ?? null,
     [selectedUnitId, units],
   );
+  const previewFields = Array.isArray(preview?.fields) ? preview.fields : [];
+  const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
 
   const loadProfiles = useCallback(async () => {
     const { data } = await apiGet<DroneProfileListResponse>("/api/v1/drone-profiles", { cache: false, dedupe: false });
-    setProfiles(data.profiles);
-    setSelectedDroneProfileId((current) => current || data.profiles[0]?.id || "");
+    const nextProfiles = Array.isArray(data?.profiles) ? data.profiles : [];
+    setProfiles(nextProfiles);
+    setSelectedDroneProfileId((current) => current || nextProfiles[0]?.id || "");
   }, []);
 
   const loadUnits = useCallback(async () => {
@@ -114,7 +117,7 @@ export function PlanningPage({
       const response = canEdit
         ? await apiPost<PlanningUnitSyncResponse>(endpoint)
         : await apiGet<PlanningUnitListResponse>(endpoint, { cache: false, dedupe: false });
-      const nextUnits = response.data.units;
+      const nextUnits = Array.isArray(response.data?.units) ? response.data.units : [];
       setUnits(nextUnits);
       setSelectedUnitId((current) => current ?? nextUnits[0]?.id ?? null);
       setSelectedMissionUnitIds((current) => {
@@ -423,11 +426,11 @@ export function PlanningPage({
               {formatDuration(preview?.estimated_duration_s ?? null)}
             </p>
             <p className="mt-1 text-xs text-fb-text-secondary">
-              {preview ? `${missionStatusLabel(preview.duration_status)} · ${preview.fields.length} deljord i planen` : "Beregnes når planen kan bygges."}
+              {preview ? `${missionStatusLabel(preview.duration_status)} · ${previewFields.length} deljord i planen` : "Beregnes når planen kan bygges."}
             </p>
-            {preview?.warnings.length ? (
+            {previewWarnings.length > 0 ? (
               <div className="mt-3 rounded-xl bg-fb-surface-page px-3 py-2 text-xs text-fb-text-secondary">
-                {preview.warnings.length} varsel i rutegrunnlaget.
+                {previewWarnings.length} varsel i rutegrunnlaget.
               </div>
             ) : null}
           </div>
