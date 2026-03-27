@@ -595,6 +595,49 @@ class ImportRequest(BaseModel):
     source_path: str | None = None
 
 
+MediaStagingJobStatus = Literal["staged", "finalized", "failed"]
+MediaStagingItemStatus = Literal["staged", "rejected"]
+MediaStagingKind = Literal["image", "video", "unknown"]
+
+
+class MediaStagingItemOut(BaseModel):
+    id: int
+    filename: str
+    mime: str | None = None
+    bytes: int
+    checksum: str | None = None
+    media_kind: MediaStagingKind
+    status: MediaStagingItemStatus
+    error_detail: str | None = None
+
+
+class MediaStagingCountsOut(BaseModel):
+    total: int
+    image_count: int
+    video_count: int
+    unknown_count: int
+    rejected_count: int
+
+
+class MediaStagingJobOut(BaseModel):
+    job_id: str
+    source: str
+    status: MediaStagingJobStatus
+    counts: MediaStagingCountsOut
+    items: list[MediaStagingItemOut] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class MediaStagingEnvelope(BaseModel):
+    job: MediaStagingJobOut
+
+
+class MediaStagingJobListResponse(BaseModel):
+    count: int
+    jobs: list[MediaStagingJobOut]
+
+
 class BackendLogLine(BaseModel):
     timestamp: str
     level: str

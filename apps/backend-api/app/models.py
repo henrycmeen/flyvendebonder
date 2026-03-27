@@ -47,6 +47,9 @@ class User(TimestampMixin, Base):
     flight_captures: Mapped[list[FlightCapture]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    media_staging_jobs: Mapped[list[MediaStagingJob]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
@@ -75,6 +78,7 @@ class Property(TimestampMixin, Base):
     flight_captures: Mapped[list[FlightCapture]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
+    media_staging_jobs: Mapped[list[MediaStagingJob]] = relationship(back_populates="property")
     video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="property")
 
     __table_args__ = (
@@ -289,6 +293,50 @@ class IngestRun(Base):
     files_imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     files_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class MediaStagingJob(TimestampMixin, Base):
+    __tablename__ = "media_staging_jobs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[Optional[int]] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"), index=True)
+
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="upload")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="staged")
+
+    user: Mapped[User] = relationship(back_populates="media_staging_jobs")
+    property: Mapped[Optional[Property]] = relationship(back_populates="media_staging_jobs")
+    items: Mapped[list[MediaStagingItem]] = relationship(
+        back_populates="job", cascade="all, delete-orphan", order_by="MediaStagingItem.item_order"
+    )
+
+    __table_args__ = (
+        Index("idx_media_staging_jobs_user_created", "user_id", "created_at"),
+    )
+
+
+class MediaStagingItem(TimestampMixin, Base):
+    __tablename__ = "media_staging_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("media_staging_jobs.id", ondelete="CASCADE"), index=True)
+
+    item_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    media_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="staged")
+    error_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    staged_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+    job: Mapped[MediaStagingJob] = relationship(back_populates="items")
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "item_order", name="uq_media_staging_items_order"),
+    )
 
 
 class VideoJob(TimestampMixin, Base):

@@ -23,6 +23,7 @@ from ..models import (
     FlightCapture,
     FlightMission,
     IngestRun,
+    MediaStagingJob,
     Photo,
     PhotoAnalysis,
     ProcessingArtifact,
@@ -69,6 +70,11 @@ from ..schemas import (
     StacLink,
     ImportRequest,
     ImportRunOut,
+    MediaStagingCountsOut,
+    MediaStagingEnvelope,
+    MediaStagingItemOut,
+    MediaStagingJobListResponse,
+    MediaStagingJobOut,
     PhotoPageResponse,
     PhotoResponse,
     ProfileOut,
@@ -97,6 +103,11 @@ from ..services.geonorge_teiger import (
     lookup_field_candidates_by_point,
 )
 from ..services.imports import run_photo_ingest
+from ..services.media_staging import (
+    create_media_staging_job as create_media_staging_job_record,
+    get_media_staging_job as get_media_staging_job_record,
+    list_media_staging_jobs as list_media_staging_jobs_record,
+)
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
 from ..services.flight_missions import (
@@ -332,6 +343,45 @@ def _normalize_field_name(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _media_staging_job_out(job: MediaStagingJob) -> MediaStagingJobOut:
+    items = [
+        MediaStagingItemOut(
+            id=item.id,
+            filename=item.filename,
+            mime=item.mime,
+            bytes=item.bytes,
+            checksum=item.checksum,
+            media_kind=item.media_kind,
+            status=item.status,
+            error_detail=item.error_detail,
+        )
+        for item in job.items
+    ]
+    counts = MediaStagingCountsOut(
+        total=len(items),
+        image_count=sum(1 for item in items if item.media_kind == "image"),
+        video_count=sum(1 for item in items if item.media_kind == "video"),
+        unknown_count=sum(1 for item in items if item.media_kind == "unknown"),
+        rejected_count=sum(1 for item in items if item.status == "rejected"),
+    )
+    return MediaStagingJobOut(
+        job_id=job.id,
+        source=job.source,
+        status=job.status,
+        counts=counts,
+        items=items,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def _require_media_staging_job(db: Session, *, user_id: int, job_id: str) -> MediaStagingJob:
+    job = get_media_staging_job_record(db, user_id=user_id, job_id=job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Fant ikke stagingjobb")
+    return job
 
 
 def _video_job_out(job) -> VideoJobOut:
@@ -2098,6 +2148,49 @@ def get_import_run(run_id: int, _admin_session=Depends(require_admin_session), d
     if run is None:
         raise HTTPException(status_code=404, detail="Fant ikke ingest-run")
     return {"import_run": ImportRunOut.model_validate(run)}
+
+
+@router.post("/media-staging-jobs", response_model=MediaStagingEnvelope, status_code=status.HTTP_201_CREATED)
+async def create_media_staging_job(
+    files: list[UploadFile] = File(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> MediaStagingEnvelope:
+    if not files:
+        raise HTTPException(status_code=400, detail="Minst én fil må lastes opp")
+
+    user = _current_user(db)
+    property_obj = _current_property(db, user.id)
+    job = await create_media_staging_job_record(
+        db,
+        app_data_root=settings.app_data_root,
+        user_id=user.id,
+        property_id=property_obj.id if property_obj else None,
+        files=files,
+    )
+    return MediaStagingEnvelope(job=_media_staging_job_out(job))
+
+
+@router.get("/media-staging-jobs", response_model=MediaStagingJobListResponse)
+def list_media_staging_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> MediaStagingJobListResponse:
+    user = _current_user(db)
+    jobs = list_media_staging_jobs_record(db, user_id=user.id, limit=limit)
+    return MediaStagingJobListResponse(count=len(jobs), jobs=[_media_staging_job_out(item) for item in jobs])
+
+
+@router.get("/media-staging-jobs/{job_id}", response_model=MediaStagingEnvelope)
+def get_media_staging_job(
+    job_id: str,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> MediaStagingEnvelope:
+    user = _current_user(db)
+    job = _require_media_staging_job(db, user_id=user.id, job_id=job_id)
+    return MediaStagingEnvelope(job=_media_staging_job_out(job))
 
 
 @router.post("/video-jobs", response_model=VideoJobEnvelope, status_code=status.HTTP_201_CREATED)
