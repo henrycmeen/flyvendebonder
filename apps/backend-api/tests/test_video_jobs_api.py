@@ -3,19 +3,31 @@ from __future__ import annotations
 import json
 
 
-def _create_video_job(client, *, filename: str = "feltflyvning.mp4", mode: str = "frames") -> dict:
+def _create_video_job(
+    client,
+    *,
+    filename: str = "feltflyvning.mp4",
+    mode: str = "frames",
+    config: dict | None = None,
+) -> dict:
+    payload_config = config or {
+        "process": mode,
+        "interval_seconds": 4.0,
+        "duration_seconds": 45.0,
+        "fps": 2,
+        "route_points": [
+            {"lat": 59.1200, "lng": 9.9800},
+            {"lat": 59.1204, "lng": 9.9812},
+            {"lat": 59.1211, "lng": 9.9824},
+        ],
+        "map_display_mode": "overlay_existing",
+    }
     response = client.post(
         "/api/v1/video-jobs",
         files={"file": (filename, b"fake-video-binary", "video/mp4")},
         data={
             "mode": mode,
-            "config": json.dumps(
-                {
-                    "process": mode,
-                    "interval_seconds": 4.0,
-                    "map_display_mode": "overlay_existing",
-                }
-            ),
+            "config": json.dumps(payload_config),
         },
     )
     assert response.status_code == 201
@@ -31,8 +43,8 @@ def test_video_job_roundtrip_and_artifacts(client):
     assert job["mode"] == "frames"
     assert job["status"] == "done"
     assert job["result_frames"]["frame_count"] == 90
-    assert len(job["result_frames"]["sample_frames"]) == 3
-    assert job["result"]["selected_frame_count"] == 3
+    assert len(job["result_frames"]["sample_frames"]) == 12
+    assert job["result"]["selected_frame_count"] == 12
     assert job["result_map3d"]["preview_image"] == f"/api/v1/video-jobs/{job_id}/preview.jpg"
     assert job["result_map3d"]["geodata_geojson"] == f"/api/v1/video-jobs/{job_id}/geodata.geojson"
     assert job["result_map3d"]["metadata_json"] == f"/api/v1/video-jobs/{job_id}/metadata.json"
@@ -41,7 +53,8 @@ def test_video_job_roundtrip_and_artifacts(client):
     assert get_response.status_code == 200
     fetched = get_response.json()["job"]
     assert fetched["job_id"] == job_id
-    assert fetched["result_frames"]["route_distance_m"] == 215.0
+    assert fetched["result_frames"]["route_distance_m"] == 185.0
+    assert fetched["result_frames"]["step_distance_m"] == 16.8
     assert fetched["result_map3d"]["stitch_job_id"] == job_id
     assert fetched["result_map3d"]["epsg"] == "EPSG:4326"
 
@@ -56,13 +69,45 @@ def test_video_job_roundtrip_and_artifacts(client):
     geodata = geodata_response.json()
     assert geodata["type"] == "FeatureCollection"
     assert geodata["features"][0]["geometry"]["type"] == "LineString"
+    assert geodata["features"][0]["properties"]["route_distance_m"] == 185.0
+    assert len(geodata["features"]) == 13
 
     metadata_response = client.get(f"/api/v1/video-jobs/{job_id}/metadata.json")
     assert metadata_response.status_code == 200
     metadata = metadata_response.json()
     assert metadata["job_id"] == job_id
-    assert metadata["provider"] == "video_contract_v1"
-    assert metadata["is_placeholder"] is True
+    assert metadata["provider"] == "video_contract_v2"
+    assert metadata["is_placeholder"] is False
+    assert metadata["result_frames"]["selected_frame_count"] == 12
+
+
+def test_video_job_respects_route_and_interval_config(client):
+    job = _create_video_job(
+        client,
+        filename="rute.mp4",
+        config={
+            "process": "frames",
+            "fps": 4,
+            "duration_seconds": 20.0,
+            "interval_seconds": 5.0,
+            "route_points": [
+                {"lat": 59.2000, "lng": 10.1000},
+                {"lat": 59.2010, "lng": 10.1015},
+            ],
+        },
+    )
+
+    assert job["result_frames"]["frame_count"] == 80
+    assert job["result_frames"]["selected_frame_count"] == 5
+    assert job["result_frames"]["route_distance_m"] == 139.7
+    assert job["result_frames"]["step_distance_m"] == 34.9
+    assert [item["timestamp_ms"] for item in job["result_frames"]["sample_frames"]] == [
+        0,
+        5063,
+        10127,
+        15190,
+        20000,
+    ]
 
 
 def test_video_job_review_is_persisted(client):

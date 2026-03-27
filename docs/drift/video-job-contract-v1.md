@@ -10,7 +10,7 @@ Gi frontend en stabil API-overflate for:
 - enkel review-lagring
 - visning av artefakter på kart
 
-Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeholder-data som lar produktflyten fungere mens vi avklarer faktisk motor for frame-uttrekk, telemetri og fotogrammetri.
+Dette er fortsatt bevisst **ikke** full videoprosessering. Nå leverer backenden en deterministisk frames-/rutekontrakt fra jobbconfig, slik at frontend og reviewflyt kan bygges mot stabile data mens vi avklarer faktisk motor for frame-uttrekk, telemetri og fotogrammetri.
 
 ## Endepunkter
 
@@ -33,21 +33,22 @@ Dette er bevisst **ikke** full videoprosessering. Første versjon leverer placeh
 ## Kontrakt nå
 
 - `frames`-modus er støttet i praksis.
-- Jobben fullføres umiddelbart med et lite placeholder-resultat.
+- Jobben fullføres umiddelbart med et deterministisk resultat basert på `fps`, `duration_seconds`, `interval_seconds` og eventuelle `route_points` i config.
 - Artefakter lagres under `APP_DATA_ROOT/video-jobs/{job_id}/`.
 - Jobbstatus og review lagres i databasen (`video_jobs`, `video_job_reviews`).
 - Jobbpayloaden eksponerer både `result_frames` og `result_map3d`, slik at klienten slipper å derivere artefakt-URL-er selv.
+- `geodata.geojson` inneholder både rute (`LineString`) og valgte steg (`Point`-features).
+- `metadata.json` speiler den beregnede frames-kontrakten, slik at backend og filer forteller samme historie.
 
 ## Hvorfor denne formen
 
 - Frontenden var allerede bygget rundt `/api/v1/video-jobs`, men repo-backenden manglet hele kontrakten.
 - Vi trengte en ekte backend-overflate før vi bandt oss til `ffmpeg`, `OpenCV`, `WebODM` eller egen pipeline.
-- Denne varianten gjør det mulig å stabilisere UI og brukerflyt først, og så bytte ut motoren bak senere.
+- Denne varianten gjør det mulig å stabilisere UI og brukerflyt først, og så bytte ut motoren bak senere uten å endre kontrakten like mye.
 - Ved å flytte state til databasen kan vi nå bygge videre med historikk, retry og kobling mot andre domener uten å miste jobber ved restart.
 
 ## Neste steg
 
-- erstatte placeholder `result_frames` med ekte frame-uttrekk
-- koble metadata mot video/telemetri i stedet for syntetisk rute
-- vurdere persistens i database når review og historikk blir viktigere
+- koble metadata mot ekte video/telemetri i stedet for config-drevet rute
+- la frame-uttrekk produsere egne thumbnails i stedet for å gjenbruke én preview
 - koble videre mot processing-sporet for ODM/WebODM der det gir mening
