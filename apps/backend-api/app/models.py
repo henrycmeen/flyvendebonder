@@ -88,6 +88,9 @@ class Photo(TimestampMixin, Base):
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     property_id: Mapped[Optional[int]] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"), index=True)
+    ingest_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ingest_runs.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     captured_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -106,6 +109,7 @@ class Photo(TimestampMixin, Base):
 
     source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    source_ref: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
@@ -213,10 +217,14 @@ class ProcessingArtifact(TimestampMixin, Base):
     processing_run_id: Mapped[int] = mapped_column(
         ForeignKey("processing_runs.id", ondelete="CASCADE"), index=True
     )
+    ingest_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ingest_runs.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     format: Mapped[str] = mapped_column(String(32), nullable=False)
     uri: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_ref: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -231,6 +239,9 @@ class PhotoAsset(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     photo_id: Mapped[str] = mapped_column(ForeignKey("photos.id", ondelete="CASCADE"), index=True)
+    ingest_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ingest_runs.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
 
     path: Mapped[str] = mapped_column(String(1024), nullable=False)
@@ -238,8 +249,12 @@ class PhotoAsset(Base):
     bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    source_ref: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    provenance_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
     photo: Mapped[Photo] = relationship(back_populates="assets")
+    ingest_run: Mapped[Optional["IngestRun"]] = relationship(back_populates="assets")
 
     __table_args__ = (UniqueConstraint("photo_id", "kind", name="uq_photo_asset_kind"),)
 
@@ -289,6 +304,8 @@ class IngestRun(Base):
     files_imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     files_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     errors_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    assets: Mapped[list[PhotoAsset]] = relationship(back_populates="ingest_run")
 
 
 class VideoJob(TimestampMixin, Base):

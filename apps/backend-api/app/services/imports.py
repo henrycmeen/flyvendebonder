@@ -50,6 +50,13 @@ def _extract_metadata(path: Path) -> FileMetadata:
     return extract_image_metadata(path)
 
 
+def _normalized_source_ref(source_root: Path, file_path: Path) -> str:
+    try:
+        return file_path.relative_to(source_root).as_posix()
+    except ValueError:
+        return file_path.name
+
+
 def _default_targets(db: Session) -> tuple[User, Property | None]:
     user = db.execute(select(User).order_by(User.id)).scalars().first()
     if not user:
@@ -130,11 +137,13 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
             slug = _slugify(file_path.stem)
             photo_id = f"{slug}-{source_hash[:10]}"
             assets = write_derivatives(file_path, source_hash)
+            source_ref = _normalized_source_ref(source_path, file_path)
 
             photo = Photo(
                 id=photo_id,
                 user_id=user.id,
                 property_id=property_obj.id if property_obj else None,
+                ingest_run_id=run.id,
                 captured_at=metadata.captured_at,
                 captured_date=metadata.captured_at.date(),
                 lat=metadata.gps_latitude,
@@ -150,6 +159,7 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
                 oblique_correction_applied=oblique_correction_applied,
                 source_filename=file_path.name,
                 source_hash=source_hash,
+                source_ref=source_ref,
                 notes=f"Importert fra {file_path.parent.name}",
                 tags_json=serialize_tag_groups(
                     user_tags=[
@@ -179,15 +189,28 @@ def run_photo_ingest(db: Session, source_path: Path) -> IngestRun:
             db.flush()
 
             for asset in assets:
+                asset_path = settings.app_data_root / asset["path"]
+                asset_checksum = source_hash if asset["kind"] == "original" else _sha256(asset_path)
+                asset_provenance = {
+                    "import_run_id": run.id,
+                    "photo_id": photo.id,
+                    "asset_kind": asset["kind"],
+                    "source_hash": source_hash,
+                    "source_ref": source_ref,
+                }
                 db.add(
                     PhotoAsset(
                         photo_id=photo.id,
+                        ingest_run_id=run.id,
                         kind=asset["kind"],
                         path=asset["path"],
                         mime=asset["mime"],
                         bytes=asset["bytes"],
                         width=asset["width"],
                         height=asset["height"],
+                        checksum=asset_checksum,
+                        source_ref=source_ref,
+                        provenance_json=json.dumps(asset_provenance, ensure_ascii=False),
                     )
                 )
 

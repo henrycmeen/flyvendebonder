@@ -71,6 +71,28 @@ V0.1-kontrakten bruker nå et lite, eksplisitt sett artifact-typer og formater:
 
 Dette er bevisst smalt for å holde artifacts kompatible med senere STAC-/raster-spor uten at backend må kjenne hele katalogmodellen allerede nå.
 
+## Provenance spine v1
+For aa binde sammen ingest og processing uten aa innfore en stor ny asset-abstraksjon, bruker vi i v1:
+
+- `Photo` som raafil-spor
+- `ProcessingArtifact` som avledet asset-spor
+
+Minimumsfeltene er naa:
+
+- `Photo.source_hash` som checksum for raafilen
+- `Photo.source_ref` som original kildepeker
+- `Photo.ingest_run_id` som kobling til importen som materialiserte bildet
+- `ProcessingArtifact.checksum` som checksum for avledet fil
+- `ProcessingArtifact.source_ref` som kildepeker til inputsett eller oppstrams referanse
+- `ProcessingArtifact.ingest_run_id` som valgfri kobling tilbake til relevant ingest-run
+- `ProcessingArtifact.processing_run_id` som eksplisitt kobling til prosesseringsjobben
+
+Dette er med vilje en liten proveniensryggrad:
+
+- sterk nok til aa spore minst én raafil og ett avledet artifact gjennom systemet
+- liten nok til aa unngaa en stor polymorf asset-tabell i denne fasen
+- kompatibel med senere STAC-, ground-truth- og evalueringsspor
+
 ## Første API
 
 ### Flight captures

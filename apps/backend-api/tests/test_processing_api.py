@@ -110,6 +110,9 @@ def test_flight_capture_deduplicates_and_tracks_summary(client):
 
 
 def test_processing_run_and_artifact_lifecycle(client):
+    from app.database import SessionLocal
+    from app.models import IngestRun
+
     capture_response = client.post(
         "/api/v1/flight-captures",
         json={
@@ -158,12 +161,21 @@ def test_processing_run_and_artifact_lifecycle(client):
     assert patched["started_at"] is not None
     assert patched["finished_at"] is not None
 
+    with SessionLocal() as db:
+        ingest_run = IngestRun(source_path="/tmp/imports/demo")
+        db.add(ingest_run)
+        db.commit()
+        db.refresh(ingest_run)
+        ingest_run_id = ingest_run.id
+
     artifact_response = client.post(
         f"/api/v1/processing-runs/{run['id']}/artifacts",
         json={
             "kind": "ortho",
             "format": "cog",
             "uri": "processing/ortho/capture-1.tif",
+            "source_ref": "capture:1/raw-set",
+            "ingest_run_id": ingest_run_id,
             "bytes": 2048,
             "checksum": "sha256:demo",
             "is_public": False,
@@ -174,6 +186,8 @@ def test_processing_run_and_artifact_lifecycle(client):
     assert artifact_response.status_code == 201
     artifact = artifact_response.json()
     assert artifact["kind"] == "ortho"
+    assert artifact["ingest_run_id"] == ingest_run_id
+    assert artifact["source_ref"] == "capture:1/raw-set"
     assert artifact["metadata"]["epsg"] == "EPSG:25833"
     assert artifact["provenance"]["provider"] == "webodm"
     assert artifact["public_url"] is None

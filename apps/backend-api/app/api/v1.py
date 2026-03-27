@@ -24,6 +24,7 @@ from ..models import (
     FlightMission,
     IngestRun,
     Photo,
+    PhotoAsset,
     PhotoAnalysis,
     ProcessingArtifact,
     ProcessingRun,
@@ -50,6 +51,8 @@ from ..schemas import (
     FieldPlotPatch,
     GardskartJobResponse,
     PhotoAnalysisActionResponse,
+    PhotoAssetListResponse,
+    PhotoAssetOut,
     ProcessingArtifactCreate,
     ProcessingArtifactListResponse,
     ProcessingArtifactOut,
@@ -517,9 +520,11 @@ def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
     return ProcessingArtifactOut(
         id=item.id,
         processing_run_id=item.processing_run_id,
+        ingest_run_id=item.ingest_run_id,
         kind=item.kind,
         format=item.format,
         uri=item.uri,
+        source_ref=item.source_ref,
         bytes=item.bytes,
         checksum=item.checksum,
         is_public=item.is_public,
@@ -528,6 +533,24 @@ def _processing_artifact_out(item: ProcessingArtifact) -> ProcessingArtifactOut:
         public_url=artifact_public_url(item),
         created_at=item.created_at,
         updated_at=item.updated_at,
+    )
+
+
+def _photo_asset_out(item: PhotoAsset) -> PhotoAssetOut:
+    return PhotoAssetOut(
+        id=item.id,
+        photo_id=item.photo_id,
+        ingest_run_id=item.ingest_run_id,
+        kind=item.kind,
+        path=item.path,
+        mime=item.mime,
+        bytes=item.bytes,
+        width=item.width,
+        height=item.height,
+        checksum=item.checksum,
+        source_ref=item.source_ref,
+        provenance=json.loads(item.provenance_json),
+        asset_url=f"/api/v1/assets/{item.path}",
     )
 
 
@@ -1635,14 +1658,24 @@ def create_processing_artifact(
 
     item = ProcessingArtifact(
         processing_run_id=run.id,
+        ingest_run_id=payload.ingest_run_id,
         kind=payload.kind,
         format=payload.format,
         uri=payload.uri.strip(),
+        source_ref=payload.source_ref.strip() if payload.source_ref else None,
         bytes=payload.bytes,
         checksum=payload.checksum.strip() if payload.checksum else None,
         is_public=payload.is_public,
         metadata_json=json.dumps(payload.metadata, ensure_ascii=False),
-        provenance_json=json.dumps(payload.provenance, ensure_ascii=False),
+        provenance_json=json.dumps(
+            {
+                "capture_id": run.capture_id,
+                "processing_run_id": run.id,
+                "source_ref": payload.source_ref.strip() if payload.source_ref else None,
+                **payload.provenance,
+            },
+            ensure_ascii=False,
+        ),
     )
     db.add(item)
     db.commit()
@@ -1777,6 +1810,25 @@ def get_photos_page(
         count=len(photos),
         next_cursor=next_cursor,
         photos=photos,
+    )
+
+
+@router.get("/photos/{photo_id}/assets", response_model=PhotoAssetListResponse)
+def get_photo_assets(photo_id: str, db: Session = Depends(get_db)) -> PhotoAssetListResponse:
+    user = _current_user(db)
+    photo = (
+        db.execute(select(Photo).options(selectinload(Photo.assets)).where(Photo.id == photo_id, Photo.user_id == user.id))
+        .scalars()
+        .first()
+    )
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Fant ikke foto")
+
+    assets = sorted(photo.assets, key=lambda item: (item.kind != "original", item.kind, item.id))
+    return PhotoAssetListResponse(
+        photo_id=photo.id,
+        count=len(assets),
+        assets=[_photo_asset_out(item) for item in assets],
     )
 
 

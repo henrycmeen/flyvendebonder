@@ -353,6 +353,8 @@ class ProcessingArtifactCreate(BaseModel):
     kind: ProcessingArtifactKind
     format: ProcessingArtifactFormat
     uri: str = Field(min_length=1, max_length=1024)
+    source_ref: str | None = Field(default=None, max_length=2048)
+    ingest_run_id: int | None = Field(default=None, ge=1)
     bytes: int | None = Field(default=None, ge=0)
     checksum: str | None = Field(default=None, max_length=128)
     is_public: bool = False
@@ -367,6 +369,14 @@ class ProcessingArtifactCreate(BaseModel):
             raise ValueError("feltet kan ikke være tomt")
         return normalized
 
+    @field_validator("source_ref")
+    @classmethod
+    def _validate_source_ref(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
     @field_validator("checksum")
     @classmethod
     def _validate_checksum(cls, value: str | None) -> str | None:
@@ -379,9 +389,11 @@ class ProcessingArtifactCreate(BaseModel):
 class ProcessingArtifactOut(BaseModel):
     id: int
     processing_run_id: int
+    ingest_run_id: int | None = None
     kind: str
     format: str
     uri: str
+    source_ref: str | None = None
     bytes: int | None = None
     checksum: str | None = None
     is_public: bool = False
@@ -396,6 +408,28 @@ class ProcessingArtifactListResponse(BaseModel):
     processing_run_id: int
     count: int
     artifacts: list[ProcessingArtifactOut]
+
+
+class PhotoAssetOut(BaseModel):
+    id: int
+    photo_id: str
+    ingest_run_id: int | None = None
+    kind: str
+    path: str
+    mime: str
+    bytes: int
+    width: int | None = None
+    height: int | None = None
+    checksum: str | None = None
+    source_ref: str | None = None
+    provenance: dict = Field(default_factory=dict)
+    asset_url: str | None = None
+
+
+class PhotoAssetListResponse(BaseModel):
+    photo_id: str
+    count: int
+    assets: list[PhotoAssetOut]
 
 
 class StacLink(BaseModel):
@@ -534,6 +568,9 @@ class PhotoFeature(BaseModel):
     view_mode: str | None = None
     heading_source: str | None = None
     pitch_source: str | None = None
+    ingest_run_id: int | None = None
+    source_checksum: str | None = None
+    source_ref: str | None = None
     confidence_score: float = 0.0
     confidence_reasons: list[str] = Field(default_factory=list)
     location_uncertainty_m: float | None = None
