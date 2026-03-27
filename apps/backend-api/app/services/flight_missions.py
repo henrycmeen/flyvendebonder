@@ -15,6 +15,7 @@ RECOMMENDED_ALTITUDE_RANGE_M = (20.0, 120.0)
 RECOMMENDED_LINE_SPACING_RANGE_M = (8.0, 35.0)
 RECOMMENDED_WAYPOINT_SPACING_RANGE_M = (8.0, 35.0)
 MIN_FIELD_AREA_FOR_ROUTE_M2 = 250.0
+EXPORT_BUNDLE_FORMAT = "flyvendebonder.flight-mission-bundle.v1"
 
 
 def build_flight_mission_payload(
@@ -121,7 +122,7 @@ def build_flight_mission_payload(
     generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     mission_name = (name or f"Oppdrag {property_obj.gnr}/{property_obj.bnr}").strip()
     manifest = {
-        "format": "flyvendebonder.flight-mission-bundle.v1",
+        "format": EXPORT_BUNDLE_FORMAT,
         "generated_at": generated_at,
         "mission_name": mission_name,
         "property": {
@@ -165,6 +166,12 @@ def build_flight_mission_export_bundle(
     route_geojson: dict[str, Any],
     export_manifest: dict[str, Any],
 ) -> bytes:
+    _validate_export_bundle_inputs(
+        mission_name=mission_name,
+        fields=fields,
+        route_geojson=route_geojson,
+        export_manifest=export_manifest,
+    )
     field_features = [
         {
             "type": "Feature",
@@ -196,6 +203,61 @@ def build_flight_mission_export_bundle(
             ),
         )
     return buffer.getvalue()
+
+
+def _validate_export_bundle_inputs(
+    *,
+    mission_name: str,
+    fields: list[dict[str, Any]],
+    route_geojson: dict[str, Any],
+    export_manifest: dict[str, Any],
+) -> None:
+    if not isinstance(mission_name, str) or not mission_name.strip():
+        raise ValueError("Eksporten mangler oppdragsnavn")
+
+    if not isinstance(fields, list) or not fields:
+        raise ValueError("Eksporten mangler jordsnapshots")
+
+    for field in fields:
+        if not isinstance(field, dict):
+            raise ValueError("Eksporten inneholder ugyldige jordsnapshots")
+        if not isinstance(field.get("field_id"), int):
+            raise ValueError("Eksporten inneholder jord uten gyldig id")
+        if not isinstance(field.get("name"), str) or not field["name"].strip():
+            raise ValueError("Eksporten inneholder jord uten navn")
+
+        geometry = field.get("geometry")
+        if not isinstance(geometry, dict) or geometry.get("type") != "Polygon":
+            raise ValueError(f"Eksporten inneholder ugyldig polygon for jord {field['field_id']}")
+        coordinates = geometry.get("coordinates")
+        if not isinstance(coordinates, list) or not coordinates:
+            raise ValueError(f"Eksporten inneholder ugyldig polygon for jord {field['field_id']}")
+
+    if not isinstance(route_geojson, dict) or route_geojson.get("type") != "FeatureCollection":
+        raise ValueError("Eksporten mangler gyldig rute-GeoJSON")
+    route_features = route_geojson.get("features")
+    if not isinstance(route_features, list) or not route_features:
+        raise ValueError("Eksporten mangler minst én rute-linje")
+    if not any(
+        isinstance(feature, dict)
+        and isinstance(feature.get("geometry"), dict)
+        and feature["geometry"].get("type") == "LineString"
+        for feature in route_features
+    ):
+        raise ValueError("Eksporten mangler minst én rute-linje")
+
+    if not isinstance(export_manifest, dict):
+        raise ValueError("Eksporten mangler gyldig manifest")
+    if export_manifest.get("format") != EXPORT_BUNDLE_FORMAT:
+        raise ValueError("Eksportmanifest har ukjent format")
+    if export_manifest.get("mission_name") != mission_name:
+        raise ValueError("Eksportmanifest og oppdragsnavn er ute av synk")
+
+    summary = export_manifest.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("Eksportmanifest mangler sammendrag")
+    if summary.get("field_count") != len(fields):
+        raise ValueError("Eksportmanifest og jorddata er ute av synk")
 
 
 def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, float]:

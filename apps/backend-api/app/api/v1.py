@@ -745,13 +745,16 @@ def export_flight_mission(
     if item is None:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
-    export_bytes = build_flight_mission_export_bundle(
-        mission_id=item.id,
-        mission_name=(item.name or f"Oppdrag {item.id}"),
-        fields=json.loads(item.field_snapshots_json),
-        route_geojson=json.loads(item.route_geojson_json),
-        export_manifest=json.loads(item.export_manifest_json),
-    )
+    try:
+        export_bytes = build_flight_mission_export_bundle(
+            mission_id=item.id,
+            mission_name=(item.name or f"Oppdrag {item.id}"),
+            fields=json.loads(item.field_snapshots_json),
+            route_geojson=json.loads(item.route_geojson_json),
+            export_manifest=json.loads(item.export_manifest_json),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Oppdraget kan ikke eksporteres: {exc}") from exc
     expires_at = datetime.utcnow() + timedelta(minutes=5)
     filename = f"flyvendebonder-oppdrag-{item.id}.zip"
     response = Response(content=export_bytes, media_type="application/zip")
