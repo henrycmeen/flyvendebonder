@@ -174,3 +174,33 @@ def test_flight_mission_rejects_unknown_field_ids(client):
 
     assert response.status_code == 400
     assert "Fant ikke valgte jorder" in response.json()["detail"]
+
+
+def test_flight_mission_route_geojson_export(client):
+    field = _create_field(client, name="Geojsonjordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "GeoJSON test",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    export_response = client.get(f"/api/v1/flight-missions/{mission['id']}/route.geojson")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"].startswith("application/geo+json")
+    payload = export_response.json()
+    assert payload["type"] == "FeatureCollection"
+    assert payload["flyvendebonder_contract"]["name"] == "flyvendebonder.geojson"
+    assert payload["flyvendebonder_contract"]["version"] == "v1"
+    assert payload["mission"]["id"] == mission["id"]
+    assert any(feature["geometry"]["type"] == "LineString" for feature in payload["features"])

@@ -110,3 +110,28 @@ def test_field_plot_rejects_invalid_coordinate_range(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Koordinater er utenfor gyldig område"
+
+
+def test_field_plot_geojson_export_includes_contract_metadata(client):
+    create_response = client.post(
+        "/api/v1/fields",
+        json={
+            "name": "Nordjordet",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": _sample_polygon(),
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+
+    export_response = client.get("/api/v1/fields/export.geojson")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"].startswith("application/geo+json")
+    payload = export_response.json()
+    assert payload["type"] == "FeatureCollection"
+    assert payload["flyvendebonder_contract"]["name"] == "flyvendebonder.geojson"
+    assert payload["flyvendebonder_contract"]["version"] == "v1"
+    assert payload["flyvendebonder_contract"]["coordinate_reference_system"] == "OGC:CRS84"
+    assert payload["features"][0]["properties"]["field_id"] == created["id"]
+    assert payload["features"][0]["properties"]["status"] == "confirmed"
