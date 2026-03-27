@@ -10,4 +10,4 @@ if ! command -v cline >/dev/null 2>&1; then
 fi
 
 cd "${REPO_ROOT}"
-exec cline kanban "$@"
+exec cline --kanban "$@"
