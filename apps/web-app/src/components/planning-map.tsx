@@ -113,11 +113,14 @@ export function PlanningMap({
     }
     const style = BASE_MAP_STYLES[baseMapStyle];
     if (!style.tileUrl) return;
-    const layer = L.tileLayer(style.tileUrl, {
+    const layerOptions: L.TileLayerOptions = {
       attribution: style.attribution,
       maxZoom: style.maxZoom,
-      subdomains: style.subdomains,
-    });
+    };
+    if (style.subdomains) {
+      layerOptions.subdomains = style.subdomains;
+    }
+    const layer = L.tileLayer(style.tileUrl, layerOptions);
     layer.addTo(map);
     baseLayerRef.current = layer;
   }, [baseMapStyle]);

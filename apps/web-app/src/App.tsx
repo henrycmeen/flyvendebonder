@@ -3812,6 +3812,7 @@ export default function App() {
                     setActiveView("map");
                   }}
                   onExportMission={handleExportFlightMission}
+                  onReloadMissions={() => loadFlightMissions({ silent: true })}
                 />
               ) : activeView === "album" ? (
                 <AlbumPage

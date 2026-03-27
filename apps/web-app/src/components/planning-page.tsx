@@ -40,6 +40,7 @@ interface PlanningPageProps {
   showZoomControls: boolean;
   onOpenMissionInMap: (missionId: number) => void;
   onExportMission: (missionId: number) => void;
+  onReloadMissions: () => Promise<unknown> | void;
 }
 
 function formatArea(areaHa: number | null): string {
@@ -107,6 +108,7 @@ export function PlanningPage({
   showZoomControls,
   onOpenMissionInMap,
   onExportMission,
+  onReloadMissions,
 }: PlanningPageProps) {
   const [units, setUnits] = useState<PlanningUnit[]>([]);
   const [unitsStatus, setUnitsStatus] = useState("Planenheter lastes …");
@@ -284,14 +286,14 @@ export function PlanningPage({
       });
       setPreview(data as FlightMissionPreview);
       setUnitsStatus(`Lagret ${String((data as FlightMissionPreview).name)} som flyoppdrag.`);
-      await loadUnits();
+      await Promise.all([loadUnits(), onReloadMissions()]);
     } catch (error) {
       const apiError = error as ApiError;
       setUnitsStatus(`Kunne ikke lagre plan: ${apiError.message}`);
     } finally {
       setCreateBusy(false);
     }
-  }, [canEdit, loadUnits, missionName, parameters, selectedDroneProfileId, selectedMissionUnitIds]);
+  }, [canEdit, loadUnits, missionName, onReloadMissions, parameters, selectedDroneProfileId, selectedMissionUnitIds]);
 
   return (
     <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[18rem,minmax(0,1fr),22rem] md:p-4">

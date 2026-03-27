@@ -1412,6 +1412,9 @@ export function MapCanvas({
 
       const response = await fetch(geodataUrl, { signal: controller.signal });
       if (!response.ok) {
+        if (response.status === 404 || response.status === 410) {
+          return;
+        }
         throw new Error(`Kunne ikke hente geodata for ${artifact.jobId}`);
       }
 
