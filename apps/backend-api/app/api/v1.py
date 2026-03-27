@@ -9,7 +9,7 @@ from datetime import timedelta
 from datetime import date as date_type, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
@@ -77,6 +77,11 @@ from ..schemas import (
     TimelineDateEntry,
     TimelineResponse,
     UserOut,
+    VideoJobEnvelope,
+    VideoJobListResponse,
+    VideoJobOut,
+    VideoJobReviewIn,
+    VideoJobReviewOut,
 )
 from ..services.admin_access import (
     admin_access_is_configured,
@@ -133,6 +138,13 @@ from ..services.tag_utils import (
     serialize_tag_groups,
     merge_tag_groups,
 )
+from ..services.video_jobs import (
+    create_video_job as create_video_job_record,
+    get_video_job as get_video_job_record,
+    job_dir as video_job_dir,
+    list_video_jobs as list_video_job_records,
+    save_video_job_review,
+)
 from ..services.view_overrides import set_manual_view_override
 
 router = APIRouter()
@@ -145,6 +157,11 @@ _METADATA_HEADING_MIN_DEG = -360.0
 _METADATA_HEADING_MAX_DEG = 360.0
 _METADATA_PITCH_MIN_DEG = -90.0
 _METADATA_PITCH_MAX_DEG = 90.0
+_VIDEO_JOB_ARTIFACT_MEDIA_TYPES = {
+    "preview.jpg": "image/jpeg",
+    "geodata.geojson": "application/geo+json",
+    "metadata.json": "application/json",
+}
 
 
 def _current_user(db: Session) -> User:
@@ -313,6 +330,55 @@ def _normalize_field_name(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _video_job_out(job) -> VideoJobOut:
+    review_payload = None
+    if job.review is not None:
+        review_payload = {
+            "job_id": job.review.job_id,
+            "created_at": job.review.created_at,
+            "mode": job.review.mode,
+            "review_state": job.review.review_state,
+            "placement": json.loads(job.review.placement_json) if job.review.placement_json else None,
+            "reviewed_at": job.review.reviewed_at,
+        }
+    result_frames = json.loads(job.result_frames_json)
+    result_map3d = {
+        "stitch_job_id": job.id,
+        "preview_image": f"/api/v1/video-jobs/{job.id}/preview.jpg",
+        "mesh_url": None,
+        "geodata_geojson": f"/api/v1/video-jobs/{job.id}/geodata.geojson",
+        "metadata_json": f"/api/v1/video-jobs/{job.id}/metadata.json",
+        "epsg": "EPSG:4326",
+    }
+    return VideoJobOut.model_validate(
+        {
+            "job_id": job.id,
+            "filename": job.filename,
+            "mode": job.mode,
+            "status": job.status,
+            "created_at": job.created_at,
+            "updated_at": job.updated_at,
+            "message": job.message,
+            "config": json.loads(job.config_json),
+            "result_frames": result_frames,
+            "result_map3d": result_map3d,
+            "result": result_frames,
+            "review": review_payload,
+        }
+    )
+
+
+def _require_video_job(db: Session, *, user_id: int, job_id: str):
+    job = get_video_job_record(db, job_id)
+    if job is None or job.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Fant ikke videojobb")
+    return job
+
+
+def _video_job_artifact_path(job_id: str, artifact_name: str) -> Path:
+    return video_job_dir(settings.app_data_root, job_id) / artifact_name
 
 
 def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
@@ -1900,6 +1966,133 @@ def get_import_run(run_id: int, _admin_session=Depends(require_admin_session), d
     if run is None:
         raise HTTPException(status_code=404, detail="Fant ikke ingest-run")
     return {"import_run": ImportRunOut.model_validate(run)}
+
+
+@router.post("/video-jobs", response_model=VideoJobEnvelope, status_code=status.HTTP_201_CREATED)
+async def create_video_job(
+    file: UploadFile = File(...),
+    mode: str = Form(default="frames"),
+    config: str | None = Form(default=None),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> VideoJobEnvelope:
+    normalized_mode = (mode or "").strip().lower() or "frames"
+    if normalized_mode not in {"frames", "map3d"}:
+        raise HTTPException(status_code=400, detail="Ugyldig videomodus")
+
+    parsed_config: dict[str, object] = {}
+    if config:
+        try:
+            raw_config = json.loads(config)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="config må være gyldig JSON") from exc
+        if raw_config is None:
+            parsed_config = {}
+        elif isinstance(raw_config, dict):
+            parsed_config = raw_config
+        else:
+            raise HTTPException(status_code=400, detail="config må være et objekt")
+
+    filename = Path(file.filename or "video-upload").name or "video-upload"
+    await file.close()
+
+    user = _current_user(db)
+    property_obj = _current_property(db, user.id)
+
+    job = create_video_job_record(
+        db,
+        app_data_root=settings.app_data_root,
+        user_id=user.id,
+        property_id=property_obj.id if property_obj else None,
+        filename=filename,
+        mode=normalized_mode,
+        config=parsed_config,
+    )
+    return VideoJobEnvelope(job=_video_job_out(job))
+
+
+@router.get("/video-jobs", response_model=VideoJobListResponse)
+def list_video_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    mode: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> VideoJobListResponse:
+    user = _current_user(db)
+    normalized_mode = mode.strip().lower() if mode else None
+    normalized_status = status_filter.strip().lower() if status_filter else None
+    if normalized_mode is not None and normalized_mode not in {"frames", "map3d"}:
+        raise HTTPException(status_code=400, detail="Ugyldig videomodus")
+    if normalized_status is not None and normalized_status not in {"pending", "processing", "done", "failed"}:
+        raise HTTPException(status_code=400, detail="Ugyldig videostatus")
+
+    jobs = list_video_job_records(
+        db,
+        user_id=user.id,
+        limit=limit,
+        mode=normalized_mode,
+        status=normalized_status,
+    )
+    return VideoJobListResponse(count=len(jobs), jobs=[_video_job_out(item) for item in jobs])
+
+
+@router.get("/video-jobs/{job_id}", response_model=VideoJobEnvelope)
+def get_video_job(job_id: str, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> VideoJobEnvelope:
+    user = _current_user(db)
+    job = _require_video_job(db, user_id=user.id, job_id=job_id)
+    return VideoJobEnvelope(job=_video_job_out(job))
+
+
+@router.put("/video-jobs/{job_id}/review", response_model=VideoJobReviewOut)
+def put_video_job_review(
+    job_id: str,
+    payload: VideoJobReviewIn,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> VideoJobReviewOut:
+    user = _current_user(db)
+    _require_video_job(db, user_id=user.id, job_id=job_id)
+    review = save_video_job_review(
+        db,
+        job_id=job_id,
+        created_at=payload.created_at,
+        mode=payload.mode,
+        review_state=payload.review_state,
+        placement=payload.placement.model_dump() if payload.placement else None,
+    )
+    if review is None:
+        raise HTTPException(status_code=404, detail="Fant ikke videojobb")
+    return VideoJobReviewOut.model_validate(
+        {
+            "job_id": review.job_id,
+            "created_at": review.created_at,
+            "mode": review.mode,
+            "review_state": review.review_state,
+            "placement": json.loads(review.placement_json) if review.placement_json else None,
+            "reviewed_at": review.reviewed_at,
+        }
+    )
+
+
+@router.get("/video-jobs/{job_id}/{artifact_name}")
+def get_video_job_artifact(
+    job_id: str,
+    artifact_name: str,
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> Response:
+    media_type = _VIDEO_JOB_ARTIFACT_MEDIA_TYPES.get(artifact_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")
+
+    user = _current_user(db)
+    _require_video_job(db, user_id=user.id, job_id=job_id)
+    target = _video_job_artifact_path(job_id, artifact_name)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")
+
+    return FileResponse(target, media_type=media_type)
 
 
 @router.get("/assets/{asset_path:path}")

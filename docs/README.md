@@ -14,5 +14,6 @@
 - `docs/backend-processing-v0.md` – hvordan foto, flight captures og processing-runs henger sammen
 - `docs/drift/stac-contract-v1.md` – hvordan STAC-sporet kobles til flight captures og artefakter
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
+- `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `GitHub Issues` – backlog/issue-område
 - `AGENTS.md` – interne arbeidsregler for repoet

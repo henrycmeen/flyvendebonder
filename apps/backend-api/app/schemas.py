@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -624,3 +624,78 @@ class PhotoReprocessResponse(BaseModel):
     analysis_failed: int
     missing_original: int
     parse_failed: int
+
+
+VideoJobMode = Literal["frames", "map3d"]
+VideoJobStatus = Literal["pending", "processing", "done", "failed"]
+VideoJobReviewState = Literal["placed", "kept", "discarded"]
+
+
+class VideoJobPlacement(BaseModel):
+    lat: float
+    lng: float
+
+
+class VideoFrameResultOut(BaseModel):
+    index: int
+    timestamp_ms: int
+    image_url: str
+
+
+class VideoFramesResultOut(BaseModel):
+    frame_count: int
+    fps: int
+    selected_frame_count: int
+    route_distance_m: float | None = None
+    step_distance_m: float | None = None
+    sample_frames: list[VideoFrameResultOut] = Field(default_factory=list)
+    archive_url: str | None = None
+
+
+class VideoRouteArtifactOut(BaseModel):
+    stitch_job_id: str | None = None
+    preview_image: str | None = None
+    mesh_url: str | None = None
+    geodata_geojson: str | None = None
+    metadata_json: str | None = None
+    epsg: str | None = None
+
+
+class VideoJobReviewIn(BaseModel):
+    created_at: datetime | None = None
+    mode: str | None = None
+    review_state: VideoJobReviewState
+    placement: VideoJobPlacement | None = None
+
+
+class VideoJobReviewOut(BaseModel):
+    job_id: str
+    created_at: datetime | None = None
+    mode: str | None = None
+    review_state: VideoJobReviewState
+    placement: VideoJobPlacement | None = None
+    reviewed_at: datetime
+
+
+class VideoJobOut(BaseModel):
+    job_id: str
+    filename: str
+    mode: VideoJobMode
+    status: VideoJobStatus
+    created_at: datetime
+    updated_at: datetime
+    message: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    result_frames: VideoFramesResultOut | None = None
+    result_map3d: VideoRouteArtifactOut | None = None
+    result: VideoFramesResultOut | dict[str, Any] | None = None
+    review: VideoJobReviewOut | None = None
+
+
+class VideoJobEnvelope(BaseModel):
+    job: VideoJobOut
+
+
+class VideoJobListResponse(BaseModel):
+    count: int
+    jobs: list[VideoJobOut]
