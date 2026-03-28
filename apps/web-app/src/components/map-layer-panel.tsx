@@ -55,9 +55,6 @@ interface MapLayerPanelProps {
   showSoilLayer: boolean;
   soilStatus: string;
   onToggleSoilLayer: (next: boolean) => void;
-  showMissionLayer: boolean;
-  missionStatus: string;
-  onToggleMissionLayer: (next: boolean) => void;
 }
 
 export function MapLayerPanel({
@@ -68,9 +65,6 @@ export function MapLayerPanel({
   showSoilLayer,
   soilStatus,
   onToggleSoilLayer,
-  showMissionLayer,
-  missionStatus,
-  onToggleMissionLayer,
 }: MapLayerPanelProps) {
   return (
     <div className="pointer-events-none absolute right-3 top-3 z-[870] max-w-[min(22rem,calc(100vw-1.5rem))] px-0 sm:right-4 sm:top-4">
@@ -98,13 +92,6 @@ export function MapLayerPanel({
             status={soilStatus}
             accentClassName="bg-[color:var(--fb-accent-success)]"
             onToggle={onToggleSoilLayer}
-          />
-          <LayerRow
-            active={showMissionLayer}
-            label="Flyrute"
-            status={missionStatus}
-            accentClassName="bg-[#5b8cf6]"
-            onToggle={onToggleMissionLayer}
           />
         </div>
       </div>

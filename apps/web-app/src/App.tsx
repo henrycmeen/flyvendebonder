@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw } from "lucide-react";
 
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
@@ -43,16 +43,8 @@ import { CloseButton } from "@/components/ui/close-button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
-  FieldCandidate,
-  FieldCandidateListResponse,
-  FieldPlot,
-  FieldPlotDeleteResponse,
-  FieldPlotDraft,
-  FieldPlotListResponse,
   FlightMission,
   FlightMissionListResponse,
-  GeoJSONPolygon,
-  GeoPoint,
   GardskartJob,
   VideoMapArtifact,
   PhotoAnalysis,
@@ -107,7 +99,6 @@ const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
-const FIELD_DRAFT_HALF_SIZE_M = 50;
 function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
   return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
 }
@@ -261,146 +252,12 @@ function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   return expiresAt > Date.now();
 }
 
-function metersToLatitudeDegrees(distanceM: number): number {
-  return distanceM / 111_320;
-}
-
-function metersToLongitudeDegrees(distanceM: number, latitudeDeg: number): number {
-  const cosLat = Math.max(0.15, Math.abs(Math.cos((latitudeDeg * Math.PI) / 180)));
-  return distanceM / (111_320 * cosLat);
-}
-
-function normalizeDraftGeometry(geometry: GeoJSONPolygon): GeoJSONPolygon {
-  const rings = geometry.coordinates.map((ring) => {
-    const normalized = ring
-      .map((point) => [Number(point[0]), Number(point[1])])
-      .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
-
-    if (normalized.length === 0) {
-      return normalized;
-    }
-
-    const [firstLng, firstLat] = normalized[0];
-    const [lastLng, lastLat] = normalized[normalized.length - 1];
-    if (firstLng !== lastLng || firstLat !== lastLat) {
-      normalized.push([firstLng, firstLat]);
-    }
-    return normalized;
-  });
-
-  return {
-    type: "Polygon",
-    coordinates: rings,
-  };
-}
-
-function polygonAreaM2(geometry: GeoJSONPolygon): number | null {
-  const ring = geometry.coordinates[0];
-  if (!ring || ring.length < 4) return null;
-
-  const avgLat = ring.slice(0, -1).reduce((sum, point) => sum + point[1], 0) / Math.max(1, ring.length - 1);
-  const metersLat = 111_132;
-  const metersLng = 111_320 * Math.max(0.15, Math.abs(Math.cos((avgLat * Math.PI) / 180)));
-  const [originLng, originLat] = ring[0];
-
-  let area = 0;
-  for (let index = 0; index < ring.length - 1; index += 1) {
-    const current = ring[index];
-    const next = ring[index + 1];
-    const x1 = (current[0] - originLng) * metersLng;
-    const y1 = (current[1] - originLat) * metersLat;
-    const x2 = (next[0] - originLng) * metersLng;
-    const y2 = (next[1] - originLat) * metersLat;
-    area += x1 * y2 - x2 * y1;
-  }
-
-  const absolute = Math.abs(area) / 2;
-  return Number.isFinite(absolute) ? Math.round(absolute * 100) / 100 : null;
-}
-
-function toAreaHa(areaM2: number | null): number | null {
-  if (areaM2 == null || !Number.isFinite(areaM2)) return null;
-  return Math.round((areaM2 / 10_000) * 10_000) / 10_000;
-}
-
-function sortFieldPlots(items: FieldPlot[]): FieldPlot[] {
-  return [...items].sort((left, right) => {
-    const updatedDiff = Date.parse(right.updated_at) - Date.parse(left.updated_at);
-    if (updatedDiff !== 0) return updatedDiff;
-    return right.id - left.id;
-  });
-}
-
 function sortFlightMissions(items: FlightMission[]): FlightMission[] {
   return [...items].sort((left, right) => {
     const updatedDiff = Date.parse(right.updated_at) - Date.parse(left.updated_at);
     if (updatedDiff !== 0) return updatedDiff;
     return right.id - left.id;
   });
-}
-
-function toFieldPlotDraft(item: FieldPlot): FieldPlotDraft {
-  return {
-    id: item.id,
-    property_id: item.property_id,
-    name: item.name,
-    source: item.source,
-    status: item.status,
-    geometry: normalizeDraftGeometry(item.geometry),
-    area_m2: item.area_m2,
-    area_ha: item.area_ha,
-    isNew: false,
-    isDirty: false,
-  };
-}
-
-function buildFieldDraftAtPoint(point: GeoPoint, propertyId: number | null): FieldPlotDraft {
-  const latDelta = metersToLatitudeDegrees(FIELD_DRAFT_HALF_SIZE_M);
-  const lngDelta = metersToLongitudeDegrees(FIELD_DRAFT_HALF_SIZE_M, point.lat);
-  const geometry: GeoJSONPolygon = {
-    type: "Polygon",
-    coordinates: [
-      [
-        [point.lng - lngDelta, point.lat - latDelta],
-        [point.lng + lngDelta, point.lat - latDelta],
-        [point.lng + lngDelta, point.lat + latDelta],
-        [point.lng - lngDelta, point.lat + latDelta],
-        [point.lng - lngDelta, point.lat - latDelta],
-      ],
-    ],
-  };
-  const areaM2 = polygonAreaM2(geometry);
-
-  return {
-    id: null,
-    property_id: propertyId,
-    name: "",
-    source: "manual",
-    status: "draft",
-    geometry,
-    area_m2: areaM2,
-    area_ha: toAreaHa(areaM2),
-    isNew: true,
-    isDirty: true,
-  };
-}
-
-function toFieldPlotDraftFromCandidate(candidate: FieldCandidate, propertyId: number | null): FieldPlotDraft {
-  const normalizedGeometry = normalizeDraftGeometry(candidate.geometry);
-  const areaM2 = candidate.area_m2 ?? polygonAreaM2(normalizedGeometry);
-
-  return {
-    id: null,
-    property_id: propertyId,
-    name: candidate.name,
-    source: "suggested",
-    status: "draft",
-    geometry: normalizedGeometry,
-    area_m2: areaM2,
-    area_ha: candidate.area_ha ?? toAreaHa(areaM2),
-    isNew: true,
-    isDirty: true,
-  };
 }
 
 export default function App() {
@@ -442,16 +299,9 @@ export default function App() {
     setShowZoomControls,
   } = useMapPreferences();
   const [propertyJobs, setPropertyJobs] = useState<GardskartJob[]>([]);
-  const [fieldPlots, setFieldPlots] = useState<FieldPlot[]>([]);
-  const [fieldStatus, setFieldStatus] = useState("Jordutkast lastes ...");
-  const [fieldCreateMode, setFieldCreateMode] = useState(false);
-  const [activeFieldDraft, setActiveFieldDraft] = useState<FieldPlotDraft | null>(null);
-  const [isFieldSaveBusy, setIsFieldSaveBusy] = useState(false);
-  const [isFieldDeleteBusy, setIsFieldDeleteBusy] = useState(false);
   const [flightMissions, setFlightMissions] = useState<FlightMission[]>([]);
   const [, setFlightMissionStatus] = useState("Flyoppdrag lastes ...");
   const [activeFlightMissionId, setActiveFlightMissionId] = useState<number | null>(null);
-  const [showMissionOverlay, setShowMissionOverlay] = useState(true);
   const [flightMissionExportBusyId, setFlightMissionExportBusyId] = useState<number | null>(null);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
@@ -575,7 +425,6 @@ export default function App() {
   const backendLogAbortRef = useRef<AbortController | null>(null);
   const gardskartJobAbortRef = useRef<AbortController | null>(null);
   const albumAbortRef = useRef<AbortController | null>(null);
-  const fieldCandidateAbortRef = useRef<AbortController | null>(null);
   const photoLoadSeqRef = useRef(0);
   const albumLoadSeqRef = useRef(0);
   const profileLoadSeqRef = useRef(0);
@@ -584,7 +433,6 @@ export default function App() {
   const backendLogLoadSeqRef = useRef(0);
   const gardskartJobLoadSeqRef = useRef(0);
   const bootstrapLoadSeqRef = useRef(0);
-  const fieldCandidateLoadSeqRef = useRef(0);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const activeProperties = useMemo<Property[]>(() => {
@@ -598,20 +446,6 @@ export default function App() {
     () => (currentProperty ? currentProperty.label?.trim() || formatPropertyReference(currentProperty) : null),
     [currentProperty],
   );
-  const activeFlightMission = useMemo(
-    () => flightMissions.find((item) => item.id === activeFlightMissionId) ?? null,
-    [activeFlightMissionId, flightMissions],
-  );
-  const missionOverlayStatus = useMemo(() => {
-    if (flightMissions.length === 0) {
-      return "Ingen planlagte oppdrag ennå.";
-    }
-    if (!activeFlightMission) {
-      return "Velg et oppdrag i venstre panel for å vise ruten i kartet.";
-    }
-    const fieldCount = Array.isArray(activeFlightMission.fields) ? activeFlightMission.fields.length : 0;
-    return `${activeFlightMission.name} · ${fieldCount} jord${fieldCount === 1 ? "" : "er"} i oppdraget.`;
-  }, [activeFlightMission, flightMissions.length]);
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
@@ -880,59 +714,6 @@ export default function App() {
       return data;
     });
   }, [addLog, trackRequest]);
-
-  const loadFieldPlots = useCallback(
-    async (options?: { signal?: AbortSignal; silent?: boolean }) => {
-      if (!currentProperty) {
-        setFieldPlots([]);
-        setFieldCreateMode(false);
-        setActiveFieldDraft(null);
-        setFieldStatus("Ingen aktiv eiendom valgt for jordarbeid.");
-        return null;
-      }
-
-      try {
-        const { data, requestId } = await trackRequest(() =>
-          apiGet<FieldPlotListResponse>("/api/v1/fields", {
-            signal: options?.signal,
-            cache: false,
-            dedupe: false,
-          }),
-        );
-
-        const nextFields = sortFieldPlots(data.fields);
-        setFieldPlots(nextFields);
-        setFieldStatus(
-          nextFields.length === 0
-            ? "Ingen jordutkast ennå. Start med å klikke Nytt jordutkast."
-            : `${nextFields.length} jord${nextFields.length === 1 ? "" : "er"} klare for bruk eller videre justering.`,
-        );
-        setActiveFieldDraft((current) => {
-          if (!current) return null;
-          if (current.property_id !== data.property_id) return null;
-          if (current.isNew || current.isDirty) return current;
-          if (current.id == null) return null;
-          const refreshed = nextFields.find((item) => item.id === current.id);
-          return refreshed ? toFieldPlotDraft(refreshed) : null;
-        });
-        if (!options?.silent) {
-          addLog("info", "Jordutkast lastet", requestId, {
-            propertyId: data.property_id,
-            count: data.count,
-          });
-        }
-        return nextFields;
-      } catch (error) {
-        const apiError = error as ApiError;
-        if (isRequestAborted(apiError)) return null;
-        setFieldPlots([]);
-        setFieldStatus(`Kunne ikke laste jordutkast: ${apiError.message}`);
-        addLog("error", "Kunne ikke laste jordutkast", apiError.requestId, apiError.detail);
-        return null;
-      }
-    },
-    [addLog, currentProperty, trackRequest],
-  );
 
   const loadFlightMissions = useCallback(
     async (options?: { signal?: AbortSignal; silent?: boolean }) => {
@@ -1594,14 +1375,6 @@ export default function App() {
 
   useEffect(() => {
     const abortController = new AbortController();
-    void loadFieldPlots({ signal: abortController.signal, silent: true });
-    return () => {
-      abortController.abort();
-    };
-  }, [currentProperty?.id, loadFieldPlots]);
-
-  useEffect(() => {
-    const abortController = new AbortController();
     void loadFlightMissions({ signal: abortController.signal, silent: true });
     return () => {
       abortController.abort();
@@ -1609,16 +1382,7 @@ export default function App() {
   }, [currentProperty?.id, loadFlightMissions]);
 
   useEffect(() => {
-    fieldCandidateLoadSeqRef.current += 1;
-    fieldCandidateAbortRef.current?.abort();
-    fieldCandidateAbortRef.current = null;
-    setFieldCreateMode(false);
     setActiveFlightMissionId(null);
-    setShowMissionOverlay(true);
-    setActiveFieldDraft((current) => {
-      if (!current) return null;
-      return current.property_id === currentProperty?.id ? current : null;
-    });
   }, [currentProperty?.id]);
 
   useEffect(() => {
@@ -2231,230 +1995,6 @@ export default function App() {
     }
   };
 
-  const handleStartFieldCreate = useCallback(() => {
-    if (!ensureAdminAccess("jordredigering")) return;
-    fieldCandidateLoadSeqRef.current += 1;
-    fieldCandidateAbortRef.current?.abort();
-    fieldCandidateAbortRef.current = null;
-    setFieldCreateMode(true);
-    setActiveFieldDraft(null);
-    setFieldStatus("Klikk i kartet for å starte et nytt jordutkast.");
-    addLog("info", "Jordutkast venter på kartklikk", null, {
-      propertyId: currentProperty?.id ?? null,
-    });
-  }, [addLog, currentProperty?.id, ensureAdminAccess]);
-
-  const handleCancelFieldCreate = useCallback(() => {
-    fieldCandidateLoadSeqRef.current += 1;
-    fieldCandidateAbortRef.current?.abort();
-    fieldCandidateAbortRef.current = null;
-    setFieldCreateMode(false);
-    setFieldStatus("Oppretting av jordutkast avbrutt.");
-  }, []);
-
-  const handleSelectFieldPlot = useCallback(
-    (fieldId: number) => {
-      const nextField = fieldPlots.find((item) => item.id === fieldId);
-      if (!nextField) return;
-      fieldCandidateLoadSeqRef.current += 1;
-      fieldCandidateAbortRef.current?.abort();
-      fieldCandidateAbortRef.current = null;
-      setFieldCreateMode(false);
-      setActiveFieldDraft(toFieldPlotDraft(nextField));
-      setFieldStatus(`Valgte ${nextField.name ?? `jord ${nextField.id}`}. Dra hjørnene i kartet for å justere formen.`);
-    },
-    [fieldPlots],
-  );
-
-  const handleCreateFieldDraftAtPoint = useCallback(
-    async (point: GeoPoint) => {
-      if (!ensureAdminAccess("jordredigering")) return;
-      const seq = ++fieldCandidateLoadSeqRef.current;
-      fieldCandidateAbortRef.current?.abort();
-      const requestController = new AbortController();
-      fieldCandidateAbortRef.current = requestController;
-      setFieldCreateMode(false);
-      setFieldStatus("Leter etter jordgrense rundt klikkpunktet ...");
-
-      try {
-        const { data, requestId } = await trackRequest(() =>
-          apiGet<FieldCandidateListResponse>("/api/v1/properties/current/field-candidates/by-point", {
-            query: { lat: point.lat, lng: point.lng },
-            signal: requestController.signal,
-            cache: false,
-            dedupe: false,
-          }),
-        );
-        if (seq !== fieldCandidateLoadSeqRef.current || requestController.signal.aborted) return;
-        fieldCandidateAbortRef.current = null;
-
-        const nearest = data.fields[0] ?? null;
-        if (nearest) {
-          const nextDraft = toFieldPlotDraftFromCandidate(nearest, currentProperty?.id ?? null);
-          setActiveFieldDraft(nextDraft);
-          setFieldStatus(
-            data.count > 1
-              ? `Fant ${data.count} teiger. Bruker nærmeste forslag: ${nearest.name}. Dra hjørnene om du vil finjustere.`
-              : `Fant jordet ${nearest.name}. Dra hjørnene i kartet hvis formen må finjusteres før lagring.`,
-          );
-          addLog("info", "Opprettet jordutkast fra Geonorge-teig", requestId, {
-            lat: point.lat,
-            lng: point.lng,
-            count: data.count,
-            name: nearest.name,
-            localId: nearest.local_id,
-          });
-          return;
-        }
-
-        const fallbackDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
-        setActiveFieldDraft(fallbackDraft);
-        setFieldStatus("Fant ingen teig ved klikkpunktet. Opprettet manuelt startpolygon som du kan justere selv.");
-        addLog("warn", "Ingen Geonorge-teig ved klikkpunktet, bruker manuelt jordutkast", requestId, {
-          lat: point.lat,
-          lng: point.lng,
-        });
-      } catch (error) {
-        const apiError = error as ApiError;
-        if (seq !== fieldCandidateLoadSeqRef.current || requestController.signal.aborted || isRequestAborted(apiError)) {
-          return;
-        }
-        fieldCandidateAbortRef.current = null;
-        const fallbackDraft = buildFieldDraftAtPoint(point, currentProperty?.id ?? null);
-        setActiveFieldDraft(fallbackDraft);
-        setFieldStatus(
-          apiError.status === 404
-            ? "Teigoppslag er ikke tilgjengelig i denne backend-versjonen ennå. Opprettet manuelt startpolygon."
-            : "Kunne ikke hente jordgrense nå. Opprettet manuelt startpolygon som fallback.",
-        );
-        addLog("warn", "Fallback til manuelt jordutkast etter teigoppslag", apiError.requestId, {
-          lat: point.lat,
-          lng: point.lng,
-          status: apiError.status,
-          detail: apiError.detail,
-        });
-      }
-    },
-    [addLog, currentProperty?.id, ensureAdminAccess, trackRequest],
-  );
-
-  const handleChangeFieldDraftName = useCallback((value: string) => {
-    setActiveFieldDraft((current) =>
-      current
-        ? {
-            ...current,
-            name: value,
-            isDirty: true,
-          }
-        : current,
-    );
-  }, []);
-
-  const handleChangeFieldDraftGeometry = useCallback((geometry: GeoJSONPolygon) => {
-    const normalized = normalizeDraftGeometry(geometry);
-    const areaM2 = polygonAreaM2(normalized);
-    setActiveFieldDraft((current) =>
-      current
-        ? {
-            ...current,
-            geometry: normalized,
-            area_m2: areaM2,
-            area_ha: toAreaHa(areaM2),
-            isDirty: true,
-          }
-        : current,
-    );
-  }, []);
-
-  const handleDiscardFieldDraft = useCallback(() => {
-    setFieldCreateMode(false);
-    if (!activeFieldDraft) return;
-    if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
-      setActiveFieldDraft(null);
-      setFieldStatus("Ulagret jordutkast fjernet.");
-      return;
-    }
-    const savedField = fieldPlots.find((item) => item.id === activeFieldDraft.id);
-    setActiveFieldDraft(savedField ? toFieldPlotDraft(savedField) : null);
-    setFieldStatus("Endringer forkastet.");
-  }, [activeFieldDraft, fieldPlots]);
-
-  const handleSaveFieldDraft = useCallback(async () => {
-    if (!activeFieldDraft) return;
-    if (!ensureAdminAccess("lagring av jordutkast")) return;
-
-    setIsFieldSaveBusy(true);
-    try {
-      const payload = {
-        name: activeFieldDraft.name?.trim() || null,
-        source: activeFieldDraft.source,
-        status: activeFieldDraft.status,
-        geometry: activeFieldDraft.geometry,
-      };
-
-      if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
-        const { data, requestId } = await trackRequest(() => apiPost<FieldPlot>("/api/v1/fields", payload));
-        setFieldPlots((previous) => sortFieldPlots([data, ...previous]));
-        setActiveFieldDraft(toFieldPlotDraft(data));
-        setFieldStatus(`Lagret ${data.name ?? `jord ${data.id}`}.`);
-        addLog("info", "Jordutkast lagret", requestId, {
-          fieldId: data.id,
-          propertyId: data.property_id,
-        });
-      } else {
-        const { data, requestId } = await trackRequest(() =>
-          apiPatch<FieldPlot>(`/api/v1/fields/${activeFieldDraft.id}`, payload),
-        );
-        setFieldPlots((previous) =>
-          sortFieldPlots(previous.map((item) => (item.id === data.id ? data : item))),
-        );
-        setActiveFieldDraft(toFieldPlotDraft(data));
-        setFieldStatus(`Oppdaterte ${data.name ?? `jord ${data.id}`}.`);
-        addLog("info", "Jordutkast oppdatert", requestId, {
-          fieldId: data.id,
-          propertyId: data.property_id,
-        });
-      }
-    } catch (error) {
-      const apiError = error as ApiError;
-      setFieldStatus(`Kunne ikke lagre jordutkast: ${apiError.message}`);
-      addLog("error", "Kunne ikke lagre jordutkast", apiError.requestId, apiError.detail);
-    } finally {
-      setIsFieldSaveBusy(false);
-    }
-  }, [activeFieldDraft, addLog, ensureAdminAccess, trackRequest]);
-
-  const handleDeleteFieldDraft = useCallback(async () => {
-    if (!activeFieldDraft) return;
-    if (activeFieldDraft.isNew || activeFieldDraft.id == null) {
-      setActiveFieldDraft(null);
-      setFieldCreateMode(false);
-      setFieldStatus("Ulagret jordutkast fjernet.");
-      return;
-    }
-    if (!ensureAdminAccess("sletting av jordutkast")) return;
-
-    setIsFieldDeleteBusy(true);
-    try {
-      const { data, requestId } = await trackRequest(() =>
-        apiDelete<FieldPlotDeleteResponse>(`/api/v1/fields/${activeFieldDraft.id}`),
-      );
-      setFieldPlots((previous) => previous.filter((item) => item.id !== data.field_id));
-      setActiveFieldDraft(null);
-      setFieldCreateMode(false);
-      setFieldStatus("Jordutkast slettet.");
-      addLog("info", "Jordutkast slettet", requestId, {
-        fieldId: data.field_id,
-      });
-    } catch (error) {
-      const apiError = error as ApiError;
-      setFieldStatus(`Kunne ikke slette jordutkast: ${apiError.message}`);
-      addLog("error", "Kunne ikke slette jordutkast", apiError.requestId, apiError.detail);
-    } finally {
-      setIsFieldDeleteBusy(false);
-    }
-  }, [activeFieldDraft, addLog, ensureAdminAccess, trackRequest]);
-
   const handleExportFlightMission = useCallback(
     async (missionId: number) => {
       if (!ensureAdminAccess("eksport av flyoppdrag")) return;
@@ -2516,10 +2056,9 @@ export default function App() {
 
   const handleSelectFlightMission = useCallback((missionId: number) => {
     setActiveFlightMissionId(missionId);
-    setShowMissionOverlay(true);
     const mission = flightMissions.find((item) => item.id === missionId);
     if (!mission) return;
-    setFlightMissionStatus(`Viser ${mission.name} i kartet.`);
+    setFlightMissionStatus(`Viser ${mission.name} i planlegging.`);
   }, [flightMissions]);
 
   const handleAdminLogin = useCallback(async (code: string) => {
@@ -2950,24 +2489,6 @@ export default function App() {
     setPropertyStatus("Eiendomslag lastes ...");
     addLog("info", "Eiendomslag skrudd på av bruker");
   }, [addLog]);
-
-  const handleToggleMissionLayer = useCallback((next: boolean) => {
-    setShowMissionOverlay(next);
-    if (!next) {
-      setFlightMissionStatus("Flyrute-overlegg er skrudd av.");
-      addLog("info", "Flyrute-overlegg skrudd av av bruker");
-      return;
-    }
-
-    if (activeFlightMission) {
-      setFlightMissionStatus(`Viser ${activeFlightMission.name} i kartet.`);
-    } else {
-      setFlightMissionStatus("Velg et oppdrag i venstre panel for å vise ruten i kartet.");
-    }
-    addLog("info", "Flyrute-overlegg skrudd på av bruker", null, {
-      missionId: activeFlightMission?.id ?? null,
-    });
-  }, [activeFlightMission, addLog]);
 
   useEffect(() => {
     if (activeView === "album") return;
@@ -3668,9 +3189,6 @@ export default function App() {
             }}
             onChangeView={(view) => {
               handleClosePhotoViewer();
-              if (view !== "map" && fieldCreateMode) {
-                handleCancelFieldCreate();
-              }
               setActiveView(view);
               addLog(
                 "info",
@@ -3740,9 +3258,6 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   soilStatus={soilStatus}
                   onToggleSoilLayer={handleToggleSoilLayer}
-                  showMissionLayer={showMissionOverlay}
-                  missionStatus={missionOverlayStatus}
-                  onToggleMissionLayer={handleToggleMissionLayer}
                 />
               ) : null}
 
@@ -3765,9 +3280,9 @@ export default function App() {
                   soilRefreshToken={soilRefreshToken}
                   fieldPlots={[]}
                   activeFieldDraft={null}
-                  flightMissions={flightMissions}
-                  activeFlightMissionId={activeFlightMissionId}
-                  showMissionOverlay={showMissionOverlay}
+                  flightMissions={[]}
+                  activeFlightMissionId={null}
+                  showMissionOverlay={false}
                   fieldCreateMode={false}
                   onRequestFieldCreateAt={() => undefined}
                   onSelectField={() => undefined}
@@ -3787,12 +3302,6 @@ export default function App() {
                   property={currentProperty}
                   propertyLabel={currentPropertyLabel}
                   canEdit={isAdminAuthenticated}
-                  fieldStatus={fieldStatus}
-                  fieldPlots={fieldPlots}
-                  activeFieldDraft={activeFieldDraft}
-                  fieldCreateMode={fieldCreateMode}
-                  fieldSaveBusy={isFieldSaveBusy}
-                  fieldDeleteBusy={isFieldDeleteBusy}
                   missions={flightMissions}
                   activeMissionId={activeFlightMissionId}
                   missionExportBusyId={flightMissionExportBusyId}
@@ -3800,19 +3309,7 @@ export default function App() {
                   mapGrayscale={mapGrayscale}
                   mapVintage={mapVintage}
                   showZoomControls={showZoomControls}
-                  onStartCreateField={handleStartFieldCreate}
-                  onCancelCreateField={handleCancelFieldCreate}
-                  onSelectField={handleSelectFieldPlot}
-                  onChangeFieldDraftName={handleChangeFieldDraftName}
-                  onRequestFieldCreateAt={handleCreateFieldDraftAtPoint}
-                  onChangeFieldDraftGeometry={handleChangeFieldDraftGeometry}
-                  onSaveFieldDraft={handleSaveFieldDraft}
-                  onDiscardFieldDraft={handleDiscardFieldDraft}
-                  onDeleteFieldDraft={handleDeleteFieldDraft}
-                  onOpenMissionInMap={(missionId) => {
-                    handleSelectFlightMission(missionId);
-                    setActiveView("map");
-                  }}
+                  onSelectMission={handleSelectFlightMission}
                   onExportMission={handleExportFlightMission}
                   onReloadMissions={() => loadFlightMissions({ silent: true })}
                 />

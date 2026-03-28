@@ -4,17 +4,13 @@ import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw } from "
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { FieldEditorPanel } from "@/components/field-editor-panel";
 import { PlanningMap } from "@/components/planning-map";
 import type {
   DroneProfile,
   DroneProfileListResponse,
-  FieldPlot,
-  FieldPlotDraft,
   FlightMission,
   FlightMissionParameters,
   FlightMissionPreview,
-  GeoJSONPolygon,
   GeoPoint,
   PlanningUnit,
   PlanningUnitListResponse,
@@ -35,12 +31,6 @@ interface PlanningPageProps {
   property: Property | null;
   propertyLabel: string | null;
   canEdit: boolean;
-  fieldStatus: string;
-  fieldPlots: FieldPlot[];
-  activeFieldDraft: FieldPlotDraft | null;
-  fieldCreateMode: boolean;
-  fieldSaveBusy: boolean;
-  fieldDeleteBusy: boolean;
   missions: FlightMission[];
   activeMissionId: number | null;
   missionExportBusyId: number | null;
@@ -48,16 +38,7 @@ interface PlanningPageProps {
   mapGrayscale: boolean;
   mapVintage: boolean;
   showZoomControls: boolean;
-  onStartCreateField: () => void;
-  onCancelCreateField: () => void;
-  onSelectField: (fieldId: number) => void;
-  onChangeFieldDraftName: (value: string) => void;
-  onRequestFieldCreateAt: (point: GeoPoint) => void;
-  onChangeFieldDraftGeometry: (geometry: GeoJSONPolygon) => void;
-  onSaveFieldDraft: () => void;
-  onDiscardFieldDraft: () => void;
-  onDeleteFieldDraft: () => void;
-  onOpenMissionInMap: (missionId: number) => void;
+  onSelectMission: (missionId: number) => void;
   onExportMission: (missionId: number) => void;
   onReloadMissions: () => Promise<unknown> | void;
 }
@@ -118,12 +99,6 @@ export function PlanningPage({
   property,
   propertyLabel,
   canEdit,
-  fieldStatus,
-  fieldPlots,
-  activeFieldDraft,
-  fieldCreateMode,
-  fieldSaveBusy,
-  fieldDeleteBusy,
   missions,
   activeMissionId,
   missionExportBusyId,
@@ -131,16 +106,7 @@ export function PlanningPage({
   mapGrayscale,
   mapVintage,
   showZoomControls,
-  onStartCreateField,
-  onCancelCreateField,
-  onSelectField,
-  onChangeFieldDraftName,
-  onRequestFieldCreateAt,
-  onChangeFieldDraftGeometry,
-  onSaveFieldDraft,
-  onDiscardFieldDraft,
-  onDeleteFieldDraft,
-  onOpenMissionInMap,
+  onSelectMission,
   onExportMission,
   onReloadMissions,
 }: PlanningPageProps) {
@@ -226,7 +192,7 @@ export function PlanningPage({
     setSplitMode(false);
     setSplitPoints([]);
     void loadUnits();
-  }, [fieldPlots, loadUnits]);
+  }, [loadUnits]);
 
   useEffect(() => {
     if (!property || selectedMissionUnitIds.length === 0 || !selectedDroneProfileId) {
@@ -332,27 +298,6 @@ export function PlanningPage({
   return (
     <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[22rem,minmax(0,1fr),22rem] md:p-4">
       <div className="flex min-h-0 flex-col gap-4">
-        <FieldEditorPanel
-          embedded
-          showPlanningCallout={false}
-          propertyLabel={propertyLabel}
-          fieldStatus={fieldStatus}
-          canEdit={canEdit}
-          createMode={fieldCreateMode}
-          fieldPlots={fieldPlots}
-          activeFieldDraft={activeFieldDraft}
-          saveBusy={fieldSaveBusy}
-          deleteBusy={fieldDeleteBusy}
-          onStartCreate={onStartCreateField}
-          onCancelCreate={onCancelCreateField}
-          onSelectField={onSelectField}
-          onChangeDraftName={onChangeFieldDraftName}
-          onSaveDraft={onSaveFieldDraft}
-          onDiscardDraft={onDiscardFieldDraft}
-          onDeleteDraft={onDeleteFieldDraft}
-          onOpenPlanning={() => undefined}
-        />
-
         <section className="min-h-0 overflow-hidden rounded-[28px] border border-fb-border-subtle bg-fb-surface-page shadow-fb-floating">
           <div className="border-b border-fb-border-subtle px-4 py-4">
             <p className="text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Planenheter</p>
@@ -431,20 +376,16 @@ export function PlanningPage({
         <div className="h-[min(70vh,48rem)]">
           <PlanningMap
             units={units}
-            fieldPlots={fieldPlots}
-            activeFieldDraft={activeFieldDraft}
+            missions={missions}
+            activeMissionId={activeMissionId}
             selectedUnitId={selectedUnitId}
             selectedMissionUnitIds={selectedMissionUnitIds}
             splitMode={splitMode}
             splitPoints={splitPoints}
-            fieldCreateMode={fieldCreateMode}
             baseMapStyle={baseMapStyle}
             showZoomControls={showZoomControls}
             mapGrayscale={mapGrayscale}
             mapVintage={mapVintage}
-            onRequestFieldCreateAt={onRequestFieldCreateAt}
-            onSelectField={onSelectField}
-            onFieldGeometryChange={onChangeFieldDraftGeometry}
             onSelectUnit={setSelectedUnitId}
             onAddSplitPoint={handleAddSplitPoint}
           />
@@ -604,9 +545,9 @@ export function PlanningPage({
                       type="button"
                       size="sm"
                       variant={activeMissionId === mission.id ? "default" : "outline"}
-                      onClick={() => onOpenMissionInMap(mission.id)}
+                      onClick={() => onSelectMission(mission.id)}
                     >
-                      {activeMissionId === mission.id ? "Vises i kart" : "Vis i kart"}
+                      {activeMissionId === mission.id ? "Vises i planlegging" : "Vis i planlegging"}
                     </Button>
                     <Button
                       type="button"
