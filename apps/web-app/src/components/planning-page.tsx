@@ -192,7 +192,9 @@ export function PlanningPage({
       });
       setUnitsStatus(
         nextUnits.length === 0
-          ? "Ingen aktive planenheter ennå. Synk for å hente jorder fra aktiv eiendom."
+          ? canEdit
+            ? "Ingen aktive planenheter ennå. Synk for å hente jorder fra aktiv eiendom."
+            : "Ingen aktive planenheter ennå. Logg inn som admin og bruk Synk for å hente jorder fra aktiv eiendom."
           : `${nextUnits.length} planenheter klare for deling og planlegging.`,
       );
     } catch (error) {
@@ -469,7 +471,11 @@ export function PlanningPage({
               onClick={() => void loadUnits()}
               loading={syncBusy}
               loadingLabel="Synker"
-              help="Hent bondens jorder fra aktiv eiendom og oppdater listen."
+              help={
+                canEdit
+                  ? "Hent bondens jorder fra aktiv eiendom og oppdater listen."
+                  : "Oppdater listen over planenheter som allerede er lagt inn. Admin trengs for å hente nye jorder."
+              }
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Synk

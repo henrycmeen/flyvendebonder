@@ -1392,7 +1392,7 @@ export default function App() {
       if (current != null && flightMissions.some((item) => item.id === current)) {
         return current;
       }
-      return flightMissions[0]?.id ?? null;
+      return null;
     });
   }, [flightMissions]);
 
