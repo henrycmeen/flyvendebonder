@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw } from "lucide-react";
+import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw, LocateFixed } from "lucide-react";
 
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ import type {
   GeoPoint,
   PlanningUnit,
   PlanningUnitListResponse,
+  PlanningPointResolveResponse,
   PlanningUnitSplitResponse,
   PlanningUnitSyncResponse,
   Property,
@@ -122,9 +123,11 @@ export function PlanningPage({
   const [parameters, setParameters] = useState<FlightMissionParameters>(DEFAULT_FLIGHT_MISSION_PARAMETERS);
   const [preview, setPreview] = useState<FlightMissionPreview | null>(null);
   const [previewStatus, setPreviewStatus] = useState("Velg minst én planenhet for å beregne flytid.");
+  const [findMode, setFindMode] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
   const [splitPoints, setSplitPoints] = useState<GeoPoint[]>([]);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [findBusy, setFindBusy] = useState(false);
   const [splitBusy, setSplitBusy] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
 
@@ -195,6 +198,7 @@ export function PlanningPage({
     setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
     setPreview(null);
     setPreviewStatus("Velg minst én planenhet for å beregne flytid.");
+    setFindMode(false);
     setSplitMode(false);
     setSplitPoints([]);
     void loadUnits();
@@ -300,6 +304,38 @@ export function PlanningPage({
     [selectedUnit, splitBusy],
   );
 
+  const handleResolvePoint = useCallback(
+    async (point: GeoPoint) => {
+      if (!property || !canEdit || findBusy || splitMode) return;
+      setFindBusy(true);
+      try {
+        const { data } = await apiPost<PlanningPointResolveResponse>(
+          `/api/v1/planning/properties/${property.id}/resolve-point`,
+          { lat: point.lat, lng: point.lng, radius_m: 60 },
+        );
+        setUnits((currentUnits) => {
+          const nextUnit = data.unit;
+          const remaining = currentUnits.filter((item) => item.id !== nextUnit.id);
+          return [nextUnit, ...remaining];
+        });
+        setSelectedUnitId(data.unit.id);
+        setSelectedMissionUnitIds((current) => (current.includes(data.unit.id) ? current : [...current, data.unit.id]));
+        setUnitsStatus(
+          data.imported_field
+            ? `Fant og importerte ${data.candidate_name ?? data.unit.name} fra ${data.matrikkelnummer ?? "aktiv eiendom"}.`
+            : `Fant ${data.candidate_name ?? data.unit.name} og fokuserte den i planen.`,
+        );
+        setFindMode(false);
+      } catch (error) {
+        const apiError = error as ApiError;
+        setUnitsStatus(`Kunne ikke finne jord fra punkt: ${apiError.message}`);
+      } finally {
+        setFindBusy(false);
+      }
+    },
+    [canEdit, findBusy, property, splitMode],
+  );
+
   const handleCreateMission = useCallback(async () => {
     if (!canEdit || selectedMissionUnitIds.length === 0) return;
     setCreateBusy(true);
@@ -331,6 +367,7 @@ export function PlanningPage({
             <p className="mt-2 text-sm leading-6 text-fb-text-secondary">{unitsStatus}</p>
             <div className="mt-3 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3 text-xs leading-5 text-fb-text-secondary">
               <p><strong className="text-fb-text-primary">Synk:</strong> henter bondens jorder fra aktiv eiendom og oppdaterer listen.</p>
+              <p><strong className="text-fb-text-primary">Finn jord:</strong> trykk knappen og klikk i kartet for å finne riktig jord automatisk.</p>
               <p><strong className="text-fb-text-primary">Velg jord:</strong> klikk på et kort i listen og huk av <span className="font-medium text-fb-text-primary">Ta med i plan</span>.</p>
               <p><strong className="text-fb-text-primary">Ny plan:</strong> sett navn, droneprofil og parametre, og trykk <span className="font-medium text-fb-text-primary">Lagre som flyoppdrag</span>.</p>
             </div>
@@ -379,7 +416,11 @@ export function PlanningPage({
           <div>
             <p className="text-sm font-semibold text-fb-text-primary">Kart og deling</p>
             <p className="text-xs text-fb-text-secondary">
-              {splitMode ? "Klikk to steder i kartet for å dele valgt jord." : "Velg en planenhet i listen for å fokusere den."}
+              {splitMode
+                ? "Klikk to steder i kartet for å dele valgt jord."
+                : findMode
+                  ? "Klikk et sted i kartet for å finne riktig jord automatisk."
+                  : "Velg en planenhet i listen for å fokusere den."}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -390,9 +431,26 @@ export function PlanningPage({
             <Button
               type="button"
               size="sm"
+              variant={findMode ? "default" : "outline"}
+              onClick={() => {
+                setFindMode((current) => !current);
+                setSplitMode(false);
+                setSplitPoints([]);
+              }}
+              disabled={!canEdit}
+              loading={findBusy}
+              loadingLabel="Leter"
+            >
+              <LocateFixed className="h-3.5 w-3.5" />
+              Finn jord
+            </Button>
+            <Button
+              type="button"
+              size="sm"
               variant={splitMode ? "default" : "outline"}
               onClick={() => {
                 setSplitMode((current) => !current);
+                setFindMode(false);
                 setSplitPoints([]);
               }}
               disabled={!canEdit || !selectedUnit}
@@ -406,6 +464,7 @@ export function PlanningPage({
         </div>
         <div className="border-b border-fb-border-subtle px-4 py-2 text-xs text-fb-text-secondary">
           <span><strong className="text-fb-text-primary">Synk</strong> henter jorder fra aktiv eiendom.</span>{" "}
+          <span><strong className="text-fb-text-primary">Finn jord</strong> lar deg klikke et punkt i kartet for å finne riktig jord automatisk.</span>{" "}
           <span><strong className="text-fb-text-primary">Del jord</strong> lar deg klikke to punkter i kartet for å splitte valgt jord.</span>
         </div>
         <div className="h-[min(70vh,48rem)]">
@@ -416,6 +475,7 @@ export function PlanningPage({
             missionFocusToken={missionFocusToken}
             selectedUnitId={selectedUnitId}
             selectedMissionUnitIds={selectedMissionUnitIds}
+            findMode={findMode}
             splitMode={splitMode}
             splitPoints={splitPoints}
             baseMapStyle={baseMapStyle}
@@ -423,6 +483,7 @@ export function PlanningPage({
             mapGrayscale={mapGrayscale}
             mapVintage={mapVintage}
             onSelectUnit={setSelectedUnitId}
+            onResolvePoint={handleResolvePoint}
             onAddSplitPoint={handleAddSplitPoint}
           />
         </div>

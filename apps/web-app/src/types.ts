@@ -225,6 +225,16 @@ export interface PlanningUnitSplitResponse {
   created_units: PlanningUnit[];
 }
 
+export interface PlanningPointResolveResponse {
+  property_id: number;
+  unit: PlanningUnit;
+  imported_field: boolean;
+  created_unit: boolean;
+  candidate_name: string | null;
+  matrikkelnummer: string | null;
+  distance_m: number | null;
+}
+
 export interface DroneProfile {
   id: string;
   name: string;

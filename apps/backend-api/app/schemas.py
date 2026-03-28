@@ -269,6 +269,22 @@ class PlanningUnitSplitOut(BaseModel):
     created_units: list[PlanningUnitOut]
 
 
+class PlanningPointResolveIn(BaseModel):
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    radius_m: int | None = Field(default=None, ge=1, le=3000)
+
+
+class PlanningPointResolveOut(BaseModel):
+    property_id: int
+    unit: PlanningUnitOut
+    imported_field: bool = False
+    created_unit: bool = False
+    candidate_name: str | None = None
+    matrikkelnummer: str | None = None
+    distance_m: int | None = None
+
+
 class DroneProfileOut(BaseModel):
     id: str
     name: str

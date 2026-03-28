@@ -16,6 +16,7 @@ interface PlanningMapProps {
   missionFocusToken: number;
   selectedUnitId: number | null;
   selectedMissionUnitIds: number[];
+  findMode: boolean;
   splitMode: boolean;
   splitPoints: GeoPoint[];
   baseMapStyle: BaseMapStyle;
@@ -23,6 +24,7 @@ interface PlanningMapProps {
   mapGrayscale: boolean;
   mapVintage: boolean;
   onSelectUnit: (unitId: number) => void;
+  onResolvePoint: (point: GeoPoint) => void;
   onAddSplitPoint: (point: GeoPoint) => void;
 }
 
@@ -67,6 +69,7 @@ export function PlanningMap({
   missionFocusToken,
   selectedUnitId,
   selectedMissionUnitIds,
+  findMode,
   splitMode,
   splitPoints,
   baseMapStyle,
@@ -74,6 +77,7 @@ export function PlanningMap({
   mapGrayscale,
   mapVintage,
   onSelectUnit,
+  onResolvePoint,
   onAddSplitPoint,
 }: PlanningMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
@@ -169,14 +173,20 @@ export function PlanningMap({
     const map = mapRef.current;
     if (!map) return;
     const handleClick = (event: L.LeafletMouseEvent) => {
-      if (!splitMode) return;
-      onAddSplitPoint({ lat: event.latlng.lat, lng: event.latlng.lng });
+      const point = { lat: event.latlng.lat, lng: event.latlng.lng };
+      if (splitMode) {
+        onAddSplitPoint(point);
+        return;
+      }
+      if (findMode) {
+        onResolvePoint(point);
+      }
     };
     map.on("click", handleClick);
     return () => {
       map.off("click", handleClick);
     };
-  }, [onAddSplitPoint, splitMode]);
+  }, [findMode, onAddSplitPoint, onResolvePoint, splitMode]);
 
   useEffect(() => {
     const layer = missionLayerRef.current;
@@ -263,7 +273,13 @@ export function PlanningMap({
         pane: "planningPane",
         bubblingMouseEvents: false,
       });
-      polygon.on("click", () => onSelectUnit(unit.id));
+      polygon.on("click", (event: L.LeafletMouseEvent) => {
+        if (findMode) {
+          onResolvePoint({ lat: event.latlng.lat, lng: event.latlng.lng });
+          return;
+        }
+        onSelectUnit(unit.id);
+      });
       polygon.bindTooltip(unit.name, { sticky: true });
       layer.addLayer(polygon);
       boundsPoints.push(...latLngs);
@@ -317,7 +333,7 @@ export function PlanningMap({
         }
       }
     }
-  }, [activeMission, missionFocusToken, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
+  }, [activeMission, findMode, missionFocusToken, onResolvePoint, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
 
   useEffect(() => {
     const layer = splitLayerRef.current;

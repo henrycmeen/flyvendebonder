@@ -85,6 +85,54 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
     assert fields_payload["fields"][0]["status"] == "confirmed"
 
 
+def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypatch):
+    import app.api.v1 as v1
+
+    async def fake_lookup_field_candidates_by_point(property_obj, *, lat, lng, radius_m):
+        assert lat == 59.0
+        assert lng == 10.0
+        assert radius_m == 60
+        return [
+            {
+                "source": "geonorge",
+                "name": f"{property_obj.gnr}/{property_obj.bnr} · teig 1",
+                "local_id": 1,
+                "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
+                "object_type": "Teig",
+                "accuracy_class": "Gult",
+                "is_main_area": False,
+                "distance_m": 4,
+                "geometry": _sample_polygon(0.02),
+                "area_m2": 2400.0,
+                "area_ha": 0.24,
+                "source_updated_at": None,
+            }
+        ]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point", fake_lookup_field_candidates_by_point)
+
+    first = client.post(
+        "/api/v1/planning/properties/1/resolve-point",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["imported_field"] is True
+    assert first_payload["created_unit"] is True
+    assert first_payload["candidate_name"] == "70/17 · teig 1"
+    assert first_payload["matrikkelnummer"] == "70/17"
+
+    second = client.post(
+        "/api/v1/planning/properties/1/resolve-point",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["imported_field"] is False
+    assert second_payload["created_unit"] is False
+    assert second_payload["unit"]["id"] == first_payload["unit"]["id"]
+
+
 def test_planning_split_archives_parent_and_creates_two_children(client):
     _create_field(client, name="Storjordet", status="confirmed")
     sync_response = client.post("/api/v1/planning/properties/1/sync")

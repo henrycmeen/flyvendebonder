@@ -104,12 +104,16 @@ def shape_to_coordinates(raw_geometry_json: str) -> list[list[list[float]]]:
     return json.loads(raw_geometry_json)["coordinates"]
 
 
-def sync_confirmed_fields_from_candidates(
+def find_field_plot_for_geometry(
     db: Session,
     *,
     property_obj: Property,
-    candidates: list[dict[str, Any]],
-) -> int:
+    geometry: dict[str, Any],
+) -> FieldPlot | None:
+    if geometry.get("type") != "Polygon":
+        raise ValueError("Bare polygon-geometri kan brukes som jord")
+    coordinates = normalize_polygon_coordinates(geometry.get("coordinates") or [])
+    geometry_key = _geometry_key(coordinates)
     existing_fields = (
         db.execute(
             select(FieldPlot)
@@ -119,10 +123,86 @@ def sync_confirmed_fields_from_candidates(
         .scalars()
         .all()
     )
-    existing_geometry_keys = {
-        _geometry_key(normalize_polygon_coordinates(shape_to_coordinates(item.geometry_json))) for item in existing_fields
-    }
+    for item in existing_fields:
+        if _geometry_key(normalize_polygon_coordinates(shape_to_coordinates(item.geometry_json))) == geometry_key:
+            return item
+    return None
 
+
+def create_confirmed_field_from_candidate(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidate: dict[str, Any],
+) -> FieldPlot:
+    geometry = candidate.get("geometry") if isinstance(candidate, dict) else None
+    if not isinstance(geometry, dict):
+        raise ValueError("Kandidaten mangler gyldig geometri")
+    if geometry.get("type") != "Polygon":
+        raise ValueError("Kandidaten må være et polygon")
+
+    coordinates = normalize_polygon_coordinates(geometry.get("coordinates") or [])
+    area_m2 = candidate.get("area_m2")
+    if area_m2 is None:
+        area_m2 = polygon_area_m2(coordinates)
+
+    item = FieldPlot(
+        property_id=property_obj.id,
+        name=str(candidate.get("name") or "").strip() or None,
+        source="imported",
+        status="confirmed",
+        geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
+        area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
+    )
+    db.add(item)
+    db.flush()
+    return item
+
+
+def ensure_active_planning_unit_for_field(
+    db: Session,
+    *,
+    property_obj: Property,
+    field: FieldPlot,
+) -> tuple[PlanningUnit, bool]:
+    existing = (
+        db.execute(
+            select(PlanningUnit)
+            .where(
+                PlanningUnit.property_id == property_obj.id,
+                PlanningUnit.source_field_plot_id == field.id,
+                PlanningUnit.status == PLANNING_UNIT_STATUS_ACTIVE,
+            )
+            .order_by(PlanningUnit.updated_at.desc(), PlanningUnit.id.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        return existing, False
+
+    geometry_json = field.geometry_json
+    area_m2 = round(field.area_m2 or polygon_area_m2(normalize_polygon_coordinates(shape_to_coordinates(geometry_json))), 2)
+    item = PlanningUnit(
+        property_id=property_obj.id,
+        source_field_plot_id=field.id,
+        parent_unit_id=None,
+        name=planning_unit_field_name(field),
+        status=PLANNING_UNIT_STATUS_ACTIVE,
+        geometry_json=geometry_json,
+        area_m2=area_m2,
+    )
+    db.add(item)
+    db.flush()
+    return item, True
+
+
+def sync_confirmed_fields_from_candidates(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidates: list[dict[str, Any]],
+) -> int:
     created_count = 0
     for candidate in candidates:
         geometry = candidate.get("geometry") if isinstance(candidate, dict) else None
@@ -131,29 +211,11 @@ def sync_confirmed_fields_from_candidates(
         if geometry.get("type") != "Polygon":
             continue
 
-        coordinates = normalize_polygon_coordinates(geometry.get("coordinates") or [])
-        geometry_key = _geometry_key(coordinates)
-        if geometry_key in existing_geometry_keys:
+        if find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry) is not None:
             continue
 
-        area_m2 = candidate.get("area_m2")
-        if area_m2 is None:
-            area_m2 = polygon_area_m2(coordinates)
-
-        item = FieldPlot(
-            property_id=property_obj.id,
-            name=str(candidate.get("name") or "").strip() or None,
-            source="imported",
-            status="confirmed",
-            geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
-            area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
-        )
-        db.add(item)
-        existing_geometry_keys.add(geometry_key)
+        create_confirmed_field_from_candidate(db, property_obj=property_obj, candidate=candidate)
         created_count += 1
-
-    if created_count:
-        db.flush()
 
     return created_count
 

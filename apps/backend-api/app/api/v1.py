@@ -90,6 +90,8 @@ from ..schemas import (
     PlanningUnitSplitIn,
     PlanningUnitSplitOut,
     PlanningUnitSyncResponse,
+    PlanningPointResolveIn,
+    PlanningPointResolveOut,
     PhotoPageResponse,
     PhotoResponse,
     ProfileOut,
@@ -131,6 +133,9 @@ from ..services.flight_missions import (
     build_flight_mission_payload,
 )
 from ..services.planning import (
+    create_confirmed_field_from_candidate,
+    ensure_active_planning_unit_for_field,
+    find_field_plot_for_geometry,
     get_drone_profile,
     list_drone_profiles,
     planning_unit_field_name,
@@ -1747,6 +1752,61 @@ def split_property_planning_unit(
     return PlanningUnitSplitOut(
         archived_unit=_planning_unit_out(unit, source_field_name=source_field_name),
         created_units=[_planning_unit_out(item, source_field_name=source_field_name) for item in created_units],
+    )
+
+
+@router.post("/planning/properties/{property_id}/resolve-point", response_model=PlanningPointResolveOut)
+async def resolve_property_planning_point(
+    property_id: int,
+    payload: PlanningPointResolveIn = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PlanningPointResolveOut:
+    user = _current_user(db)
+    property_obj = _require_current_property(db, user.id)
+    if property_obj.id != property_id:
+        raise HTTPException(status_code=400, detail="Planlegging kan bare brukes for aktiv eiendom")
+
+    try:
+        candidates = await lookup_field_candidates_by_point(
+            property_obj,
+            lat=payload.lat,
+            lng=payload.lng,
+            radius_m=payload.radius_m,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge punktoppslag feilet under planleggingsoppslag",
+            extra={"property_id": property_obj.id, "error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke finne jord fra punkt: {exc}") from exc
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Fant ingen jord på dette punktet for aktiv eiendom")
+
+    candidate = candidates[0]
+    geometry = candidate.get("geometry")
+    if not isinstance(geometry, dict):
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
+
+    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
+    imported_field = field is None
+    if field is None:
+        field = create_confirmed_field_from_candidate(db, property_obj=property_obj, candidate=candidate)
+
+    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
+    db.commit()
+    db.refresh(unit)
+    db.refresh(field)
+
+    return PlanningPointResolveOut(
+        property_id=property_obj.id,
+        unit=_planning_unit_out(unit, source_field_name=planning_unit_field_name(field)),
+        imported_field=imported_field,
+        created_unit=created_unit,
+        candidate_name=str(candidate.get("name") or "").strip() or None,
+        matrikkelnummer=str(candidate.get("matrikkelnummer") or "").strip() or None,
+        distance_m=int(candidate["distance_m"]) if candidate.get("distance_m") is not None else None,
     )
 
 
