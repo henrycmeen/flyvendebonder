@@ -1,10 +1,12 @@
+import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw, LocateFixed } from "lucide-react";
 
-import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PlanningMap } from "@/components/planning-map";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
   DroneProfile,
   DroneProfileListResponse,
@@ -40,9 +42,24 @@ interface PlanningPageProps {
   mapGrayscale: boolean;
   mapVintage: boolean;
   showZoomControls: boolean;
-  onSelectMission: (missionId: number) => void;
+  onSelectMission: (missionId: number | null) => void;
   onExportMission: (missionId: number) => void;
   onReloadMissions: () => Promise<unknown> | void;
+}
+
+interface HoverActionButtonProps extends ComponentProps<typeof Button> {
+  help: string;
+}
+
+function HoverActionButton({ help, ...props }: HoverActionButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button {...props} />
+      </TooltipTrigger>
+      <TooltipContent>{help}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function formatArea(areaHa: number | null): string {
@@ -340,22 +357,49 @@ export function PlanningPage({
     if (!canEdit || selectedMissionUnitIds.length === 0) return;
     setCreateBusy(true);
     try {
-      const { data } = await apiPost("/api/v1/flight-missions", {
+      const payload = {
         name: missionName || undefined,
         planning_unit_ids: selectedMissionUnitIds,
         drone_profile_id: selectedDroneProfileId || undefined,
         parameters,
-      });
-      setPreview(data as FlightMissionPreview);
-      setUnitsStatus(`Lagret ${String((data as FlightMissionPreview).name)} som flyoppdrag.`);
+      };
+      const response = activeMissionId
+        ? await apiPatch<FlightMission>(`/api/v1/flight-missions/${activeMissionId}`, payload)
+        : await apiPost<FlightMission>("/api/v1/flight-missions", payload);
+      const savedMission = response.data;
+      setPreview(savedMission);
+      setUnitsStatus(
+        activeMissionId
+          ? `Oppdaterte ${savedMission.name} i planleggingen.`
+          : `Lagret ${savedMission.name} som flyoppdrag.`,
+      );
       await Promise.all([loadUnits(), onReloadMissions()]);
+      onSelectMission(savedMission.id);
     } catch (error) {
       const apiError = error as ApiError;
-      setUnitsStatus(`Kunne ikke lagre plan: ${apiError.message}`);
+      setUnitsStatus(`Kunne ikke ${activeMissionId ? "oppdatere" : "lagre"} plan: ${apiError.message}`);
     } finally {
       setCreateBusy(false);
     }
-  }, [canEdit, loadUnits, missionName, onReloadMissions, parameters, selectedDroneProfileId, selectedMissionUnitIds]);
+  }, [
+    activeMissionId,
+    canEdit,
+    loadUnits,
+    missionName,
+    onReloadMissions,
+    onSelectMission,
+    parameters,
+    selectedDroneProfileId,
+    selectedMissionUnitIds,
+  ]);
+
+  const handleStartNewPlan = useCallback(() => {
+    onSelectMission(null);
+    setMissionName("");
+    setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
+    setPreview(null);
+    setPreviewStatus("Velg minst én planenhet for å beregne flytid.");
+  }, [onSelectMission]);
 
   return (
     <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[22rem,minmax(0,1fr),22rem] md:p-4">
@@ -365,12 +409,6 @@ export function PlanningPage({
             <p className="text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Planenheter</p>
             <h2 className="mt-1 text-lg font-semibold text-fb-text-primary">{propertyLabel ?? "Ingen aktiv eiendom"}</h2>
             <p className="mt-2 text-sm leading-6 text-fb-text-secondary">{unitsStatus}</p>
-            <div className="mt-3 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3 text-xs leading-5 text-fb-text-secondary">
-              <p><strong className="text-fb-text-primary">Synk:</strong> henter bondens jorder fra aktiv eiendom og oppdaterer listen.</p>
-              <p><strong className="text-fb-text-primary">Finn jord:</strong> trykk knappen og klikk i kartet for å finne riktig jord automatisk.</p>
-              <p><strong className="text-fb-text-primary">Velg jord:</strong> klikk på et kort i listen og huk av <span className="font-medium text-fb-text-primary">Ta med i plan</span>.</p>
-              <p><strong className="text-fb-text-primary">Ny plan:</strong> sett navn, droneprofil og parametre, og trykk <span className="font-medium text-fb-text-primary">Lagre som flyoppdrag</span>.</p>
-            </div>
           </div>
           <div className="space-y-2 overflow-y-auto px-3 py-3">
             {units.map((unit) => {
@@ -424,11 +462,19 @@ export function PlanningPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => void loadUnits()} loading={syncBusy} loadingLabel="Synker">
+            <HoverActionButton
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void loadUnits()}
+              loading={syncBusy}
+              loadingLabel="Synker"
+              help="Hent bondens jorder fra aktiv eiendom og oppdater listen."
+            >
               <RefreshCw className="h-3.5 w-3.5" />
               Synk
-            </Button>
-            <Button
+            </HoverActionButton>
+            <HoverActionButton
               type="button"
               size="sm"
               variant={findMode ? "default" : "outline"}
@@ -440,11 +486,12 @@ export function PlanningPage({
               disabled={!canEdit}
               loading={findBusy}
               loadingLabel="Leter"
+              help="Klikk deretter i kartet for å finne riktig jord automatisk."
             >
               <LocateFixed className="h-3.5 w-3.5" />
               Finn jord
-            </Button>
-            <Button
+            </HoverActionButton>
+            <HoverActionButton
               type="button"
               size="sm"
               variant={splitMode ? "default" : "outline"}
@@ -456,16 +503,12 @@ export function PlanningPage({
               disabled={!canEdit || !selectedUnit}
               loading={splitBusy}
               loadingLabel="Deler"
+              help="Klikk to punkter i kartet for å dele valgt jord i to."
             >
               <Scissors className="h-3.5 w-3.5" />
               Del jord
-            </Button>
+            </HoverActionButton>
           </div>
-        </div>
-        <div className="border-b border-fb-border-subtle px-4 py-2 text-xs text-fb-text-secondary">
-          <span><strong className="text-fb-text-primary">Synk</strong> henter jorder fra aktiv eiendom.</span>{" "}
-          <span><strong className="text-fb-text-primary">Finn jord</strong> lar deg klikke et punkt i kartet for å finne riktig jord automatisk.</span>{" "}
-          <span><strong className="text-fb-text-primary">Del jord</strong> lar deg klikke to punkter i kartet for å splitte valgt jord.</span>
         </div>
         <div className="h-[min(70vh,48rem)]">
           <PlanningMap
@@ -495,6 +538,25 @@ export function PlanningPage({
           <p className="mt-1 text-sm text-fb-text-secondary">{previewStatus}</p>
         </div>
         <div className="space-y-5 px-4 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <HoverActionButton
+              type="button"
+              size="sm"
+              variant={activeMission ? "outline" : "default"}
+              onClick={handleStartNewPlan}
+              help="Tøm valgt oppdrag og start en ny plan med jordene du haker av til venstre."
+            >
+              Ny plan
+            </HoverActionButton>
+            {activeMission ? (
+              <span className="text-xs text-fb-text-secondary">
+                Redigerer nå <strong className="text-fb-text-primary">{activeMission.name}</strong>.
+              </span>
+            ) : (
+              <span className="text-xs text-fb-text-secondary">Velg et lagret oppdrag under for å redigere det.</span>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3">
             <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Valgt deljord</p>
             <p className="mt-1 text-sm font-semibold text-fb-text-primary">{selectedUnit?.name ?? "Ingen valgt"}</p>
@@ -595,19 +657,26 @@ export function PlanningPage({
             )}
           </div>
 
-          <Button
+          <HoverActionButton
             type="button"
             className="w-full"
             onClick={() => void handleCreateMission()}
             disabled={!canEdit || selectedMissionUnitIds.length === 0}
             loading={createBusy}
-            loadingLabel="Lagrer plan"
+            loadingLabel={activeMission ? "Oppdaterer plan" : "Lagrer plan"}
+            help={
+              activeMission
+                ? "Lagre endringene tilbake til det oppdraget du redigerer nå."
+                : "Lag et nytt flyoppdrag fra deljordene du har valgt."
+            }
           >
             <Plane className="h-4 w-4" />
-            Lagre som flyoppdrag
-          </Button>
+            {activeMission ? "Oppdater flyoppdrag" : "Lagre som flyoppdrag"}
+          </HoverActionButton>
           <p className="text-xs text-fb-text-secondary">
-            Denne knappen lager en ny plan av deljordene du har huket av i listen til venstre.
+            {activeMission
+              ? "Du redigerer et lagret oppdrag. Trykk her for å lagre endringene tilbake på samme oppdrag."
+              : "Denne knappen lager en ny plan av deljordene du har huket av i listen til venstre."}
           </p>
 
           <div className="space-y-2 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3">
@@ -641,16 +710,16 @@ export function PlanningPage({
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
+                    <HoverActionButton
                       type="button"
                       size="sm"
                       variant={activeMissionId === mission.id ? "default" : "outline"}
                       onClick={() => onSelectMission(mission.id)}
-                      title="Fokuser dette oppdraget i planleggingskartet og last inn planvalgene."
+                      help="Åpne dette oppdraget i planleggingen og last inn jordvalg, navn og parametre for videre redigering."
                     >
-                      {activeMissionId === mission.id ? "Fokusert i planlegging" : "Fokuser i planlegging"}
-                    </Button>
-                    <Button
+                      {activeMissionId === mission.id ? "Redigerer nå" : "Rediger i planlegging"}
+                    </HoverActionButton>
+                    <HoverActionButton
                       type="button"
                       size="sm"
                       variant="outline"
@@ -658,10 +727,11 @@ export function PlanningPage({
                       loading={missionExportBusyId === mission.id}
                       loadingLabel="Eksporterer"
                       disabled={!canEdit}
+                      help="Last ned dette oppdraget som eksportpakke."
                     >
                       <Download className="h-3.5 w-3.5" />
                       Eksporter
-                    </Button>
+                    </HoverActionButton>
                   </div>
                 </div>
               ))

@@ -2055,7 +2055,12 @@ export default function App() {
     [addLog, ensureAdminAccess, flightMissions, trackRequest],
   );
 
-  const handleSelectFlightMission = useCallback((missionId: number) => {
+  const handleSelectFlightMission = useCallback((missionId: number | null) => {
+    if (missionId == null) {
+      setActiveFlightMissionId(null);
+      setFlightMissionStatus("Klar for ny plan i planlegging.");
+      return;
+    }
     setActiveFlightMissionId(missionId);
     setFlightMissionFocusToken((current) => current + 1);
     const mission = flightMissions.find((item) => item.id === missionId);
