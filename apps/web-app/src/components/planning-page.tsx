@@ -33,6 +33,7 @@ interface PlanningPageProps {
   canEdit: boolean;
   missions: FlightMission[];
   activeMissionId: number | null;
+  missionFocusToken: number;
   missionExportBusyId: number | null;
   baseMapStyle: BaseMapStyle;
   mapGrayscale: boolean;
@@ -101,6 +102,7 @@ export function PlanningPage({
   canEdit,
   missions,
   activeMissionId,
+  missionFocusToken,
   missionExportBusyId,
   baseMapStyle,
   mapGrayscale,
@@ -129,6 +131,10 @@ export function PlanningPage({
   const selectedUnit = useMemo(
     () => units.find((item) => item.id === selectedUnitId) ?? null,
     [selectedUnitId, units],
+  );
+  const activeMission = useMemo(
+    () => missions.find((item) => item.id === activeMissionId) ?? null,
+    [activeMissionId, missions],
   );
   const previewFields = Array.isArray(preview?.fields) ? preview.fields : [];
   const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
@@ -226,6 +232,26 @@ export function PlanningPage({
     };
   }, [missionName, parameters, property, selectedDroneProfileId, selectedMissionUnitIds]);
 
+  useEffect(() => {
+    if (!activeMission) return;
+
+    const missionUnitIds = (
+      Array.isArray(activeMission.planning_unit_ids) && activeMission.planning_unit_ids.length > 0
+        ? activeMission.planning_unit_ids
+        : activeMission.fields
+            .map((field) => field.planning_unit_id)
+            .filter((unitId): unitId is number => typeof unitId === "number")
+    ).filter((unitId, index, items) => items.indexOf(unitId) === index);
+
+    if (missionUnitIds.length > 0) {
+      setSelectedMissionUnitIds(missionUnitIds);
+      setSelectedUnitId(missionUnitIds[0]);
+    }
+    setMissionName(activeMission.name ?? "");
+    setSelectedDroneProfileId((current) => activeMission.drone_profile_id || current);
+    setParameters(activeMission.parameters);
+  }, [activeMission]);
+
   const handleToggleMissionUnit = useCallback((unitId: number) => {
     setSelectedMissionUnitIds((current) =>
       current.includes(unitId) ? current.filter((item) => item !== unitId) : [...current, unitId],
@@ -303,6 +329,11 @@ export function PlanningPage({
             <p className="text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Planenheter</p>
             <h2 className="mt-1 text-lg font-semibold text-fb-text-primary">{propertyLabel ?? "Ingen aktiv eiendom"}</h2>
             <p className="mt-2 text-sm leading-6 text-fb-text-secondary">{unitsStatus}</p>
+            <div className="mt-3 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3 text-xs leading-5 text-fb-text-secondary">
+              <p><strong className="text-fb-text-primary">Synk:</strong> henter bondens jorder fra aktiv eiendom og oppdaterer listen.</p>
+              <p><strong className="text-fb-text-primary">Velg jord:</strong> klikk på et kort i listen og huk av <span className="font-medium text-fb-text-primary">Ta med i plan</span>.</p>
+              <p><strong className="text-fb-text-primary">Ny plan:</strong> sett navn, droneprofil og parametre, og trykk <span className="font-medium text-fb-text-primary">Lagre som flyoppdrag</span>.</p>
+            </div>
           </div>
           <div className="space-y-2 overflow-y-auto px-3 py-3">
             {units.map((unit) => {
@@ -373,11 +404,16 @@ export function PlanningPage({
             </Button>
           </div>
         </div>
+        <div className="border-b border-fb-border-subtle px-4 py-2 text-xs text-fb-text-secondary">
+          <span><strong className="text-fb-text-primary">Synk</strong> henter jorder fra aktiv eiendom.</span>{" "}
+          <span><strong className="text-fb-text-primary">Del jord</strong> lar deg klikke to punkter i kartet for å splitte valgt jord.</span>
+        </div>
         <div className="h-[min(70vh,48rem)]">
           <PlanningMap
             units={units}
             missions={missions}
             activeMissionId={activeMissionId}
+            missionFocusToken={missionFocusToken}
             selectedUnitId={selectedUnitId}
             selectedMissionUnitIds={selectedMissionUnitIds}
             splitMode={splitMode}
@@ -509,6 +545,9 @@ export function PlanningPage({
             <Plane className="h-4 w-4" />
             Lagre som flyoppdrag
           </Button>
+          <p className="text-xs text-fb-text-secondary">
+            Denne knappen lager en ny plan av deljordene du har huket av i listen til venstre.
+          </p>
 
           <div className="space-y-2 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-3 py-3">
             <div className="flex items-center justify-between gap-3">
@@ -546,8 +585,9 @@ export function PlanningPage({
                       size="sm"
                       variant={activeMissionId === mission.id ? "default" : "outline"}
                       onClick={() => onSelectMission(mission.id)}
+                      title="Fokuser dette oppdraget i planleggingskartet og last inn planvalgene."
                     >
-                      {activeMissionId === mission.id ? "Vises i planlegging" : "Vis i planlegging"}
+                      {activeMissionId === mission.id ? "Fokusert i planlegging" : "Fokuser i planlegging"}
                     </Button>
                     <Button
                       type="button"

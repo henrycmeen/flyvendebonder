@@ -302,6 +302,7 @@ export default function App() {
   const [flightMissions, setFlightMissions] = useState<FlightMission[]>([]);
   const [, setFlightMissionStatus] = useState("Flyoppdrag lastes ...");
   const [activeFlightMissionId, setActiveFlightMissionId] = useState<number | null>(null);
+  const [flightMissionFocusToken, setFlightMissionFocusToken] = useState(0);
   const [flightMissionExportBusyId, setFlightMissionExportBusyId] = useState<number | null>(null);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
@@ -2056,6 +2057,7 @@ export default function App() {
 
   const handleSelectFlightMission = useCallback((missionId: number) => {
     setActiveFlightMissionId(missionId);
+    setFlightMissionFocusToken((current) => current + 1);
     const mission = flightMissions.find((item) => item.id === missionId);
     if (!mission) return;
     setFlightMissionStatus(`Viser ${mission.name} i planlegging.`);
@@ -3304,6 +3306,7 @@ export default function App() {
                   canEdit={isAdminAuthenticated}
                   missions={flightMissions}
                   activeMissionId={activeFlightMissionId}
+                  missionFocusToken={flightMissionFocusToken}
                   missionExportBusyId={flightMissionExportBusyId}
                   baseMapStyle={baseMapStyle}
                   mapGrayscale={mapGrayscale}

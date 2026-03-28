@@ -13,6 +13,7 @@ interface PlanningMapProps {
   units: PlanningUnit[];
   missions: FlightMission[];
   activeMissionId: number | null;
+  missionFocusToken: number;
   selectedUnitId: number | null;
   selectedMissionUnitIds: number[];
   splitMode: boolean;
@@ -63,6 +64,7 @@ export function PlanningMap({
   units,
   missions,
   activeMissionId,
+  missionFocusToken,
   selectedUnitId,
   selectedMissionUnitIds,
   splitMode,
@@ -315,7 +317,7 @@ export function PlanningMap({
         }
       }
     }
-  }, [activeMission, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
+  }, [activeMission, missionFocusToken, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
 
   useEffect(() => {
     const layer = splitLayerRef.current;
