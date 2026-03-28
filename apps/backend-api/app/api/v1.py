@@ -137,6 +137,7 @@ from ..services.planning import (
     planning_unit_payload_from_field,
     planning_unit_payload_from_unit,
     split_planning_unit,
+    sync_confirmed_fields_from_candidates,
     sync_planning_units,
 )
 from ..services.photo_reprocess import reprocess_photos_for_user
@@ -1633,7 +1634,7 @@ def list_planning_drone_profiles() -> DroneProfileListResponse:
 
 
 @router.post("/planning/properties/{property_id}/sync", response_model=PlanningUnitSyncResponse)
-def sync_property_planning_units(
+async def sync_property_planning_units(
     property_id: int,
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
@@ -1642,6 +1643,26 @@ def sync_property_planning_units(
     property_obj = _require_current_property(db, user.id)
     if property_obj.id != property_id:
         raise HTTPException(status_code=400, detail="Planlegging kan bare synkes for aktiv eiendom")
+
+    existing_confirmed = (
+        db.execute(
+            select(FieldPlot.id)
+            .where(FieldPlot.property_id == property_obj.id, FieldPlot.status == "confirmed")
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if existing_confirmed is None:
+        try:
+            candidates = await list_field_candidates_for_property(property_obj)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Geonorge teigoppslag feilet under planleggingssynk",
+                extra={"property_id": property_obj.id, "error": str(exc)},
+            )
+            raise HTTPException(status_code=502, detail=f"Kunne ikke hente jorder fra Geonorge: {exc}") from exc
+        sync_confirmed_fields_from_candidates(db, property_obj=property_obj, candidates=candidates)
 
     units, created_count = sync_planning_units(db, property_obj=property_obj)
     db.commit()

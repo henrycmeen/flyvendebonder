@@ -166,7 +166,7 @@ export function PlanningPage({
       });
       setUnitsStatus(
         nextUnits.length === 0
-          ? "Ingen aktive planenheter ennå. Bekreft jorder først eller synk på nytt."
+          ? "Ingen aktive planenheter ennå. Synk for å hente jorder fra aktiv eiendom."
           : `${nextUnits.length} planenheter klare for deling og planlegging.`,
       );
     } catch (error) {

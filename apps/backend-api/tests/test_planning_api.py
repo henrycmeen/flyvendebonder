@@ -47,6 +47,44 @@ def test_planning_sync_creates_units_for_confirmed_fields_only_and_is_idempotent
     assert payload_two["count"] == 1
 
 
+def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client, monkeypatch):
+    import app.api.v1 as v1
+
+    async def fake_list_field_candidates_for_property(property_obj):
+        return [
+            {
+                "source": "geonorge",
+                "name": f"{property_obj.gnr}/{property_obj.bnr} · hovedteig",
+                "local_id": 42465981,
+                "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
+                "object_type": "Teig",
+                "accuracy_class": "Gult",
+                "is_main_area": True,
+                "distance_m": None,
+                "geometry": _sample_polygon(),
+                "area_m2": 2400.0,
+                "area_ha": 0.24,
+                "source_updated_at": None,
+            }
+        ]
+
+    monkeypatch.setattr(v1, "list_field_candidates_for_property", fake_list_field_candidates_for_property)
+
+    sync_response = client.post("/api/v1/planning/properties/1/sync")
+    assert sync_response.status_code == 200
+    payload = sync_response.json()
+    assert payload["created_count"] == 1
+    assert payload["count"] == 1
+    assert payload["units"][0]["name"] == "70/17 · hovedteig"
+
+    fields_response = client.get("/api/v1/fields")
+    assert fields_response.status_code == 200
+    fields_payload = fields_response.json()
+    assert fields_payload["count"] == 1
+    assert fields_payload["fields"][0]["source"] == "imported"
+    assert fields_payload["fields"][0]["status"] == "confirmed"
+
+
 def test_planning_split_archives_parent_and_creates_two_children(client):
     _create_field(client, name="Storjordet", status="confirmed")
     sync_response = client.post("/api/v1/planning/properties/1/sync")

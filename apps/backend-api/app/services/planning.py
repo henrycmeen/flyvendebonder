@@ -104,6 +104,60 @@ def shape_to_coordinates(raw_geometry_json: str) -> list[list[list[float]]]:
     return json.loads(raw_geometry_json)["coordinates"]
 
 
+def sync_confirmed_fields_from_candidates(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidates: list[dict[str, Any]],
+) -> int:
+    existing_fields = (
+        db.execute(
+            select(FieldPlot)
+            .where(FieldPlot.property_id == property_obj.id)
+            .order_by(FieldPlot.updated_at.desc(), FieldPlot.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    existing_geometry_keys = {
+        _geometry_key(normalize_polygon_coordinates(shape_to_coordinates(item.geometry_json))) for item in existing_fields
+    }
+
+    created_count = 0
+    for candidate in candidates:
+        geometry = candidate.get("geometry") if isinstance(candidate, dict) else None
+        if not isinstance(geometry, dict):
+            continue
+        if geometry.get("type") != "Polygon":
+            continue
+
+        coordinates = normalize_polygon_coordinates(geometry.get("coordinates") or [])
+        geometry_key = _geometry_key(coordinates)
+        if geometry_key in existing_geometry_keys:
+            continue
+
+        area_m2 = candidate.get("area_m2")
+        if area_m2 is None:
+            area_m2 = polygon_area_m2(coordinates)
+
+        item = FieldPlot(
+            property_id=property_obj.id,
+            name=str(candidate.get("name") or "").strip() or None,
+            source="imported",
+            status="confirmed",
+            geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
+            area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
+        )
+        db.add(item)
+        existing_geometry_keys.add(geometry_key)
+        created_count += 1
+
+    if created_count:
+        db.flush()
+
+    return created_count
+
+
 def sync_planning_units(db: Session, *, property_obj: Property) -> tuple[list[PlanningUnit], int]:
     fields = (
         db.execute(
@@ -238,3 +292,10 @@ def _to_list_coordinates(raw_coordinates: Any) -> list[list[list[float]]]:
     for ring in raw_coordinates:
         rings.append([[float(point[0]), float(point[1])] for point in ring])
     return rings
+
+
+def _geometry_key(coordinates: list[list[list[float]]]) -> tuple[tuple[tuple[float, float], ...], ...]:
+    return tuple(
+        tuple((round(float(point[0]), 9), round(float(point[1]), 9)) for point in ring)
+        for ring in coordinates
+    )
