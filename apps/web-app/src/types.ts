@@ -59,6 +59,13 @@ export interface GeoPoint {
   lng: number;
 }
 
+export interface NoGoBuffer {
+  id: string | null;
+  name: string | null;
+  center: GeoPoint;
+  radius_m: number;
+}
+
 export interface SamplingStrategy {
   type: string;
   radius_m: number;
@@ -124,6 +131,9 @@ export interface FlightMissionParameters {
   line_spacing_m: number;
   waypoint_spacing_m: number;
   route_angle_deg: number;
+  launch_point: GeoPoint | null;
+  landing_point: GeoPoint | null;
+  no_go_buffers: NoGoBuffer[];
 }
 
 export interface FlightMissionWarning {
@@ -201,6 +211,7 @@ export interface PlanningUnit {
   area_m2: number | null;
   area_ha: number | null;
   source_field_name: string;
+  source_field_status: FieldPlotStatus;
   is_split: boolean;
   latest_mission_id: number | null;
   latest_mission_name: string | null;
@@ -227,9 +238,11 @@ export interface PlanningUnitSplitResponse {
 
 export interface PlanningPointResolveResponse {
   property_id: number;
+  property_label: string | null;
   unit: PlanningUnit;
   imported_field: boolean;
   created_unit: boolean;
+  property_created: boolean;
   candidate_name: string | null;
   matrikkelnummer: string | null;
   distance_m: number | null;
@@ -243,6 +256,10 @@ export interface DroneProfile {
   waypoint_turn_overhead_s: number;
   max_flight_time_s: number;
   reserve_percent: number;
+  ground_footprint_width_ratio: number;
+  ground_footprint_height_ratio: number;
+  target_side_overlap: number;
+  target_front_overlap: number;
 }
 
 export interface DroneProfileListResponse {
@@ -265,6 +282,9 @@ export interface FieldCandidate {
   area_m2: number | null;
   area_ha: number | null;
   source_updated_at: string | null;
+  ar5_class: string | null;
+  land_use_kind: string;
+  land_use_label: string;
 }
 
 export interface FieldCandidateListResponse {

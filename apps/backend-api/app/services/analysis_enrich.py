@@ -69,6 +69,20 @@ _AR5_NON_FIELD_HINT_KEYWORDS = {
     "forest",
 }
 
+_AR5_FIELD_HINTS = {
+    "fulldyrka jord",
+    "overflatedyrka jord",
+    "innmarksbeite",
+}
+
+_AR5_FIELD_HINT_KEYWORDS = {
+    "dyrka",
+    "jord",
+    "beite",
+    "åker",
+    "eng",
+}
+
 _PHOTO_ANALYSIS_ESTIMATED_FALLBACK_DISTANCE_M = 120.0
 _PHOTO_ANALYSIS_ESTIMATED_FALLBACK_SCORE_THRESHOLD = 1
 
@@ -308,6 +322,38 @@ def _is_off_field_ar5(value: str | None) -> bool:
         return True
 
     return any(keyword in normalized for keyword in _AR5_NON_FIELD_HINT_KEYWORDS)
+
+
+def classify_land_use_from_ar5(value: str | None) -> tuple[str, str]:
+    normalized = _normalize_class_value(value)
+    if not normalized:
+        return "unknown", "Uavklart"
+
+    if normalized in _AR5_FIELD_HINTS or any(keyword in normalized for keyword in _AR5_FIELD_HINT_KEYWORDS):
+        return "field", "Jord"
+
+    if _is_off_field_ar5(value):
+        if "skog" in normalized or "forest" in normalized:
+            return "forest", "Skog"
+        return "other", "Ikke jord"
+
+    return "unknown", "Uavklart"
+
+
+def lookup_ar5_class_at_point(lat: float, lng: float) -> str | None:
+    if not settings.photo_ar5_wms_url or not settings.photo_ar5_wms_layers:
+        return None
+    ar5_hints = _split_comma_values(settings.photo_ar5_wms_layer_fields) or _split_comma_values(settings.photo_ar5_layer_fields)
+    return _query_layer_value(
+        lat=lat,
+        lng=lng,
+        url_wms=settings.photo_ar5_wms_url,
+        layers_wms=settings.photo_ar5_wms_layers,
+        field_hints=ar5_hints,
+        url_wfs=settings.photo_ar5_wfs_url,
+        layers_wfs=settings.photo_ar5_wfs_layers,
+        layer_fields_fallback=_split_comma_values(settings.photo_ar5_layer_fields),
+    )
 
 
 def _analysis_context_score(ar5_value: str | None, soil_value: str | None) -> int:

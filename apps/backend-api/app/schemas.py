@@ -142,6 +142,13 @@ class GeoPoint(BaseModel):
     lng: float
 
 
+class NoGoBuffer(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    center: GeoPoint
+    radius_m: float = Field(gt=0, le=500)
+
+
 class GeoJSONPoint(BaseModel):
     type: str
     coordinates: list[float]
@@ -162,6 +169,7 @@ FieldPlotSource = Literal["manual", "suggested", "imported"]
 
 
 class FieldPlotCreate(BaseModel):
+    property_id: int | None = None
     name: str | None = None
     source: FieldPlotSource = "manual"
     status: FieldPlotStatus = "draft"
@@ -241,6 +249,7 @@ class PlanningUnitOut(BaseModel):
     area_m2: float | None = None
     area_ha: float | None = None
     source_field_name: str
+    source_field_status: FieldPlotStatus
     is_split: bool = False
     latest_mission_id: int | None = None
     latest_mission_name: str | None = None
@@ -277,9 +286,11 @@ class PlanningPointResolveIn(BaseModel):
 
 class PlanningPointResolveOut(BaseModel):
     property_id: int
+    property_label: str | None = None
     unit: PlanningUnitOut
     imported_field: bool = False
     created_unit: bool = False
+    property_created: bool = False
     candidate_name: str | None = None
     matrikkelnummer: str | None = None
     distance_m: int | None = None
@@ -293,6 +304,10 @@ class DroneProfileOut(BaseModel):
     waypoint_turn_overhead_s: int
     max_flight_time_s: int
     reserve_percent: float
+    ground_footprint_width_ratio: float
+    ground_footprint_height_ratio: float
+    target_side_overlap: float
+    target_front_overlap: float
 
 
 class DroneProfileListResponse(BaseModel):
@@ -309,9 +324,13 @@ class FlightMissionParameters(BaseModel):
     line_spacing_m: float = Field(default=18.0, gt=0, le=200)
     waypoint_spacing_m: float = Field(default=18.0, gt=0, le=200)
     route_angle_deg: float = Field(default=0.0, ge=0, le=180)
+    launch_point: GeoPoint | None = None
+    landing_point: GeoPoint | None = None
+    no_go_buffers: list[NoGoBuffer] = Field(default_factory=list)
 
 
 class FlightMissionCreate(BaseModel):
+    property_id: int | None = None
     name: str | None = None
     field_ids: list[int] = Field(default_factory=list)
     planning_unit_ids: list[int] = Field(default_factory=list)
@@ -326,6 +345,7 @@ class FlightMissionCreate(BaseModel):
 
 
 class FlightMissionPatch(BaseModel):
+    property_id: int | None = None
     name: str | None = None
     field_ids: list[int] | None = None
     planning_unit_ids: list[int] | None = None
@@ -650,6 +670,9 @@ class FieldCandidateOut(BaseModel):
     area_m2: float | None = None
     area_ha: float | None = None
     source_updated_at: datetime | None = None
+    ar5_class: str | None = None
+    land_use_kind: str = "unknown"
+    land_use_label: str = "Uavklart"
 
 
 class FieldCandidateListResponse(BaseModel):

@@ -25,6 +25,10 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "waypoint_turn_overhead_s": 4,
         "max_flight_time_s": 1800,
         "reserve_percent": 0.2,
+        "ground_footprint_width_ratio": 1.35,
+        "ground_footprint_height_ratio": 1.35,
+        "target_side_overlap": 0.72,
+        "target_front_overlap": 0.72,
     },
     {
         "id": "dji-mavic-3-enterprise",
@@ -34,6 +38,10 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "waypoint_turn_overhead_s": 3,
         "max_flight_time_s": 2400,
         "reserve_percent": 0.2,
+        "ground_footprint_width_ratio": 1.55,
+        "ground_footprint_height_ratio": 1.55,
+        "target_side_overlap": 0.75,
+        "target_front_overlap": 0.78,
     },
     {
         "id": "dji-matrice-30t",
@@ -43,6 +51,10 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "waypoint_turn_overhead_s": 3,
         "max_flight_time_s": 2100,
         "reserve_percent": 0.22,
+        "ground_footprint_width_ratio": 1.55,
+        "ground_footprint_height_ratio": 1.55,
+        "target_side_overlap": 0.75,
+        "target_front_overlap": 0.78,
     },
 ]
 
@@ -59,6 +71,22 @@ def get_drone_profile(profile_id: str | None) -> dict[str, Any] | None:
         if profile["id"] == normalized:
             return dict(profile)
     return None
+
+
+def suggest_spacing_for_profile(
+    profile: dict[str, Any] | None,
+    *,
+    altitude_m: float,
+) -> dict[str, float] | None:
+    if profile is None or not math.isfinite(altitude_m) or altitude_m <= 0:
+        return None
+
+    footprint_width_m = float(altitude_m) * float(profile["ground_footprint_width_ratio"])
+    footprint_height_m = float(altitude_m) * float(profile["ground_footprint_height_ratio"])
+    return {
+        "line_spacing_m": max(1.0, round(footprint_width_m * (1 - float(profile["target_side_overlap"])), 1)),
+        "waypoint_spacing_m": max(1.0, round(footprint_height_m * (1 - float(profile["target_front_overlap"])), 1)),
+    }
 
 
 def planning_duration_status(estimated_duration_s: float | None, profile: dict[str, Any] | None) -> str | None:
@@ -129,11 +157,12 @@ def find_field_plot_for_geometry(
     return None
 
 
-def create_confirmed_field_from_candidate(
+def create_field_from_candidate(
     db: Session,
     *,
     property_obj: Property,
     candidate: dict[str, Any],
+    status: str = "draft",
 ) -> FieldPlot:
     geometry = candidate.get("geometry") if isinstance(candidate, dict) else None
     if not isinstance(geometry, dict):
@@ -150,7 +179,7 @@ def create_confirmed_field_from_candidate(
         property_id=property_obj.id,
         name=str(candidate.get("name") or "").strip() or None,
         source="imported",
-        status="confirmed",
+        status=status,
         geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
         area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
     )
@@ -197,11 +226,12 @@ def ensure_active_planning_unit_for_field(
     return item, True
 
 
-def sync_confirmed_fields_from_candidates(
+def sync_fields_from_candidates(
     db: Session,
     *,
     property_obj: Property,
     candidates: list[dict[str, Any]],
+    status: str = "draft",
 ) -> int:
     created_count = 0
     for candidate in candidates:
@@ -214,7 +244,7 @@ def sync_confirmed_fields_from_candidates(
         if find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry) is not None:
             continue
 
-        create_confirmed_field_from_candidate(db, property_obj=property_obj, candidate=candidate)
+        create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status=status)
         created_count += 1
 
     return created_count
@@ -224,7 +254,7 @@ def sync_planning_units(db: Session, *, property_obj: Property) -> tuple[list[Pl
     fields = (
         db.execute(
             select(FieldPlot)
-            .where(FieldPlot.property_id == property_obj.id, FieldPlot.status == "confirmed")
+            .where(FieldPlot.property_id == property_obj.id, FieldPlot.status.in_(("draft", "confirmed")))
             .order_by(FieldPlot.updated_at.desc(), FieldPlot.id.desc())
         )
         .scalars()
@@ -250,6 +280,17 @@ def sync_planning_units(db: Session, *, property_obj: Property) -> tuple[list[Pl
     for field in fields:
         active_units = active_by_source.get(field.id, [])
         if active_units:
+            if len(active_units) == 1:
+                unit = active_units[0]
+                if unit.parent_unit_id is None:
+                    geometry_json = field.geometry_json
+                    area_m2 = round(
+                        field.area_m2 or polygon_area_m2(normalize_polygon_coordinates(shape_to_coordinates(geometry_json))),
+                        2,
+                    )
+                    unit.name = planning_unit_field_name(field)
+                    unit.geometry_json = geometry_json
+                    unit.area_m2 = area_m2
             continue
 
         geometry_json = field.geometry_json

@@ -562,6 +562,9 @@ export function MapCanvas({
     const propertyPane = map.getPane("propertyPane");
     if (propertyPane) {
       propertyPane.style.zIndex = "420";
+      propertyPane.style.pointerEvents = "none";
+      propertyPane.style.filter = "hue-rotate(170deg) saturate(1.35) brightness(0.98)";
+      propertyPane.style.mixBlendMode = "screen";
     }
 
     map.createPane("soilPane");

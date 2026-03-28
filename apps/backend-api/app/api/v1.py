@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
@@ -118,6 +118,7 @@ from ..services.gardskart import get_job_id
 from ..services.geonorge_teiger import (
     list_field_candidates_for_property,
     lookup_field_candidates_by_point,
+    lookup_field_candidates_by_point_any,
 )
 from ..services.imports import run_photo_ingest
 from ..services.media_staging import (
@@ -133,7 +134,7 @@ from ..services.flight_missions import (
     build_flight_mission_payload,
 )
 from ..services.planning import (
-    create_confirmed_field_from_candidate,
+    create_field_from_candidate,
     ensure_active_planning_unit_for_field,
     find_field_plot_for_geometry,
     get_drone_profile,
@@ -142,7 +143,7 @@ from ..services.planning import (
     planning_unit_payload_from_field,
     planning_unit_payload_from_unit,
     split_planning_unit,
-    sync_confirmed_fields_from_candidates,
+    sync_fields_from_candidates,
     sync_planning_units,
 )
 from ..services.photo_reprocess import reprocess_photos_for_user
@@ -238,6 +239,59 @@ def _active_properties(db: Session, user_id: int) -> list[Property]:
 def _active_property_by_id(db: Session, user_id: int, property_id: int) -> Property | None:
     properties = _active_properties(db, user_id)
     return next((item for item in properties if item.id == property_id), None)
+
+
+def _ensure_user_property(
+    db: Session,
+    *,
+    user_id: int,
+    komm: str,
+    gnr: int,
+    bnr: int,
+    fnr: int = 0,
+    label: str | None = None,
+) -> tuple[Property, bool]:
+    item = (
+        db.execute(
+            select(Property).where(
+                Property.user_id == user_id,
+                Property.komm == komm,
+                Property.gnr == gnr,
+                Property.bnr == bnr,
+                Property.fnr == fnr,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is not None:
+        changed = False
+        if item.active_to is not None:
+            item.active_to = None
+            changed = True
+        if item.active_from is None:
+            item.active_from = date_type.today()
+            changed = True
+        if label and not item.label:
+            item.label = label
+            changed = True
+        if changed:
+            db.flush()
+        return item, False
+
+    item = Property(
+        user_id=user_id,
+        komm=komm,
+        gnr=gnr,
+        bnr=bnr,
+        fnr=fnr,
+        label=label,
+        active_from=date_type.today(),
+        active_to=None,
+    )
+    db.add(item)
+    db.flush()
+    return item, True
 
 
 def _profile_out(db: Session, user: User) -> ProfileOut:
@@ -369,6 +423,66 @@ def _require_current_property(db: Session, user_id: int) -> Property:
     return property_obj
 
 
+def _require_active_property(db: Session, user_id: int, property_id: int | None) -> Property:
+    if property_id is None:
+        return _require_current_property(db, user_id)
+    property_obj = _active_property_by_id(db, user_id, property_id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
+    return property_obj
+
+
+def _active_property_ids(db: Session, user_id: int) -> list[int]:
+    return [item.id for item in _active_properties(db, user_id)]
+
+
+def _require_user_field_plot(db: Session, *, user_id: int, field_id: int) -> FieldPlot:
+    property_ids = _active_property_ids(db, user_id)
+    item = (
+        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id.in_(property_ids or [-1])))
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+    return item
+
+
+def _require_user_flight_mission(db: Session, *, user_id: int, mission_id: int) -> FlightMission:
+    property_ids = _active_property_ids(db, user_id)
+    item = (
+        db.execute(
+            select(FlightMission).where(
+                FlightMission.id == mission_id,
+                FlightMission.property_id.in_(property_ids or [-1]),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+    return item
+
+
+def _require_user_planning_unit(db: Session, *, user_id: int, unit_id: int) -> PlanningUnit:
+    property_ids = _active_property_ids(db, user_id)
+    item = (
+        db.execute(
+            select(PlanningUnit).where(
+                PlanningUnit.id == unit_id,
+                PlanningUnit.property_id.in_(property_ids or [-1]),
+                PlanningUnit.status == "active",
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke aktiv planenhet")
+    return item
+
+
 def _normalize_field_name(value: str | None) -> str | None:
     if value is None:
         return None
@@ -484,6 +598,7 @@ def _planning_unit_out(
     item: PlanningUnit,
     *,
     source_field_name: str,
+    source_field_status: str = "draft",
     latest_mission_id: int | None = None,
     latest_mission_name: str | None = None,
     latest_duration_status: str | None = None,
@@ -501,6 +616,7 @@ def _planning_unit_out(
         area_m2=area_m2,
         area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
         source_field_name=source_field_name,
+        source_field_status=source_field_status,
         is_split=item.parent_unit_id is not None,
         latest_mission_id=latest_mission_id,
         latest_mission_name=latest_mission_name,
@@ -1264,6 +1380,7 @@ def _planning_unit_list_response(
             _planning_unit_out(
                 unit,
                 source_field_name=planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}",
+                source_field_status=source_field.status if source_field else "draft",
                 latest_mission_id=latest_mission.id if latest_mission else None,
                 latest_mission_name=(latest_mission.name or f"Oppdrag {latest_mission.id}").strip() if latest_mission else None,
                 latest_duration_status=latest_mission.duration_status if latest_mission else None,
@@ -1502,7 +1619,7 @@ def create_field_plot(
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
+    property_obj = _require_active_property(db, user.id, payload.property_id)
     geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
 
     item = FieldPlot(
@@ -1532,14 +1649,7 @@ def patch_field_plot(
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
-        .scalars()
-        .first()
-    )
-    if item is None:
-        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+    item = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
 
     if "name" in payload.model_fields_set:
         item.name = _normalize_field_name(payload.name)
@@ -1562,15 +1672,14 @@ def delete_field_plot(
     db: Session = Depends(get_db),
 ) -> FieldPlotDeleteResponse:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
-        .scalars()
-        .first()
-    )
-    if item is None:
-        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+    item = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
 
+    db.execute(
+        delete(PlanningUnit).where(
+            PlanningUnit.property_id == item.property_id,
+            PlanningUnit.source_field_plot_id == field_id,
+        )
+    )
     db.delete(item)
     db.commit()
     return FieldPlotDeleteResponse(status="deleted", field_id=field_id)
@@ -1645,29 +1754,17 @@ async def sync_property_planning_units(
     db: Session = Depends(get_db),
 ) -> PlanningUnitSyncResponse:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    if property_obj.id != property_id:
-        raise HTTPException(status_code=400, detail="Planlegging kan bare synkes for aktiv eiendom")
+    property_obj = _require_active_property(db, user.id, property_id)
 
-    existing_confirmed = (
-        db.execute(
-            select(FieldPlot.id)
-            .where(FieldPlot.property_id == property_obj.id, FieldPlot.status == "confirmed")
-            .limit(1)
+    try:
+        candidates = await list_field_candidates_for_property(property_obj)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge teigoppslag feilet under planleggingssynk",
+            extra={"property_id": property_obj.id, "error": str(exc)},
         )
-        .scalars()
-        .first()
-    )
-    if existing_confirmed is None:
-        try:
-            candidates = await list_field_candidates_for_property(property_obj)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception(
-                "Geonorge teigoppslag feilet under planleggingssynk",
-                extra={"property_id": property_obj.id, "error": str(exc)},
-            )
-            raise HTTPException(status_code=502, detail=f"Kunne ikke hente jorder fra Geonorge: {exc}") from exc
-        sync_confirmed_fields_from_candidates(db, property_obj=property_obj, candidates=candidates)
+        raise HTTPException(status_code=502, detail=f"Kunne ikke hente jorder fra Geonorge: {exc}") from exc
+    sync_fields_from_candidates(db, property_obj=property_obj, candidates=candidates, status="draft")
 
     units, created_count = sync_planning_units(db, property_obj=property_obj)
     db.commit()
@@ -1678,9 +1775,7 @@ async def sync_property_planning_units(
 @router.get("/planning/properties/{property_id}/units", response_model=PlanningUnitListResponse)
 def list_property_planning_units(property_id: int, db: Session = Depends(get_db)) -> PlanningUnitListResponse:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    if property_obj.id != property_id:
-        raise HTTPException(status_code=400, detail="Planlegging kan bare vises for aktiv eiendom")
+    property_obj = _require_active_property(db, user.id, property_id)
 
     units = (
         db.execute(
@@ -1702,17 +1797,8 @@ def split_property_planning_unit(
     db: Session = Depends(get_db),
 ) -> PlanningUnitSplitOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    unit = (
-        db.execute(
-            select(PlanningUnit)
-            .where(PlanningUnit.id == unit_id, PlanningUnit.property_id == property_obj.id, PlanningUnit.status == "active")
-        )
-        .scalars()
-        .first()
-    )
-    if unit is None:
-        raise HTTPException(status_code=404, detail="Fant ikke aktiv planenhet")
+    unit = _require_user_planning_unit(db, user_id=user.id, unit_id=unit_id)
+    property_obj = _require_active_property(db, user.id, unit.property_id)
 
     try:
         split_parts = split_planning_unit(unit, line_coordinates=payload.line.coordinates)
@@ -1749,9 +1835,87 @@ def split_property_planning_unit(
         db.refresh(item)
     db.refresh(unit)
     source_field_name = planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}"
+    source_field_status = source_field.status if source_field else "draft"
     return PlanningUnitSplitOut(
-        archived_unit=_planning_unit_out(unit, source_field_name=source_field_name),
-        created_units=[_planning_unit_out(item, source_field_name=source_field_name) for item in created_units],
+        archived_unit=_planning_unit_out(unit, source_field_name=source_field_name, source_field_status=source_field_status),
+        created_units=[
+            _planning_unit_out(item, source_field_name=source_field_name, source_field_status=source_field_status)
+            for item in created_units
+        ],
+    )
+
+
+@router.post("/planning/resolve-point", response_model=PlanningPointResolveOut)
+async def resolve_owned_planning_point(
+    payload: PlanningPointResolveIn = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> PlanningPointResolveOut:
+    user = _current_user(db)
+    try:
+        candidates = await lookup_field_candidates_by_point_any(
+            lat=payload.lat,
+            lng=payload.lng,
+            radius_m=payload.radius_m,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Geonorge punktoppslag feilet under generelt planleggingsoppslag",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(status_code=502, detail=f"Kunne ikke finne teig fra punkt: {exc}") from exc
+
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Fant ingen teig på dette punktet")
+
+    candidate = candidates[0]
+    property_ref = candidate.get("property_ref")
+    if not isinstance(property_ref, dict):
+        raise HTTPException(status_code=400, detail="Kandidaten mangler matrikkeldata")
+    komm = str(property_ref.get("komm") or "").strip()
+    gnr = property_ref.get("gnr")
+    bnr = property_ref.get("bnr")
+    fnr = property_ref.get("fnr") or 0
+    if not komm or gnr is None or bnr is None:
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig gårds- og bruksnummer")
+
+    property_obj, property_created = _ensure_user_property(
+        db,
+        user_id=user.id,
+        komm=komm,
+        gnr=int(gnr),
+        bnr=int(bnr),
+        fnr=int(fnr),
+        label=str(property_ref.get("label") or "").strip() or None,
+    )
+    geometry = candidate.get("geometry")
+    if not isinstance(geometry, dict):
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
+
+    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
+    imported_field = field is None
+    if field is None:
+        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
+
+    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
+    db.commit()
+    db.refresh(unit)
+    db.refresh(field)
+
+    return PlanningPointResolveOut(
+        property_id=property_obj.id,
+        property_label=property_obj.label,
+        unit=_planning_unit_out(
+            unit,
+            source_field_name=planning_unit_field_name(field),
+            source_field_status=field.status,
+        ),
+        imported_field=imported_field,
+        created_unit=created_unit,
+        property_created=property_created,
+        candidate_name=str(candidate.get("name") or "").strip() or None,
+        matrikkelnummer=str(candidate.get("matrikkelnummer") or "").strip() or None,
+        distance_m=int(candidate["distance_m"]) if candidate.get("distance_m") is not None else None,
     )
 
 
@@ -1763,9 +1927,7 @@ async def resolve_property_planning_point(
     db: Session = Depends(get_db),
 ) -> PlanningPointResolveOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    if property_obj.id != property_id:
-        raise HTTPException(status_code=400, detail="Planlegging kan bare brukes for aktiv eiendom")
+    property_obj = _require_active_property(db, user.id, property_id)
 
     try:
         candidates = await lookup_field_candidates_by_point(
@@ -1792,7 +1954,7 @@ async def resolve_property_planning_point(
     field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
     imported_field = field is None
     if field is None:
-        field = create_confirmed_field_from_candidate(db, property_obj=property_obj, candidate=candidate)
+        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
 
     unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
     db.commit()
@@ -1801,9 +1963,15 @@ async def resolve_property_planning_point(
 
     return PlanningPointResolveOut(
         property_id=property_obj.id,
-        unit=_planning_unit_out(unit, source_field_name=planning_unit_field_name(field)),
+        property_label=property_obj.label,
+        unit=_planning_unit_out(
+            unit,
+            source_field_name=planning_unit_field_name(field),
+            source_field_status=field.status,
+        ),
         imported_field=imported_field,
         created_unit=created_unit,
+        property_created=False,
         candidate_name=str(candidate.get("name") or "").strip() or None,
         matrikkelnummer=str(candidate.get("matrikkelnummer") or "").strip() or None,
         distance_m=int(candidate["distance_m"]) if candidate.get("distance_m") is not None else None,
@@ -1811,9 +1979,12 @@ async def resolve_property_planning_point(
 
 
 @router.get("/flight-missions", response_model=FlightMissionListResponse)
-def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResponse:
+def list_flight_missions(
+    property_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> FlightMissionListResponse:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
+    property_obj = _require_active_property(db, user.id, property_id)
     missions = (
         db.execute(
             select(FlightMission)
@@ -1833,10 +2004,11 @@ def list_flight_missions(db: Session = Depends(get_db)) -> FlightMissionListResp
 @router.post("/flight-missions/preview", response_model=FlightMissionPreviewOut)
 def preview_flight_mission(
     payload: FlightMissionCreate = Body(...),
+    property_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> FlightMissionPreviewOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
+    property_obj = _require_active_property(db, user.id, payload.property_id if payload.property_id is not None else property_id)
     mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
     return _flight_mission_preview_out(mission_payload)
 
@@ -1844,11 +2016,12 @@ def preview_flight_mission(
 @router.post("/flight-missions", response_model=FlightMissionOut, status_code=status.HTTP_201_CREATED)
 def create_flight_mission(
     payload: FlightMissionCreate = Body(...),
+    property_id: int | None = Query(default=None),
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> FlightMissionOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
+    property_obj = _require_active_property(db, user.id, payload.property_id if payload.property_id is not None else property_id)
     mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
 
     item = FlightMission(
@@ -1874,20 +2047,14 @@ def create_flight_mission(
 
 
 @router.get("/flight-missions/{mission_id}", response_model=FlightMissionOut)
-def get_flight_mission(mission_id: int, db: Session = Depends(get_db)) -> FlightMissionOut:
+def get_flight_mission(
+    mission_id: int,
+    property_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> FlightMissionOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(
-            select(FlightMission).where(
-                FlightMission.id == mission_id,
-                FlightMission.property_id == property_obj.id,
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if item is None:
+    item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
+    if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
     return _flight_mission_out(item)
 
@@ -1896,23 +2063,17 @@ def get_flight_mission(mission_id: int, db: Session = Depends(get_db)) -> Flight
 def patch_flight_mission(
     mission_id: int,
     payload: FlightMissionPatch = Body(default_factory=FlightMissionPatch),
+    property_id: int | None = Query(default=None),
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> FlightMissionOut:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(
-            select(FlightMission).where(
-                FlightMission.id == mission_id,
-                FlightMission.property_id == property_obj.id,
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if item is None:
+    item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
+    if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+    if payload.property_id is not None and payload.property_id != item.property_id:
+        raise HTTPException(status_code=400, detail="Et lagret flyoppdrag kan ikke flyttes til en annen eiendom")
+    property_obj = _require_active_property(db, user.id, item.property_id)
 
     mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload, existing=item)
 
@@ -1936,25 +2097,33 @@ def patch_flight_mission(
     return _flight_mission_out(item)
 
 
-@router.post("/flight-missions/{mission_id}/export")
-def export_flight_mission(
+@router.delete("/flight-missions/{mission_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_flight_mission(
     mission_id: int,
+    property_id: int | None = Query(default=None),
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> Response:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(
-            select(FlightMission).where(
-                FlightMission.id == mission_id,
-                FlightMission.property_id == property_obj.id,
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if item is None:
+    item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
+    if property_id is not None and property_id != item.property_id:
+        raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
+
+    db.delete(item)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/flight-missions/{mission_id}/export")
+def export_flight_mission(
+    mission_id: int,
+    property_id: int | None = Query(default=None),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> Response:
+    user = _current_user(db)
+    item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
+    if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
     try:
@@ -1979,22 +2148,13 @@ def export_flight_mission(
 @router.get("/flight-missions/{mission_id}/route.geojson")
 def export_flight_mission_route_geojson(
     mission_id: int,
+    property_id: int | None = Query(default=None),
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> Response:
     user = _current_user(db)
-    property_obj = _require_current_property(db, user.id)
-    item = (
-        db.execute(
-            select(FlightMission).where(
-                FlightMission.id == mission_id,
-                FlightMission.property_id == property_obj.id,
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if item is None:
+    item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
+    if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
     route_geojson = json.loads(item.route_geojson_json)

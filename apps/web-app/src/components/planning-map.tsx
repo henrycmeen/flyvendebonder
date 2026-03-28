@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
-import type { FlightMission, GeoPoint, PlanningUnit } from "@/types";
+import type { FlightMission, GeoJSONPolygon, GeoPoint, NoGoBuffer, PlanningUnit } from "@/types";
 
 type LatLngPair = [number, number];
 type LeafletContainer = HTMLDivElement & {
@@ -12,13 +12,26 @@ type LeafletContainer = HTMLDivElement & {
 interface PlanningMapProps {
   units: PlanningUnit[];
   missions: FlightMission[];
+  previewSuggestion: {
+    key: string;
+    name: string;
+    propertyLabel: string;
+    geometry: GeoJSONPolygon;
+  } | null;
+  suggestionFocusToken: number;
   activeMissionId: number | null;
   missionFocusToken: number;
   selectedUnitId: number | null;
-  selectedMissionUnitIds: number[];
-  findMode: boolean;
+  editMode: boolean;
+  resolveOnMapClick: boolean;
   splitMode: boolean;
+  launchMode: boolean;
+  landingMode: boolean;
+  noGoMode: boolean;
   splitPoints: GeoPoint[];
+  launchPoint: GeoPoint | null;
+  landingPoint: GeoPoint | null;
+  noGoBuffers: NoGoBuffer[];
   baseMapStyle: BaseMapStyle;
   showZoomControls: boolean;
   mapGrayscale: boolean;
@@ -26,6 +39,10 @@ interface PlanningMapProps {
   onSelectUnit: (unitId: number) => void;
   onResolvePoint: (point: GeoPoint) => void;
   onAddSplitPoint: (point: GeoPoint) => void;
+  onSetLaunchPoint: (point: GeoPoint) => void;
+  onSetLandingPoint: (point: GeoPoint) => void;
+  onAddNoGoBuffer: (point: GeoPoint) => void;
+  onUnitGeometryChange: (geometry: GeoJSONPolygon) => void;
 }
 
 function resetLeafletContainer(container: LeafletContainer): void {
@@ -55,6 +72,17 @@ function toLineLatLngs(raw: unknown): LatLngPair[] {
   });
 }
 
+function toPolygonCoordinates(points: LatLngPair[]): number[][][] {
+  if (points.length === 0) return [];
+  const ring = points.map(([lat, lng]) => [lng, lat]);
+  const [firstLng, firstLat] = ring[0];
+  const [lastLng, lastLat] = ring[ring.length - 1];
+  if (firstLng !== lastLng || firstLat !== lastLat) {
+    ring.push([firstLng, firstLat]);
+  }
+  return [ring];
+}
+
 function polygonLabel(name: string): L.DivIcon {
   return L.divIcon({
     className: "fb-field-label-shell",
@@ -65,13 +93,21 @@ function polygonLabel(name: string): L.DivIcon {
 export function PlanningMap({
   units,
   missions,
+  previewSuggestion,
+  suggestionFocusToken,
   activeMissionId,
   missionFocusToken,
   selectedUnitId,
-  selectedMissionUnitIds,
-  findMode,
+  editMode,
+  resolveOnMapClick,
   splitMode,
+  launchMode,
+  landingMode,
+  noGoMode,
   splitPoints,
+  launchPoint,
+  landingPoint,
+  noGoBuffers,
   baseMapStyle,
   showZoomControls,
   mapGrayscale,
@@ -79,6 +115,10 @@ export function PlanningMap({
   onSelectUnit,
   onResolvePoint,
   onAddSplitPoint,
+  onSetLaunchPoint,
+  onSetLandingPoint,
+  onAddNoGoBuffer,
+  onUnitGeometryChange,
 }: PlanningMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -86,8 +126,9 @@ export function PlanningMap({
   const unitLayerRef = useRef<L.LayerGroup | null>(null);
   const missionLayerRef = useRef<L.LayerGroup | null>(null);
   const splitLayerRef = useRef<L.LayerGroup | null>(null);
+  const handleLayerRef = useRef<L.LayerGroup | null>(null);
+  const suggestionLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
-  const selectedMissionUnitIdsSet = useMemo(() => new Set(selectedMissionUnitIds), [selectedMissionUnitIds]);
   const activeMission = useMemo(
     () => missions.find((mission) => mission.id === activeMissionId) ?? null,
     [activeMissionId, missions],
@@ -108,10 +149,14 @@ export function PlanningMap({
     map.getPane("planningMissionPane")!.style.zIndex = "585";
     map.createPane("planningSplitPane");
     map.getPane("planningSplitPane")!.style.zIndex = "620";
+    map.createPane("planningHandlePane");
+    map.getPane("planningHandlePane")!.style.zIndex = "640";
 
     unitLayerRef.current = L.layerGroup().addTo(map);
     missionLayerRef.current = L.layerGroup().addTo(map);
     splitLayerRef.current = L.layerGroup().addTo(map);
+    handleLayerRef.current = L.layerGroup().addTo(map);
+    suggestionLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
     return () => {
@@ -121,6 +166,8 @@ export function PlanningMap({
       unitLayerRef.current = null;
       missionLayerRef.current = null;
       splitLayerRef.current = null;
+      handleLayerRef.current = null;
+      suggestionLayerRef.current = null;
     };
   }, [showZoomControls]);
 
@@ -178,7 +225,19 @@ export function PlanningMap({
         onAddSplitPoint(point);
         return;
       }
-      if (findMode) {
+      if (launchMode) {
+        onSetLaunchPoint(point);
+        return;
+      }
+      if (landingMode) {
+        onSetLandingPoint(point);
+        return;
+      }
+      if (noGoMode) {
+        onAddNoGoBuffer(point);
+        return;
+      }
+      if (resolveOnMapClick && !editMode) {
         onResolvePoint(point);
       }
     };
@@ -186,7 +245,19 @@ export function PlanningMap({
     return () => {
       map.off("click", handleClick);
     };
-  }, [findMode, onAddSplitPoint, onResolvePoint, splitMode]);
+  }, [
+    editMode,
+    landingMode,
+    launchMode,
+    noGoMode,
+    onAddNoGoBuffer,
+    onAddSplitPoint,
+    onResolvePoint,
+    onSetLandingPoint,
+    onSetLaunchPoint,
+    resolveOnMapClick,
+    splitMode,
+  ]);
 
   useEffect(() => {
     const layer = missionLayerRef.current;
@@ -254,19 +325,49 @@ export function PlanningMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    const layer = unitLayerRef.current;
+    const layer = suggestionLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
+    if (!previewSuggestion) return;
+
+    const latLngs = toPolygonLatLngs(previewSuggestion.geometry?.coordinates);
+    if (latLngs.length < 4) return;
+
+    const polygon = L.polygon(latLngs, {
+      color: "rgba(58, 109, 214, 0.96)",
+      fillColor: "rgba(91, 140, 246, 0.14)",
+      fillOpacity: 0.14,
+      weight: 2.2,
+      opacity: 0.96,
+      dashArray: "8 6",
+      pane: "planningPane",
+      interactive: false,
+    });
+    polygon.bindTooltip(`${previewSuggestion.name} · forhåndsvisning`, { sticky: true });
+    layer.addLayer(polygon);
+
+    const bounds = polygon.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [48, 48], maxZoom: 18 });
+    }
+  }, [previewSuggestion, suggestionFocusToken]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = unitLayerRef.current;
+    const handleLayer = handleLayerRef.current;
+    if (!map || !layer || !handleLayer) return;
+    layer.clearLayers();
+    handleLayer.clearLayers();
 
     const boundsPoints: L.LatLngExpression[] = [];
     units.forEach((unit) => {
       const latLngs = toPolygonLatLngs(unit.geometry?.coordinates);
       if (latLngs.length < 4) return;
       const isSelected = unit.id === selectedUnitId;
-      const isMissionSelected = selectedMissionUnitIdsSet.has(unit.id);
       const polygon = L.polygon(latLngs, {
-        color: isSelected ? "rgba(199, 92, 36, 0.98)" : isMissionSelected ? "rgba(58, 109, 214, 0.96)" : "rgba(191, 126, 63, 0.9)",
-        fillColor: isSelected ? "rgba(243, 162, 87, 0.26)" : isMissionSelected ? "rgba(91, 140, 246, 0.18)" : "rgba(244, 199, 112, 0.18)",
+        color: isSelected ? "rgba(199, 92, 36, 0.98)" : "rgba(191, 126, 63, 0.9)",
+        fillColor: isSelected ? "rgba(243, 162, 87, 0.26)" : "rgba(244, 199, 112, 0.18)",
         fillOpacity: isSelected ? 0.28 : 0.18,
         weight: isSelected ? 2.8 : 1.8,
         opacity: 0.96,
@@ -291,6 +392,43 @@ export function PlanningMap({
             icon: polygonLabel(unit.name),
           }),
         );
+      }
+
+      if (isSelected && editMode) {
+        const handleIcon = L.divIcon({
+          className: "fb-field-handle-shell",
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+          html: '<span class="fb-field-handle"></span>',
+        });
+        const editablePoints = latLngs.slice(0, -1);
+        editablePoints.forEach((point, index) => {
+          const handleMarker = L.marker(point, {
+            draggable: true,
+            icon: handleIcon,
+            pane: "planningHandlePane",
+            keyboard: false,
+            zIndexOffset: 700,
+          });
+          handleMarker.on("drag", () => {
+            const nextPoint = handleMarker.getLatLng();
+            const nextPoints: LatLngPair[] = editablePoints.map(([lat, lng], pointIndex) =>
+              pointIndex === index ? ([nextPoint.lat, nextPoint.lng] as LatLngPair) : [lat, lng],
+            );
+            polygon.setLatLngs(nextPoints as L.LatLngExpression[]);
+          });
+          handleMarker.on("dragend", () => {
+            const nextPoint = handleMarker.getLatLng();
+            const nextPoints: LatLngPair[] = editablePoints.map(([lat, lng], pointIndex) =>
+              pointIndex === index ? ([nextPoint.lat, nextPoint.lng] as LatLngPair) : [lat, lng],
+            );
+            onUnitGeometryChange({
+              type: "Polygon",
+              coordinates: toPolygonCoordinates(nextPoints),
+            });
+          });
+          handleLayer.addLayer(handleMarker);
+        });
       }
     });
 
@@ -329,12 +467,55 @@ export function PlanningMap({
         }
       }
     }
-  }, [activeMission, missionFocusToken, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
+  }, [activeMission, editMode, missionFocusToken, onSelectUnit, onUnitGeometryChange, selectedUnitId, units]);
 
   useEffect(() => {
     const layer = splitLayerRef.current;
     if (!layer) return;
     layer.clearLayers();
+
+    noGoBuffers.forEach((buffer) => {
+      layer.addLayer(
+        L.circle([buffer.center.lat, buffer.center.lng], {
+          radius: buffer.radius_m,
+          color: "#b42318",
+          weight: 2,
+          opacity: 0.92,
+          fillColor: "rgba(217, 45, 32, 0.12)",
+          fillOpacity: 0.16,
+          dashArray: "6 5",
+          pane: "planningSplitPane",
+          interactive: false,
+        }),
+      );
+    });
+
+    if (launchPoint) {
+      layer.addLayer(
+        L.circleMarker([launchPoint.lat, launchPoint.lng], {
+          radius: 6,
+          color: "#f4f8ff",
+          weight: 2,
+          fillColor: "#16a34a",
+          fillOpacity: 0.98,
+          pane: "planningSplitPane",
+        }).bindTooltip("Startpunkt", { sticky: true }),
+      );
+    }
+
+    if (landingPoint) {
+      layer.addLayer(
+        L.circleMarker([landingPoint.lat, landingPoint.lng], {
+          radius: 6,
+          color: "#f4f8ff",
+          weight: 2,
+          fillColor: "#2563eb",
+          fillOpacity: 0.98,
+          pane: "planningSplitPane",
+        }).bindTooltip("Landingspunkt", { sticky: true }),
+      );
+    }
+
     if (!splitMode) return;
 
     splitPoints.forEach((point, index) => {
@@ -364,7 +545,7 @@ export function PlanningMap({
         ),
       );
     }
-  }, [splitMode, splitPoints]);
+  }, [landingPoint, launchPoint, noGoBuffers, splitMode, splitPoints]);
 
   return <div ref={mapElementRef} className="h-full min-h-[22rem] w-full rounded-[28px]" />;
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw } from "lucide-react";
 
-import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
@@ -304,6 +304,7 @@ export default function App() {
   const [activeFlightMissionId, setActiveFlightMissionId] = useState<number | null>(null);
   const [flightMissionFocusToken, setFlightMissionFocusToken] = useState(0);
   const [flightMissionExportBusyId, setFlightMissionExportBusyId] = useState<number | null>(null);
+  const [flightMissionDeleteBusyId, setFlightMissionDeleteBusyId] = useState<number | null>(null);
   const [videoMapArtifacts, setVideoMapArtifacts] = useState<VideoMapArtifact[]>(() => {
     if (typeof window === "undefined") return [];
     return parseStoredVideoArtifacts(window.localStorage.getItem(VIDEO_JOB_ARTIFACTS_STORAGE_KEY));
@@ -443,10 +444,6 @@ export default function App() {
     );
   }, [profile]);
   const currentProperty = profile?.property ?? null;
-  const currentPropertyLabel = useMemo(
-    () => (currentProperty ? currentProperty.label?.trim() || formatPropertyReference(currentProperty) : null),
-    [currentProperty],
-  );
   const isLoading = pendingRequests > 0;
   const isAdminAuthenticated = hasActiveAdminSession(adminSession);
   const photos = useMemo(() => {
@@ -718,22 +715,28 @@ export default function App() {
 
   const loadFlightMissions = useCallback(
     async (options?: { signal?: AbortSignal; silent?: boolean }) => {
-      if (!currentProperty) {
+      if (activeProperties.length === 0) {
         setFlightMissions([]);
-        setFlightMissionStatus("Ingen aktiv eiendom valgt for flyoppdrag.");
+        setFlightMissionStatus("Ingen aktive eiendommer valgt for flyoppdrag.");
         return null;
       }
 
       try {
-        const { data, requestId } = await trackRequest(() =>
-          apiGet<FlightMissionListResponse>("/api/v1/flight-missions", {
-            signal: options?.signal,
-            cache: false,
-            dedupe: false,
-          }),
+        const responses = await trackRequest(() =>
+          Promise.all(
+            activeProperties.map((property) =>
+              apiGet<FlightMissionListResponse>(`/api/v1/flight-missions?property_id=${property.id}`, {
+                signal: options?.signal,
+                cache: false,
+                dedupe: false,
+              }),
+            ),
+          ),
         );
 
-        const nextMissions = sortFlightMissions(data.missions);
+        const nextMissions = sortFlightMissions(
+          responses.flatMap((response) => (Array.isArray(response.data?.missions) ? response.data.missions : [])),
+        );
         setFlightMissions(nextMissions);
         setFlightMissionStatus(
           nextMissions.length === 0
@@ -741,9 +744,9 @@ export default function App() {
             : `${nextMissions.length} flyoppdrag klare for eksport eller videre justering.`,
         );
         if (!options?.silent) {
-          addLog("info", "Flyoppdrag lastet", requestId, {
-            propertyId: data.property_id,
-            count: data.count,
+          addLog("info", "Flyoppdrag lastet", responses[0]?.requestId ?? null, {
+            propertyCount: activeProperties.length,
+            count: nextMissions.length,
           });
         }
         return nextMissions;
@@ -756,7 +759,7 @@ export default function App() {
         return null;
       }
     },
-    [addLog, currentProperty, trackRequest],
+    [activeProperties, addLog, trackRequest],
   );
 
   const loadAdminSession = useCallback(async (options?: { signal?: AbortSignal; silent?: boolean }): Promise<AdminSessionStatus | null> => {
@@ -1380,7 +1383,7 @@ export default function App() {
     return () => {
       abortController.abort();
     };
-  }, [currentProperty?.id, loadFlightMissions]);
+  }, [activeProperties, loadFlightMissions]);
 
   useEffect(() => {
     setActiveFlightMissionId(null);
@@ -2050,6 +2053,31 @@ export default function App() {
         addLog("error", "Kunne ikke eksportere flyoppdrag", apiError.requestId, apiError.detail);
       } finally {
         setFlightMissionExportBusyId(null);
+      }
+    },
+    [addLog, ensureAdminAccess, flightMissions, trackRequest],
+  );
+
+  const handleDeleteFlightMission = useCallback(
+    async (missionId: number) => {
+      if (!ensureAdminAccess("sletting av flyoppdrag")) return;
+      const mission = flightMissions.find((item) => item.id === missionId);
+      const confirmed = window.confirm(`Slette ${mission?.name ?? `oppdrag ${missionId}`} permanent?`);
+      if (!confirmed) return;
+
+      setFlightMissionDeleteBusyId(missionId);
+      try {
+        const { requestId } = await trackRequest(() => apiDelete(`/api/v1/flight-missions/${missionId}`));
+        setFlightMissions((current) => current.filter((item) => item.id !== missionId));
+        setActiveFlightMissionId((current) => (current === missionId ? null : current));
+        setFlightMissionStatus(`Slettet ${mission?.name ?? `oppdrag ${missionId}`}.`);
+        addLog("info", "Flyoppdrag slettet", requestId, { missionId });
+      } catch (error) {
+        const apiError = error as ApiError;
+        setFlightMissionStatus(`Kunne ikke slette flyoppdrag: ${apiError.message}`);
+        addLog("error", "Kunne ikke slette flyoppdrag", apiError.requestId, apiError.detail);
+      } finally {
+        setFlightMissionDeleteBusyId(null);
       }
     },
     [addLog, ensureAdminAccess, flightMissions, trackRequest],
@@ -3265,6 +3293,15 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   soilStatus={soilStatus}
                   onToggleSoilLayer={handleToggleSoilLayer}
+                  baseMapStyle={baseMapStyle}
+                  onChangeQuickBaseMap={(nextStyle) => {
+                    if (baseMapStyle === nextStyle) {
+                      return;
+                    }
+                    baseMapTileErrorRef.current = null;
+                    setBaseMapStyle(nextStyle);
+                    addLog("info", "Bakgrunnskart endret", null, { style: nextStyle, source: "quick-toggle" });
+                  }}
                 />
               ) : null}
 
@@ -3306,20 +3343,21 @@ export default function App() {
                 />
               ) : activeView === "planning" ? (
                 <PlanningPage
-                  property={currentProperty}
-                  propertyLabel={currentPropertyLabel}
+                  properties={activeProperties}
                   canEdit={isAdminAuthenticated}
                   missions={flightMissions}
                   activeMissionId={activeFlightMissionId}
                   missionFocusToken={flightMissionFocusToken}
                   missionExportBusyId={flightMissionExportBusyId}
+                  missionDeleteBusyId={flightMissionDeleteBusyId}
                   baseMapStyle={baseMapStyle}
                   mapGrayscale={mapGrayscale}
                   mapVintage={mapVintage}
-                  showZoomControls={showZoomControls}
                   onSelectMission={handleSelectFlightMission}
                   onExportMission={handleExportFlightMission}
+                  onDeleteMission={handleDeleteFlightMission}
                   onReloadMissions={() => loadFlightMissions({ silent: true })}
+                  onReloadProfile={() => loadProfile()}
                 />
               ) : activeView === "album" ? (
                 <AlbumPage

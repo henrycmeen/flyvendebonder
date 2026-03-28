@@ -5,9 +5,11 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from shapely.geometry import shape
 
 from ..config import get_settings
 from ..models import Property
+from .analysis_enrich import classify_land_use_from_ar5, lookup_ar5_class_at_point
 from .field_plots import normalize_polygon_coordinates, polygon_area_m2
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,7 @@ settings = get_settings()
 
 def build_field_candidates_from_geojson(
     payload: dict[str, Any],
-    property_obj: Property,
+    property_obj: Property | None,
     *,
     sort_mode: str,
     source_endpoint: str | None = None,
@@ -36,6 +38,7 @@ def build_field_candidates_from_geojson(
         )
         if candidate is None:
             continue
+        candidate = _annotate_candidate_land_use(candidate)
         candidates.append(candidate)
 
     if sort_mode == "point":
@@ -108,6 +111,34 @@ async def lookup_field_candidates_by_point(
     )
 
 
+async def lookup_field_candidates_by_point_any(
+    *,
+    lat: float,
+    lng: float,
+    radius_m: int | None = None,
+) -> list[dict[str, Any]]:
+    effective_radius = radius_m or settings.geonorge_point_lookup_radius_m
+    source_endpoint = "/punkt/omrader"
+    payload, fetched_at = await _fetch_json(
+        source_endpoint,
+        params={
+            "ost": lng,
+            "nord": lat,
+            "koordsys": 4258,
+            "radius": effective_radius,
+            "utkoordsys": 4258,
+            "maksTreff": settings.geonorge_point_lookup_max_hits,
+        },
+    )
+    return build_field_candidates_from_geojson(
+        payload,
+        None,
+        sort_mode="point",
+        source_endpoint=source_endpoint,
+        source_fetched_at=fetched_at,
+    )
+
+
 async def _fetch_json(path: str, *, params: dict[str, Any]) -> tuple[dict[str, Any], datetime]:
     url = f"{settings.geonorge_eiendom_api_url.rstrip('/')}{path}"
     async with httpx.AsyncClient(timeout=settings.geonorge_http_timeout_seconds) as client:
@@ -123,7 +154,7 @@ async def _fetch_json(path: str, *, params: dict[str, Any]) -> tuple[dict[str, A
 
 def _feature_to_candidate(
     feature: Any,
-    property_obj: Property,
+    property_obj: Property | None,
     *,
     source_endpoint: str | None = None,
     source_fetched_at: datetime | None = None,
@@ -135,7 +166,7 @@ def _feature_to_candidate(
     geometry = feature.get("geometry")
     if not isinstance(properties, dict) or not isinstance(geometry, dict):
         return None
-    if not _feature_matches_property(properties, property_obj):
+    if property_obj is not None and not _feature_matches_property(properties, property_obj):
         return None
 
     if geometry.get("type") != "Polygon":
@@ -152,7 +183,11 @@ def _feature_to_candidate(
         return None
 
     area_m2 = polygon_area_m2(normalized_coordinates)
-    matrikkelnummer = _coerce_string(properties.get("matrikkelnummertekst")) or _matrikkelnummer_from_property(property_obj)
+    property_ref = _property_ref_from_properties(properties)
+    matrikkelnummer = _coerce_string(properties.get("matrikkelnummertekst")) or _matrikkelnummer_from_parts(
+        property_ref["gnr"],
+        property_ref["bnr"],
+    )
     local_id = _coerce_int(properties.get("lokalid"))
     is_main_area = bool(properties.get("hovedområde"))
 
@@ -178,7 +213,29 @@ def _feature_to_candidate(
         "area_m2": round(area_m2, 2) if area_m2 is not None else None,
         "area_ha": round(area_m2 / 10_000, 4) if area_m2 is not None else None,
         "source_updated_at": _coerce_datetime(properties.get("oppdateringsdato")),
+        "property_ref": property_ref,
     }
+
+
+def _annotate_candidate_land_use(candidate: dict[str, Any]) -> dict[str, Any]:
+    geometry = candidate.get("geometry")
+    if not isinstance(geometry, dict):
+        candidate["ar5_class"] = None
+        candidate["land_use_kind"] = "unknown"
+        candidate["land_use_label"] = "Uavklart"
+        return candidate
+
+    try:
+        centroid = shape(geometry).representative_point()
+        ar5_class = lookup_ar5_class_at_point(centroid.y, centroid.x)
+    except Exception:  # noqa: BLE001
+        ar5_class = None
+
+    land_use_kind, land_use_label = classify_land_use_from_ar5(ar5_class)
+    candidate["ar5_class"] = ar5_class
+    candidate["land_use_kind"] = land_use_kind
+    candidate["land_use_label"] = land_use_label
+    return candidate
 
 
 def _feature_matches_property(properties: dict[str, Any], property_obj: Property) -> bool:
@@ -193,6 +250,26 @@ def _feature_matches_property(properties: dict[str, Any], property_obj: Property
 
 def _matrikkelnummer_from_property(property_obj: Property) -> str:
     return f"{property_obj.gnr}/{property_obj.bnr}"
+
+
+def _matrikkelnummer_from_parts(gnr: int | None, bnr: int | None) -> str:
+    if gnr is None or bnr is None:
+        return "ukjent/ukjent"
+    return f"{gnr}/{bnr}"
+
+
+def _property_ref_from_properties(properties: dict[str, Any]) -> dict[str, Any]:
+    komm = _coerce_string(properties.get("kommunenummer"))
+    gnr = _coerce_int(properties.get("gardsnummer"))
+    bnr = _coerce_int(properties.get("bruksnummer"))
+    fnr = (_coerce_int(properties.get("festenummer")) or 0)
+    return {
+        "komm": komm,
+        "gnr": gnr,
+        "bnr": bnr,
+        "fnr": fnr,
+        "label": _matrikkelnummer_from_parts(gnr, bnr),
+    }
 
 
 def _coerce_string(value: Any) -> str | None:

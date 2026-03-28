@@ -1,18 +1,8 @@
-import { Images, Import, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Route, Settings2 } from "lucide-react";
+import { Images, Import, Map as MapIcon, Route, Settings2 } from "lucide-react";
 
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Sidebar,
-  SidebarCollapseTrigger,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
@@ -112,7 +102,6 @@ function SidebarNavigation({
 }: Pick<AppSidebarProps, "activeView" | "onChangeView" | "onStartMediaImport">) {
   return (
     <>
-      <SidebarGroupLabel className="fb-sidebar-group-label pb-4 text-[11px] tracking-[0.12em]">Arbeidsflate</SidebarGroupLabel>
       <SidebarMenu className="gap-2">
         <SidebarMenuItem>
           <SidebarMenuButton active={activeView === "map"} closeOnClick onClick={() => onChangeView("map")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
@@ -196,7 +185,7 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="fb-sidebar-header px-5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
             <span
               className={cn(
@@ -210,18 +199,6 @@ export function AppSidebar({
               Flyvendebønder
             </span>
           </a>
-          <span
-            className="hidden md:inline-flex"
-          >
-            <SidebarCollapseTrigger
-              className="fb-sidebar-collapse-trigger inline-flex h-9 w-9 items-center justify-center rounded-lg text-fb-text-secondary transition-colors hover:bg-fb-surface-ghost hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid"
-              aria-label="Minimer meny"
-              title="Minimer meny"
-            >
-              <PanelLeftClose className="fb-sidebar-collapse-icon-open h-4 w-4" />
-              <PanelLeftOpen className="fb-sidebar-collapse-icon-closed hidden h-4 w-4" />
-            </SidebarCollapseTrigger>
-          </span>
         </div>
       </SidebarHeader>
 

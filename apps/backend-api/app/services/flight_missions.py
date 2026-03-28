@@ -7,9 +7,13 @@ import zipfile
 from datetime import datetime
 from typing import Any
 
+from shapely import affinity
+from shapely.geometry import GeometryCollection, LineString, MultiLineString, Point, Polygon
+from shapely.ops import unary_union
+
 from ..models import Property
 from .field_plots import normalize_polygon_coordinates, polygon_area_m2
-from .planning import planning_duration_status
+from .planning import planning_duration_status, suggest_spacing_for_profile
 from .quality_metrics import meters_per_degree_latitude, meters_per_degree_longitude
 
 RECOMMENDED_ALTITUDE_RANGE_M = (20.0, 120.0)
@@ -29,12 +33,45 @@ def build_flight_mission_payload(
     drone_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_parameters = _normalize_parameters(parameters)
-    warnings = _parameter_warnings(normalized_parameters)
+    recommended_spacing = suggest_spacing_for_profile(drone_profile, altitude_m=normalized_parameters["altitude_m"])
+    warnings = _parameter_warnings(normalized_parameters, recommended_spacing=recommended_spacing)
 
     field_snapshots: list[dict[str, Any]] = []
     route_features: list[dict[str, Any]] = []
     total_waypoints = 0
     total_distance_m = 0.0
+    previous_route_point: list[float] | None = None
+
+    if normalized_parameters["launch_point"] is not None:
+        launch_point = normalized_parameters["launch_point"]
+        route_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "kind": "launch_point",
+                    "name": "Startpunkt",
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [launch_point["lng"], launch_point["lat"]],
+                },
+            }
+        )
+        previous_route_point = [launch_point["lng"], launch_point["lat"]]
+
+    if normalized_parameters["no_go_buffers"]:
+        for index, no_go_buffer in enumerate(normalized_parameters["no_go_buffers"], start=1):
+            route_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "kind": "no_go_buffer",
+                        "name": no_go_buffer["name"] or f"No-go {index}",
+                        "radius_m": no_go_buffer["radius_m"],
+                    },
+                    "geometry": _buffer_feature_geometry(no_go_buffer["center"], no_go_buffer["radius_m"]),
+                }
+            )
 
     for field in fields:
         geometry = field["geometry"]
@@ -74,12 +111,14 @@ def build_flight_mission_payload(
                 )
             )
 
-        route_points = _build_field_route(
+        route_result = _build_field_route(
             coordinates[0],
             route_angle_deg=normalized_parameters["route_angle_deg"],
             line_spacing_m=normalized_parameters["line_spacing_m"],
             waypoint_spacing_m=normalized_parameters["waypoint_spacing_m"],
+            no_go_buffers=normalized_parameters["no_go_buffers"],
         )
+        route_points = route_result["points"]
         if len(route_points) < 2:
             warnings.append(
                 _warning(
@@ -91,7 +130,32 @@ def build_flight_mission_payload(
             )
             continue
 
+        if route_result["buffer_count"] > 0:
+            warnings.append(
+                _warning(
+                    "no_go_buffers_applied",
+                    "info",
+                    f"{route_result['buffer_count']} hinderbuffer(e) ble trukket ut av rutegrunnlaget.",
+                    field_id=field_id,
+                )
+            )
+
         total_waypoints += len(route_points)
+        if previous_route_point and previous_route_point != route_points[0]:
+            transit_coordinates = [previous_route_point, route_points[0]]
+            total_distance_m += _polyline_distance_m(transit_coordinates)
+            route_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "field_id": field_id,
+                        "planning_unit_id": planning_unit_id,
+                        "field_name": field_name,
+                        "kind": "transit",
+                    },
+                    "geometry": {"type": "LineString", "coordinates": transit_coordinates},
+                }
+            )
         total_distance_m += _polyline_distance_m(route_points)
         route_features.append(
             {
@@ -125,6 +189,33 @@ def build_flight_mission_payload(
                     "geometry": {"type": "Point", "coordinates": point},
                 }
             )
+        previous_route_point = route_points[-1]
+
+    if normalized_parameters["landing_point"] is not None:
+        landing_point = normalized_parameters["landing_point"]
+        landing_coordinates = [landing_point["lng"], landing_point["lat"]]
+        if previous_route_point and previous_route_point != landing_coordinates:
+            total_distance_m += _polyline_distance_m([previous_route_point, landing_coordinates])
+            route_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "kind": "transit",
+                        "name": "Retur til landing",
+                    },
+                    "geometry": {"type": "LineString", "coordinates": [previous_route_point, landing_coordinates]},
+                }
+            )
+        route_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "kind": "landing_point",
+                    "name": "Landingspunkt",
+                },
+                "geometry": {"type": "Point", "coordinates": landing_coordinates},
+            }
+        )
 
     route_geojson = {"type": "FeatureCollection", "features": route_features}
     generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
@@ -156,6 +247,7 @@ def build_flight_mission_payload(
         },
         "parameters": normalized_parameters,
         "drone_profile": drone_profile or {},
+        "recommended_spacing": recommended_spacing or {},
         "warnings": warnings,
         "export_notes": [
             "GeoJSON-bunten er første eksportprofil i Flyvendebønder.",
@@ -282,12 +374,15 @@ def _validate_export_bundle_inputs(
         raise ValueError("Eksportmanifest og jorddata er ute av synk")
 
 
-def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, float]:
+def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
     return {
         "altitude_m": round(float(parameters["altitude_m"]), 2),
         "line_spacing_m": round(float(parameters["line_spacing_m"]), 2),
         "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
         "route_angle_deg": round(float(parameters["route_angle_deg"]), 2),
+        "launch_point": _normalize_geo_point(parameters.get("launch_point")),
+        "landing_point": _normalize_geo_point(parameters.get("landing_point")),
+        "no_go_buffers": _normalize_no_go_buffers(parameters.get("no_go_buffers") or []),
     }
 
 
@@ -308,7 +403,11 @@ def estimate_mission_duration(
     return round(estimated_duration_s, 1)
 
 
-def _parameter_warnings(parameters: dict[str, float]) -> list[dict[str, Any]]:
+def _parameter_warnings(
+    parameters: dict[str, Any],
+    *,
+    recommended_spacing: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     warnings: list[dict[str, Any]] = []
     altitude_m = parameters["altitude_m"]
     if altitude_m < RECOMMENDED_ALTITUDE_RANGE_M[0] or altitude_m > RECOMMENDED_ALTITUDE_RANGE_M[1]:
@@ -343,6 +442,38 @@ def _parameter_warnings(parameters: dict[str, float]) -> list[dict[str, Any]]:
             )
         )
 
+    if recommended_spacing is not None:
+        line_delta = abs(line_spacing_m - recommended_spacing["line_spacing_m"])
+        waypoint_delta = abs(waypoint_spacing_m - recommended_spacing["waypoint_spacing_m"])
+        if line_delta > max(4.0, recommended_spacing["line_spacing_m"] * 0.35):
+            warnings.append(
+                _warning(
+                    "line_spacing_differs_from_height_profile",
+                    "info",
+                    f"Linjeavstand avviker tydelig fra anbefalt verdi ({recommended_spacing['line_spacing_m']:g} m) for valgt høyde og droneprofil.",
+                )
+            )
+        if waypoint_delta > max(4.0, recommended_spacing["waypoint_spacing_m"] * 0.35):
+            warnings.append(
+                _warning(
+                    "waypoint_spacing_differs_from_height_profile",
+                    "info",
+                    f"Waypoint-avstand avviker tydelig fra anbefalt verdi ({recommended_spacing['waypoint_spacing_m']:g} m) for valgt høyde og droneprofil.",
+                )
+            )
+
+    if parameters["launch_point"] and parameters["landing_point"]:
+        launch = parameters["launch_point"]
+        landing = parameters["landing_point"]
+        if launch["lat"] == landing["lat"] and launch["lng"] == landing["lng"]:
+            warnings.append(
+                _warning(
+                    "landing_same_as_launch",
+                    "info",
+                    "Start- og landingspunkt er identiske. Det er lov, men kontroller at plasseringen er trygg.",
+                )
+            )
+
     return warnings
 
 
@@ -356,27 +487,42 @@ def _build_field_route(
     route_angle_deg: float,
     line_spacing_m: float,
     waypoint_spacing_m: float,
-) -> list[list[float]]:
-    projected, origin, centroid = _project_ring_to_local_meters(ring)
-    rotated = [_rotate_point(point[0], point[1], -route_angle_deg) for point in projected]
-    ys = [point[1] for point in rotated]
-    if not ys:
-        return []
+    no_go_buffers: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    projected_ring, origin, centroid = _project_ring_to_local_meters(ring)
+    base_polygon = Polygon(projected_ring)
+    if base_polygon.is_empty or base_polygon.area <= 1:
+        return {"points": [], "buffer_count": 0}
 
-    min_y = min(ys)
-    max_y = max(ys)
+    effective_geometry = base_polygon
+    applied_buffer_count = 0
+    for buffer in no_go_buffers or []:
+        projected_center = _project_geo_point_to_local_meters(buffer["center"], origin=origin, centroid=centroid)
+        buffered_geometry = Point(projected_center).buffer(float(buffer["radius_m"]), resolution=24)
+        if not effective_geometry.intersects(buffered_geometry):
+            continue
+        effective_geometry = effective_geometry.difference(buffered_geometry)
+        applied_buffer_count += 1
+
+    if effective_geometry.is_empty:
+        return {"points": [], "buffer_count": applied_buffer_count}
+
+    rotated_geometry = affinity.rotate(effective_geometry, -route_angle_deg, origin=(0, 0), use_radians=False)
+    min_x, min_y, max_x, max_y = rotated_geometry.bounds
     if max_y - min_y < 0.5:
-        return []
+        return {"points": [], "buffer_count": applied_buffer_count}
 
     route_points: list[list[float]] = []
     scan_y = min_y + (line_spacing_m / 2.0)
     reverse = False
 
     while scan_y <= max_y + 0.001:
-        intersections = _scanline_intersections(rotated, scan_y)
-        if len(intersections) >= 2:
+        scanline = LineString([(min_x - 5.0, scan_y), (max_x + 5.0, scan_y)])
+        intersections = rotated_geometry.intersection(scanline)
+        segments = _extract_scanline_segments(intersections)
+        if segments:
             segment_points: list[list[float]] = []
-            for start_x, end_x in _pair_intersections(intersections):
+            for start_x, end_x in segments:
                 if abs(end_x - start_x) < 1.0:
                     continue
                 segment = _segment_points(start_x, end_x, scan_y, waypoint_spacing_m)
@@ -395,7 +541,7 @@ def _build_field_route(
 
         scan_y += line_spacing_m
 
-    return route_points
+    return {"points": route_points, "buffer_count": applied_buffer_count}
 
 
 def _project_ring_to_local_meters(
@@ -449,6 +595,32 @@ def _scanline_intersections(ring: list[tuple[float, float]], scan_y: float) -> l
     return intersections
 
 
+def _extract_scanline_segments(intersections: Any) -> list[tuple[float, float]]:
+    if intersections.is_empty:
+        return []
+    if isinstance(intersections, LineString):
+        coords = list(intersections.coords)
+        if len(coords) < 2:
+            return []
+        return [(float(coords[0][0]), float(coords[-1][0]))]
+    if isinstance(intersections, MultiLineString):
+        segments: list[tuple[float, float]] = []
+        for line in intersections.geoms:
+            coords = list(line.coords)
+            if len(coords) < 2:
+                continue
+            segments.append((float(coords[0][0]), float(coords[-1][0])))
+        segments.sort(key=lambda item: item[0])
+        return segments
+    if isinstance(intersections, GeometryCollection):
+        segments: list[tuple[float, float]] = []
+        for geometry in intersections.geoms:
+            segments.extend(_extract_scanline_segments(geometry))
+        segments.sort(key=lambda item: item[0])
+        return segments
+    return []
+
+
 def _pair_intersections(intersections: list[float]) -> list[tuple[float, float]]:
     pairs: list[tuple[float, float]] = []
     for index in range(0, len(intersections) - 1, 2):
@@ -493,6 +665,64 @@ def _haversine_distance_m(lat1: float, lng1: float, lat2: float, lng2: float) ->
         + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lng / 2) ** 2
     )
     return 2 * radius_m * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _normalize_geo_point(raw: Any) -> dict[str, float] | None:
+    if not isinstance(raw, dict):
+        return None
+    lat = raw.get("lat")
+    lng = raw.get("lng")
+    if lat is None or lng is None:
+        return None
+    lat_value = round(float(lat), 8)
+    lng_value = round(float(lng), 8)
+    return {"lat": lat_value, "lng": lng_value}
+
+
+def _normalize_no_go_buffers(raw: list[Any]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        center = _normalize_geo_point(item.get("center"))
+        radius_m = item.get("radius_m")
+        if center is None or radius_m is None:
+            continue
+        radius_value = round(max(3.0, float(radius_m)), 1)
+        normalized.append(
+            {
+                "id": str(item.get("id") or f"buffer-{index + 1}"),
+                "name": (str(item.get("name") or "").strip() or None),
+                "center": center,
+                "radius_m": radius_value,
+            }
+        )
+    return normalized
+
+
+def _project_geo_point_to_local_meters(
+    point: dict[str, float],
+    *,
+    origin: tuple[float, float],
+    centroid: tuple[float, float],
+) -> tuple[float, float]:
+    meters_lng, meters_lat = origin
+    avg_lng, avg_lat = centroid
+    return ((point["lng"] - avg_lng) * meters_lng, (point["lat"] - avg_lat) * meters_lat)
+
+
+def _buffer_feature_geometry(point: dict[str, float], radius_m: float) -> dict[str, Any]:
+    lat = point["lat"]
+    lng = point["lng"]
+    meters_lat = meters_per_degree_latitude()
+    meters_lng = meters_per_degree_longitude(lat)
+    polygon_points: list[list[float]] = []
+    for step in range(0, 25):
+        angle = (math.pi * 2 * step) / 24
+        x = math.cos(angle) * radius_m
+        y = math.sin(angle) * radius_m
+        polygon_points.append([round(lng + (x / meters_lng), 8), round(lat + (y / meters_lat), 8)])
+    return {"type": "Polygon", "coordinates": [polygon_points]}
 
 
 def _slugify(value: str) -> str:

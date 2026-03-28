@@ -267,7 +267,7 @@ export function AlbumPage({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     placeholder="Søk i album, f.eks. 2025 høst eller gjødsling"
-                    className="pl-9"
+                    className="rounded-xl border-transparent bg-fb-surface-ghost pl-9 shadow-none focus-visible:ring-1"
                     aria-label="Søk i album"
                   />
                 </div>

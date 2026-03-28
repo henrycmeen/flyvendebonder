@@ -35,7 +35,7 @@ function useIsMobile(breakpoint = 768) {
 function SidebarProvider({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
-  const [collapsedDesktop, setCollapsedDesktop] = React.useState(false);
+  const [collapsedDesktop, setCollapsedDesktop] = React.useState(true);
 
   React.useEffect(() => {
     if (!isMobile) {
@@ -68,6 +68,8 @@ function useSidebar() {
 
 function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop } = useSidebar();
+  const [desktopHovered, setDesktopHovered] = React.useState(false);
+  const effectiveCollapsed = collapsedDesktop && !desktopHovered;
   const content = (
     <div
       className={cn(
@@ -95,10 +97,20 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
 
   return (
     <aside
-      data-collapsed={collapsedDesktop ? "true" : "false"}
+      data-collapsed={effectiveCollapsed ? "true" : "false"}
+      onMouseEnter={() => setDesktopHovered(true)}
+      onMouseLeave={() => setDesktopHovered(false)}
+      onFocusCapture={() => setDesktopHovered(true)}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+          return;
+        }
+        setDesktopHovered(false);
+      }}
       className={cn(
         "fb-sidebar hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] md:flex md:flex-col",
-        collapsedDesktop ? "w-[5.5rem]" : "w-[18.75rem]",
+        effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
       )}
     >
       {content}

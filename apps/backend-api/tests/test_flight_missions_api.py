@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.services.flight_missions import EXPORT_BUNDLE_FORMAT, _segment_points, build_flight_mission_export_bundle
+from app.services.planning import get_drone_profile, suggest_spacing_for_profile
 
 
 def _sample_polygon(offset: float = 0.0) -> dict:
@@ -36,6 +37,25 @@ def _create_field(client, *, name: str, offset: float = 0.0) -> dict:
     )
     assert response.status_code == 201
     return response.json()
+
+
+def _create_additional_property(client, *, label: str = "Leiejord øst", gnr: int = 70, bnr: int = 28) -> dict:
+    response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": label,
+                    "komm": "4003",
+                    "gnr": gnr,
+                    "bnr": bnr,
+                    "fnr": 0,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["additional_properties"][0]
 
 
 def test_flight_mission_roundtrip_and_export_bundle(client):
@@ -104,6 +124,32 @@ def test_flight_mission_roundtrip_and_export_bundle(client):
     route_geojson = json.loads(archive.read("route.geojson"))
     assert route_geojson["type"] == "FeatureCollection"
     assert any(feature["geometry"]["type"] == "LineString" for feature in route_geojson["features"])
+
+
+def test_flight_mission_can_be_deleted(client):
+    field = _create_field(client, name="Slettejordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Oppdrag som slettes",
+            "field_ids": [field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    delete_response = client.delete(f"/api/v1/flight-missions/{mission['id']}")
+    assert delete_response.status_code == 204
+
+    fetch_response = client.get(f"/api/v1/flight-missions/{mission['id']}")
+    assert fetch_response.status_code == 404
 
 
 def test_build_flight_mission_export_bundle_rejects_manifest_field_count_mismatch():
@@ -291,3 +337,98 @@ def test_flight_mission_route_geojson_export(client):
     assert payload["flyvendebonder_contract"]["version"] == "v1"
     assert payload["mission"]["id"] == mission["id"]
     assert any(feature["geometry"]["type"] == "LineString" for feature in payload["features"])
+
+
+def test_flight_mission_can_be_created_and_loaded_for_additional_property(client):
+    extra_property = _create_additional_property(client, gnr=70, bnr=28)
+    field = client.post(
+        "/api/v1/fields",
+        json={
+            "property_id": extra_property["id"],
+            "name": "Leiejord 70/28",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": _sample_polygon(0.03),
+        },
+    )
+    assert field.status_code == 201
+    created_field = field.json()
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "property_id": extra_property["id"],
+            "name": "70/28 plan",
+            "field_ids": [created_field["id"]],
+            "parameters": {
+                "altitude_m": 45,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+    assert mission["property_id"] == extra_property["id"]
+
+    fetch_response = client.get(f"/api/v1/flight-missions/{mission['id']}")
+    assert fetch_response.status_code == 200
+    assert fetch_response.json()["property_id"] == extra_property["id"]
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export")
+    assert export_response.status_code == 200
+
+
+def test_spacing_recommendation_scales_with_altitude():
+    profile = get_drone_profile("dji-mini-4-pro")
+    assert profile is not None
+
+    low = suggest_spacing_for_profile(profile, altitude_m=45)
+    high = suggest_spacing_for_profile(profile, altitude_m=120)
+
+    assert low is not None
+    assert high is not None
+    assert high["line_spacing_m"] > low["line_spacing_m"]
+    assert high["waypoint_spacing_m"] > low["waypoint_spacing_m"]
+
+
+def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):
+    field = _create_field(client, name="Bufferjordet")
+
+    response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Bufferplan",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+                "launch_point": {"lat": 59.0002, "lng": 10.0002},
+                "landing_point": {"lat": 59.0003, "lng": 10.0011},
+                "no_go_buffers": [
+                    {
+                        "id": "mast-1",
+                        "name": "Strømmast",
+                        "center": {"lat": 59.0005, "lng": 10.0007},
+                        "radius_m": 20,
+                    }
+                ],
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    feature_kinds = [feature["properties"]["kind"] for feature in payload["route_geojson"]["features"]]
+    assert "launch_point" in feature_kinds
+    assert "landing_point" in feature_kinds
+    assert "no_go_buffer" in feature_kinds
+    assert "transit" in feature_kinds
+    assert payload["parameters"]["launch_point"]["lat"] == 59.0002
+    assert payload["parameters"]["landing_point"]["lng"] == 10.0011
+    assert len(payload["parameters"]["no_go_buffers"]) == 1
+    assert any(item["code"] == "no_go_buffers_applied" for item in payload["warnings"])
