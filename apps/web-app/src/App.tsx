@@ -31,7 +31,6 @@ import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/sea
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
 import { AppSidebar } from "@/components/app-sidebar";
-import { FieldEditorPanel } from "@/components/field-editor-panel";
 import { FilterPanel } from "@/components/filter-panel";
 import { MapLayerPanel } from "@/components/map-layer-panel";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
@@ -3732,32 +3731,6 @@ export default function App() {
                 />
               ) : null}
 
-              {activeView === "map" ? (
-                <FieldEditorPanel
-                  propertyLabel={currentPropertyLabel}
-                  fieldStatus={fieldStatus}
-                  canEdit={isAdminAuthenticated}
-                  createMode={fieldCreateMode}
-                  fieldPlots={fieldPlots}
-                  activeFieldDraft={activeFieldDraft}
-                  saveBusy={isFieldSaveBusy}
-                  deleteBusy={isFieldDeleteBusy}
-                  onStartCreate={handleStartFieldCreate}
-                  onCancelCreate={handleCancelFieldCreate}
-                  onSelectField={handleSelectFieldPlot}
-                  onChangeDraftName={handleChangeFieldDraftName}
-                  onSaveDraft={handleSaveFieldDraft}
-                  onDiscardDraft={handleDiscardFieldDraft}
-                  onDeleteDraft={handleDeleteFieldDraft}
-                  onOpenPlanning={() => {
-                    if (fieldCreateMode) {
-                      handleCancelFieldCreate();
-                    }
-                    setActiveView("planning");
-                  }}
-                />
-              ) : null}
-
               {activeView === "map" && !photosLoadFailed ? (
                 <MapLayerPanel
                   propertyCount={activeProperties.length}
@@ -3790,15 +3763,15 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   showPropertyLayer={showPropertyLayer}
                   soilRefreshToken={soilRefreshToken}
-                  fieldPlots={fieldPlots}
-                  activeFieldDraft={activeFieldDraft}
+                  fieldPlots={[]}
+                  activeFieldDraft={null}
                   flightMissions={flightMissions}
                   activeFlightMissionId={activeFlightMissionId}
                   showMissionOverlay={showMissionOverlay}
-                  fieldCreateMode={fieldCreateMode}
-                  onRequestFieldCreateAt={handleCreateFieldDraftAtPoint}
-                  onSelectField={handleSelectFieldPlot}
-                  onFieldGeometryChange={handleChangeFieldDraftGeometry}
+                  fieldCreateMode={false}
+                  onRequestFieldCreateAt={() => undefined}
+                  onSelectField={() => undefined}
+                  onFieldGeometryChange={() => undefined}
                   onSelectPhoto={handleSelectPhoto}
                   onHoverPhoto={handleHoverPhoto}
                   onOpenPhotoFullscreen={handleOpenPhotoViewer}
@@ -3814,6 +3787,12 @@ export default function App() {
                   property={currentProperty}
                   propertyLabel={currentPropertyLabel}
                   canEdit={isAdminAuthenticated}
+                  fieldStatus={fieldStatus}
+                  fieldPlots={fieldPlots}
+                  activeFieldDraft={activeFieldDraft}
+                  fieldCreateMode={fieldCreateMode}
+                  fieldSaveBusy={isFieldSaveBusy}
+                  fieldDeleteBusy={isFieldDeleteBusy}
                   missions={flightMissions}
                   activeMissionId={activeFlightMissionId}
                   missionExportBusyId={flightMissionExportBusyId}
@@ -3821,11 +3800,17 @@ export default function App() {
                   mapGrayscale={mapGrayscale}
                   mapVintage={mapVintage}
                   showZoomControls={showZoomControls}
+                  onStartCreateField={handleStartFieldCreate}
+                  onCancelCreateField={handleCancelFieldCreate}
+                  onSelectField={handleSelectFieldPlot}
+                  onChangeFieldDraftName={handleChangeFieldDraftName}
+                  onRequestFieldCreateAt={handleCreateFieldDraftAtPoint}
+                  onChangeFieldDraftGeometry={handleChangeFieldDraftGeometry}
+                  onSaveFieldDraft={handleSaveFieldDraft}
+                  onDiscardFieldDraft={handleDiscardFieldDraft}
+                  onDeleteFieldDraft={handleDeleteFieldDraft}
                   onOpenMissionInMap={(missionId) => {
                     handleSelectFlightMission(missionId);
-                    if (fieldCreateMode) {
-                      handleCancelFieldCreate();
-                    }
                     setActiveView("map");
                   }}
                   onExportMission={handleExportFlightMission}

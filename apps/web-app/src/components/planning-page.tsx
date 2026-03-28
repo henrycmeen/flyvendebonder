@@ -4,13 +4,17 @@ import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw } from "
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { FieldEditorPanel } from "@/components/field-editor-panel";
 import { PlanningMap } from "@/components/planning-map";
 import type {
   DroneProfile,
   DroneProfileListResponse,
+  FieldPlot,
+  FieldPlotDraft,
   FlightMission,
   FlightMissionParameters,
   FlightMissionPreview,
+  GeoJSONPolygon,
   GeoPoint,
   PlanningUnit,
   PlanningUnitListResponse,
@@ -31,6 +35,12 @@ interface PlanningPageProps {
   property: Property | null;
   propertyLabel: string | null;
   canEdit: boolean;
+  fieldStatus: string;
+  fieldPlots: FieldPlot[];
+  activeFieldDraft: FieldPlotDraft | null;
+  fieldCreateMode: boolean;
+  fieldSaveBusy: boolean;
+  fieldDeleteBusy: boolean;
   missions: FlightMission[];
   activeMissionId: number | null;
   missionExportBusyId: number | null;
@@ -38,6 +48,15 @@ interface PlanningPageProps {
   mapGrayscale: boolean;
   mapVintage: boolean;
   showZoomControls: boolean;
+  onStartCreateField: () => void;
+  onCancelCreateField: () => void;
+  onSelectField: (fieldId: number) => void;
+  onChangeFieldDraftName: (value: string) => void;
+  onRequestFieldCreateAt: (point: GeoPoint) => void;
+  onChangeFieldDraftGeometry: (geometry: GeoJSONPolygon) => void;
+  onSaveFieldDraft: () => void;
+  onDiscardFieldDraft: () => void;
+  onDeleteFieldDraft: () => void;
   onOpenMissionInMap: (missionId: number) => void;
   onExportMission: (missionId: number) => void;
   onReloadMissions: () => Promise<unknown> | void;
@@ -99,6 +118,12 @@ export function PlanningPage({
   property,
   propertyLabel,
   canEdit,
+  fieldStatus,
+  fieldPlots,
+  activeFieldDraft,
+  fieldCreateMode,
+  fieldSaveBusy,
+  fieldDeleteBusy,
   missions,
   activeMissionId,
   missionExportBusyId,
@@ -106,6 +131,15 @@ export function PlanningPage({
   mapGrayscale,
   mapVintage,
   showZoomControls,
+  onStartCreateField,
+  onCancelCreateField,
+  onSelectField,
+  onChangeFieldDraftName,
+  onRequestFieldCreateAt,
+  onChangeFieldDraftGeometry,
+  onSaveFieldDraft,
+  onDiscardFieldDraft,
+  onDeleteFieldDraft,
   onOpenMissionInMap,
   onExportMission,
   onReloadMissions,
@@ -192,7 +226,7 @@ export function PlanningPage({
     setSplitMode(false);
     setSplitPoints([]);
     void loadUnits();
-  }, [loadUnits]);
+  }, [fieldPlots, loadUnits]);
 
   useEffect(() => {
     if (!property || selectedMissionUnitIds.length === 0 || !selectedDroneProfileId) {
@@ -296,50 +330,73 @@ export function PlanningPage({
   }, [canEdit, loadUnits, missionName, onReloadMissions, parameters, selectedDroneProfileId, selectedMissionUnitIds]);
 
   return (
-    <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[18rem,minmax(0,1fr),22rem] md:p-4">
-      <section className="overflow-hidden rounded-[28px] border border-fb-border-subtle bg-fb-surface-page shadow-fb-floating">
-        <div className="border-b border-fb-border-subtle px-4 py-4">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Planlegging</p>
-          <h2 className="mt-1 text-lg font-semibold text-fb-text-primary">{propertyLabel ?? "Ingen aktiv eiendom"}</h2>
-          <p className="mt-2 text-sm leading-6 text-fb-text-secondary">{unitsStatus}</p>
-        </div>
-        <div className="space-y-2 overflow-y-auto px-3 py-3">
-          {units.map((unit) => {
-            const active = unit.id === selectedUnitId;
-            const included = selectedMissionUnitIds.includes(unit.id);
-            return (
-              <div
-                key={unit.id}
-                className={cn(
-                  "rounded-2xl border px-3 py-3 transition-colors",
-                  active ? "border-fb-border-strong bg-fb-surface-ghost" : "border-fb-border-subtle bg-fb-surface-page",
-                )}
-              >
-                <button type="button" className="w-full text-left" onClick={() => setSelectedUnitId(unit.id)}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-fb-text-primary">{unit.name}</p>
-                      <p className="mt-1 text-xs text-fb-text-secondary">{unit.source_field_name} · {formatArea(unit.area_ha)}</p>
+    <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[22rem,minmax(0,1fr),22rem] md:p-4">
+      <div className="flex min-h-0 flex-col gap-4">
+        <FieldEditorPanel
+          embedded
+          showPlanningCallout={false}
+          propertyLabel={propertyLabel}
+          fieldStatus={fieldStatus}
+          canEdit={canEdit}
+          createMode={fieldCreateMode}
+          fieldPlots={fieldPlots}
+          activeFieldDraft={activeFieldDraft}
+          saveBusy={fieldSaveBusy}
+          deleteBusy={fieldDeleteBusy}
+          onStartCreate={onStartCreateField}
+          onCancelCreate={onCancelCreateField}
+          onSelectField={onSelectField}
+          onChangeDraftName={onChangeFieldDraftName}
+          onSaveDraft={onSaveFieldDraft}
+          onDiscardDraft={onDiscardFieldDraft}
+          onDeleteDraft={onDeleteFieldDraft}
+          onOpenPlanning={() => undefined}
+        />
+
+        <section className="min-h-0 overflow-hidden rounded-[28px] border border-fb-border-subtle bg-fb-surface-page shadow-fb-floating">
+          <div className="border-b border-fb-border-subtle px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Planenheter</p>
+            <h2 className="mt-1 text-lg font-semibold text-fb-text-primary">{propertyLabel ?? "Ingen aktiv eiendom"}</h2>
+            <p className="mt-2 text-sm leading-6 text-fb-text-secondary">{unitsStatus}</p>
+          </div>
+          <div className="space-y-2 overflow-y-auto px-3 py-3">
+            {units.map((unit) => {
+              const active = unit.id === selectedUnitId;
+              const included = selectedMissionUnitIds.includes(unit.id);
+              return (
+                <div
+                  key={unit.id}
+                  className={cn(
+                    "rounded-2xl border px-3 py-3 transition-colors",
+                    active ? "border-fb-border-strong bg-fb-surface-ghost" : "border-fb-border-subtle bg-fb-surface-page",
+                  )}
+                >
+                  <button type="button" className="w-full text-left" onClick={() => setSelectedUnitId(unit.id)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-fb-text-primary">{unit.name}</p>
+                        <p className="mt-1 text-xs text-fb-text-secondary">{unit.source_field_name} · {formatArea(unit.area_ha)}</p>
+                      </div>
+                      <span className={cn("text-xs font-medium", durationTone(unit.latest_duration_status))}>
+                        {missionStatusLabel(unit.latest_duration_status)}
+                      </span>
                     </div>
-                    <span className={cn("text-xs font-medium", durationTone(unit.latest_duration_status))}>
-                      {missionStatusLabel(unit.latest_duration_status)}
-                    </span>
-                  </div>
-                </button>
-                <label className="mt-3 flex items-center gap-2 text-xs text-fb-text-secondary">
-                  <input type="checkbox" checked={included} onChange={() => handleToggleMissionUnit(unit.id)} />
-                  Ta med i plan
-                </label>
+                  </button>
+                  <label className="mt-3 flex items-center gap-2 text-xs text-fb-text-secondary">
+                    <input type="checkbox" checked={included} onChange={() => handleToggleMissionUnit(unit.id)} />
+                    Ta med i plan
+                  </label>
+                </div>
+              );
+            })}
+            {units.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-fb-border-strong bg-fb-surface-ghost px-3 py-4 text-sm text-fb-text-secondary">
+                Ingen aktive planenheter ennå.
               </div>
-            );
-          })}
-          {units.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-fb-border-strong bg-fb-surface-ghost px-3 py-4 text-sm text-fb-text-secondary">
-              Ingen aktive planenheter ennå.
-            </div>
-          ) : null}
-        </div>
-      </section>
+            ) : null}
+          </div>
+        </section>
+      </div>
 
       <section className="overflow-hidden rounded-[28px] border border-fb-border-subtle bg-fb-surface-page shadow-fb-floating">
         <div className="flex items-center justify-between border-b border-fb-border-subtle px-4 py-3">
@@ -374,14 +431,20 @@ export function PlanningPage({
         <div className="h-[min(70vh,48rem)]">
           <PlanningMap
             units={units}
+            fieldPlots={fieldPlots}
+            activeFieldDraft={activeFieldDraft}
             selectedUnitId={selectedUnitId}
             selectedMissionUnitIds={selectedMissionUnitIds}
             splitMode={splitMode}
             splitPoints={splitPoints}
+            fieldCreateMode={fieldCreateMode}
             baseMapStyle={baseMapStyle}
             showZoomControls={showZoomControls}
             mapGrayscale={mapGrayscale}
             mapVintage={mapVintage}
+            onRequestFieldCreateAt={onRequestFieldCreateAt}
+            onSelectField={onSelectField}
+            onFieldGeometryChange={onChangeFieldDraftGeometry}
             onSelectUnit={setSelectedUnitId}
             onAddSplitPoint={handleAddSplitPoint}
           />

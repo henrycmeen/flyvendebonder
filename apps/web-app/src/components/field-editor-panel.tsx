@@ -21,6 +21,8 @@ interface FieldEditorPanelProps {
   onDiscardDraft: () => void;
   onDeleteDraft: () => void;
   onOpenPlanning: () => void;
+  embedded?: boolean;
+  showPlanningCallout?: boolean;
 }
 
 function formatFieldArea(areaHa: number | null): string {
@@ -50,13 +52,27 @@ export function FieldEditorPanel({
   onDiscardDraft,
   onDeleteDraft,
   onOpenPlanning,
+  embedded = false,
+  showPlanningCallout = true,
 }: FieldEditorPanelProps) {
   const hasActiveDraft = activeFieldDraft !== null;
   const activeFieldId = activeFieldDraft?.id ?? null;
 
   return (
-    <div className="pointer-events-none absolute left-3 top-[4.6rem] z-[870] w-[min(24rem,calc(100vw-1.5rem))] sm:left-4 sm:top-4">
-      <div className="fb-map-overlay-preview pointer-events-auto rounded-[24px] border border-fb-border-subtle bg-fb-surface-page/95 p-3 md:p-4">
+    <div
+      className={
+        embedded
+          ? "min-w-0"
+          : "pointer-events-none absolute left-3 top-[4.6rem] z-[870] w-[min(24rem,calc(100vw-1.5rem))] sm:left-4 sm:top-4"
+      }
+    >
+      <div
+        className={
+          embedded
+            ? "rounded-[28px] border border-fb-border-subtle bg-fb-surface-page p-3 shadow-fb-floating md:p-4"
+            : "fb-map-overlay-preview pointer-events-auto rounded-[24px] border border-fb-border-subtle bg-fb-surface-page/95 p-3 md:p-4"
+        }
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Jordutkast</p>
@@ -192,18 +208,20 @@ export function FieldEditorPanel({
           </div>
         ) : null}
 
-        <div className="mt-3 rounded-[22px] border border-fb-border-strong bg-[color:color-mix(in_srgb,var(--fb-season-solid)_6%,white)] p-3">
-          <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Planlegging</p>
-          <p className="mt-1 text-sm font-semibold text-fb-text-primary">Flyplan, flytid og eksport er flyttet ut av kartet.</p>
-          <p className="mt-2 text-xs leading-5 text-fb-text-secondary">
-            Bruk arbeidsflaten <span className="font-medium text-fb-text-primary">Planlegging</span> for å dele jorder, beregne flytid, lagre oppdrag og eksportere.
-          </p>
-          <div className="mt-3">
-            <Button type="button" size="sm" onClick={onOpenPlanning}>
-              Åpne Planlegging
-            </Button>
+        {showPlanningCallout ? (
+          <div className="mt-3 rounded-[22px] border border-fb-border-strong bg-[color:color-mix(in_srgb,var(--fb-season-solid)_6%,white)] p-3">
+            <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Planlegging</p>
+            <p className="mt-1 text-sm font-semibold text-fb-text-primary">Flyplan, flytid og eksport er flyttet ut av kartet.</p>
+            <p className="mt-2 text-xs leading-5 text-fb-text-secondary">
+              Bruk arbeidsflaten <span className="font-medium text-fb-text-primary">Planlegging</span> for å dele jorder, beregne flytid, lagre oppdrag og eksportere.
+            </p>
+            <div className="mt-3">
+              <Button type="button" size="sm" onClick={onOpenPlanning}>
+                Åpne Planlegging
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
