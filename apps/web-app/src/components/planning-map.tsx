@@ -273,11 +273,7 @@ export function PlanningMap({
         pane: "planningPane",
         bubblingMouseEvents: false,
       });
-      polygon.on("click", (event: L.LeafletMouseEvent) => {
-        if (findMode) {
-          onResolvePoint({ lat: event.latlng.lat, lng: event.latlng.lng });
-          return;
-        }
+      polygon.on("click", () => {
         onSelectUnit(unit.id);
       });
       polygon.bindTooltip(unit.name, { sticky: true });
@@ -333,7 +329,7 @@ export function PlanningMap({
         }
       }
     }
-  }, [activeMission, findMode, missionFocusToken, onResolvePoint, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
+  }, [activeMission, missionFocusToken, onSelectUnit, selectedMissionUnitIdsSet, selectedUnitId, units]);
 
   useEffect(() => {
     const layer = splitLayerRef.current;

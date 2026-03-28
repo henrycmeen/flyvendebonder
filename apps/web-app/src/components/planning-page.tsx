@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw, LocateFixed } from "lucide-react";
+import { CheckCircle2, Download, Scissors, TimerReset, Plane, RefreshCw } from "lucide-react";
 
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -140,7 +140,6 @@ export function PlanningPage({
   const [parameters, setParameters] = useState<FlightMissionParameters>(DEFAULT_FLIGHT_MISSION_PARAMETERS);
   const [preview, setPreview] = useState<FlightMissionPreview | null>(null);
   const [previewStatus, setPreviewStatus] = useState("Velg minst én planenhet for å beregne flytid.");
-  const [findMode, setFindMode] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
   const [splitPoints, setSplitPoints] = useState<GeoPoint[]>([]);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -217,7 +216,6 @@ export function PlanningPage({
     setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
     setPreview(null);
     setPreviewStatus("Velg minst én planenhet for å beregne flytid.");
-    setFindMode(false);
     setSplitMode(false);
     setSplitPoints([]);
     void loadUnits();
@@ -344,7 +342,6 @@ export function PlanningPage({
             ? `Fant og importerte ${data.candidate_name ?? data.unit.name} fra ${data.matrikkelnummer ?? "aktiv eiendom"}.`
             : `Fant ${data.candidate_name ?? data.unit.name} og fokuserte den i planen.`,
         );
-        setFindMode(false);
       } catch (error) {
         const apiError = error as ApiError;
         setUnitsStatus(`Kunne ikke finne jord fra punkt: ${apiError.message}`);
@@ -458,8 +455,8 @@ export function PlanningPage({
             <p className="text-xs text-fb-text-secondary">
               {splitMode
                 ? "Klikk to steder i kartet for å dele valgt jord."
-                : findMode
-                  ? "Klikk et sted i kartet for å finne riktig jord automatisk."
+                : canEdit
+                  ? "Klikk på et jord i kartet for å fylle det inn automatisk."
                   : "Velg en planenhet i listen for å fokusere den."}
             </p>
           </div>
@@ -483,27 +480,9 @@ export function PlanningPage({
             <HoverActionButton
               type="button"
               size="sm"
-              variant={findMode ? "default" : "outline"}
-              onClick={() => {
-                setFindMode((current) => !current);
-                setSplitMode(false);
-                setSplitPoints([]);
-              }}
-              disabled={!canEdit}
-              loading={findBusy}
-              loadingLabel="Leter"
-              help="Klikk deretter i kartet for å finne riktig jord automatisk."
-            >
-              <LocateFixed className="h-3.5 w-3.5" />
-              Finn jord
-            </HoverActionButton>
-            <HoverActionButton
-              type="button"
-              size="sm"
               variant={splitMode ? "default" : "outline"}
               onClick={() => {
                 setSplitMode((current) => !current);
-                setFindMode(false);
                 setSplitPoints([]);
               }}
               disabled={!canEdit || !selectedUnit}
@@ -524,7 +503,7 @@ export function PlanningPage({
             missionFocusToken={missionFocusToken}
             selectedUnitId={selectedUnitId}
             selectedMissionUnitIds={selectedMissionUnitIds}
-            findMode={findMode}
+            findMode={canEdit}
             splitMode={splitMode}
             splitPoints={splitPoints}
             baseMapStyle={baseMapStyle}
