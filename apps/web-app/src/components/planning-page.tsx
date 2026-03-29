@@ -325,6 +325,25 @@ export function PlanningPage({
     if (!selectedUnit?.latest_mission_id) return null;
     return missions.find((item) => item.id === selectedUnit.latest_mission_id) ?? null;
   }, [missions, selectedUnit]);
+  const selectedMissionExportHint = useMemo(() => {
+    if (!selectedUnitMission?.drone_profile_id) return null;
+    if (selectedUnitMission.drone_profile_id === "dji-mini-4-pro") {
+      return {
+        title: "DJI Fly",
+        body: "Eksporten blir en KMZ for Mini 4 Pro. Lag en midlertidig waypoint-rute i DJI Fly først, og erstatt deretter mission-filen med den eksporterte KMZ-filen.",
+      };
+    }
+    if (selectedUnitMission.drone_profile_id.startsWith("dji-")) {
+      return {
+        title: "DJI KMZ",
+        body: "Eksporten blir en DJI-kompatibel KMZ for den lagrede droneprofilen.",
+      };
+    }
+    return {
+      title: "Bundle",
+      body: "Eksporten blir en generell bundle med rute og felter.",
+    };
+  }, [selectedUnitMission]);
   const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
   const unitGeometryKeys = useMemo(
     () => new Set(units.map((unit) => geometryKey(unit.geometry?.coordinates))),
@@ -1725,32 +1744,40 @@ export function PlanningPage({
                     {selectedUnitMission ? "Oppdater plan" : "Lagre plan"}
                   </HoverActionButton>
                   {selectedUnitMission ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <HoverActionButton
-                        type="button"
-                        variant="ghost"
-                        onClick={() => onExportMission(selectedUnitMission.id)}
-                        loading={missionExportBusyId === selectedUnitMission.id}
-                        loadingLabel="Eksporterer"
-                        disabled={!canEdit}
-                        help="Eksporter planen for dette området."
-                      >
-                        <Download className="h-4 w-4" />
-                        Eksporter
-                      </HoverActionButton>
-                      <HoverActionButton
-                        type="button"
-                        variant="ghost"
-                        onClick={() => onDeleteMission(selectedUnitMission.id)}
-                        loading={missionDeleteBusyId === selectedUnitMission.id}
-                        loadingLabel="Sletter"
-                        disabled={!canEdit}
-                        help="Slett den lagrede planen for dette området."
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Slett plan
-                      </HoverActionButton>
-                    </div>
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <HoverActionButton
+                          type="button"
+                          variant="ghost"
+                          onClick={() => onExportMission(selectedUnitMission.id)}
+                          loading={missionExportBusyId === selectedUnitMission.id}
+                          loadingLabel="Eksporterer"
+                          disabled={!canEdit}
+                          help="Eksporter planen for dette området."
+                        >
+                          <Download className="h-4 w-4" />
+                          {selectedUnitMission.drone_profile_id === "dji-mini-4-pro" ? "Eksporter DJI Fly" : "Eksporter"}
+                        </HoverActionButton>
+                        <HoverActionButton
+                          type="button"
+                          variant="ghost"
+                          onClick={() => onDeleteMission(selectedUnitMission.id)}
+                          loading={missionDeleteBusyId === selectedUnitMission.id}
+                          loadingLabel="Sletter"
+                          disabled={!canEdit}
+                          help="Slett den lagrede planen for dette området."
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Slett plan
+                        </HoverActionButton>
+                      </div>
+                      {selectedMissionExportHint ? (
+                        <div className="rounded-xl bg-fb-surface-ghost px-3 py-2">
+                          <p className="text-xs font-medium text-fb-text-primary">{selectedMissionExportHint.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-fb-text-secondary">{selectedMissionExportHint.body}</p>
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               </div>

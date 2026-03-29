@@ -10,11 +10,35 @@ BACKEND_PID=""
 STARTED_BACKEND=0
 BACKEND_READY_CHECK_URL="http://127.0.0.1:8787/api/v1/photos/page?date=2000-01-01&mode=cumulative&limit=1"
 BACKEND_ADMIN_CHECK_URL="http://127.0.0.1:8787/api/v1/admin/session"
+DEV_ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-test-admin-code}"
+DEV_ADMIN_SESSION_SECRET="${ADMIN_SESSION_SECRET:-test-admin-secret}"
+
+backend_admin_ready() {
+  python3 - <<'PY'
+import json
+import sys
+from urllib.request import urlopen
+
+try:
+    with urlopen("http://127.0.0.1:8787/api/v1/admin/session", timeout=2) as response:
+        payload = json.load(response)
+except Exception:
+    raise SystemExit(1)
+
+if payload.get("configured") is True:
+    print("ok")
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
 
 start_backend() {
   echo "Starting backend on 127.0.0.1:8787 ..."
   (
     cd "$BACKEND_DIR"
+    ADMIN_ACCESS_CODE="$DEV_ADMIN_ACCESS_CODE" \
+    ADMIN_SESSION_SECRET="$DEV_ADMIN_SESSION_SECRET" \
     python3 server.py
   ) > /tmp/flyv-backend-dev.log 2>&1 &
 
@@ -47,7 +71,7 @@ if ! lsof -nP -iTCP:8787 -sTCP:LISTEN >/dev/null 2>&1; then
 else
   echo "Backend already running on :8787"
 
-  if ! curl -fsS "$BACKEND_READY_CHECK_URL" >/dev/null 2>&1 || ! curl -fsS "$BACKEND_ADMIN_CHECK_URL" >/dev/null 2>&1; then
+  if ! curl -fsS "$BACKEND_READY_CHECK_URL" >/dev/null 2>&1 || ! curl -fsS "$BACKEND_ADMIN_CHECK_URL" >/dev/null 2>&1 || ! backend_admin_ready >/dev/null 2>&1; then
     echo "Existing backend is missing required API routes, restarting ..."
     OLD_BACKEND_PIDS="$(lsof -tiTCP:8787 -sTCP:LISTEN | tr '\n' ' ')"
     if [[ -n "$OLD_BACKEND_PIDS" ]]; then

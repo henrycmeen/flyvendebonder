@@ -238,6 +238,16 @@ function filenameFromDisposition(headerValue: string | null, fallback: string): 
   return match?.[1] ? match[1] : fallback;
 }
 
+function describeMissionExportFormat(exportFormat: string | null): string {
+  if (exportFormat === "dji.fly.kmz.v1") {
+    return "DJI Fly KMZ for Mini 4 Pro";
+  }
+  if (exportFormat === "dji.wpml.kmz.v1") {
+    return "DJI KMZ for enterprise-profiler";
+  }
+  return "generell bundle";
+}
+
 function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   if (!session?.authenticated) {
     return false;
@@ -2043,11 +2053,7 @@ export default function App() {
 
         const requestId = response.headers.get("X-Request-ID");
         const mission = flightMissions.find((item) => item.id === missionId);
-        setFlightMissionStatus(
-          exportFormat === "bundle"
-            ? `Eksporterte ${mission?.name ?? `oppdrag ${missionId}`} som generell bundle.`
-            : `Eksporterte ${mission?.name ?? `oppdrag ${missionId}`} som DJI KMZ.`,
-        );
+        setFlightMissionStatus(`Eksporterte ${mission?.name ?? `oppdrag ${missionId}`} som ${describeMissionExportFormat(exportFormat)}.`);
         addLog("info", "Flyoppdrag eksportert", requestId, {
           missionId,
           filename,
