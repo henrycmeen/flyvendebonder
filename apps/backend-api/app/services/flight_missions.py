@@ -6,9 +6,10 @@ import math
 import zipfile
 from datetime import datetime
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from shapely import affinity
-from shapely.geometry import GeometryCollection, LineString, MultiLineString, Point, Polygon
+from shapely.geometry import GeometryCollection, LineString, MultiLineString, Polygon
 from shapely.ops import unary_union
 
 from ..models import Property
@@ -21,6 +22,31 @@ RECOMMENDED_LINE_SPACING_RANGE_M = (8.0, 35.0)
 RECOMMENDED_WAYPOINT_SPACING_RANGE_M = (8.0, 35.0)
 MIN_FIELD_AREA_FOR_ROUTE_M2 = 250.0
 EXPORT_BUNDLE_FORMAT = "flyvendebonder.flight-mission-bundle.v1"
+EXPORT_DJI_WPML_FORMAT = "dji.wpml.kmz.v1"
+KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
+DJI_WPML_NAMESPACE = "http://www.dji.com/wpmz/1.0.2"
+
+DJI_WPML_PROFILES: dict[str, dict[str, Any]] = {
+    "dji-mavic-3-enterprise": {
+        "drone_enum_value": 77,
+        "drone_sub_enum_value": 0,
+        "payload_enum_value": 66,
+        "payload_position_index": 0,
+        "payload_lens_index": None,
+        "default_speed_mps": 10.0,
+    },
+    "dji-matrice-30t": {
+        "drone_enum_value": 67,
+        "drone_sub_enum_value": 1,
+        "payload_enum_value": 53,
+        "payload_position_index": 0,
+        "payload_lens_index": "wide",
+        "default_speed_mps": 10.0,
+    },
+}
+
+ET.register_namespace("", KML_NAMESPACE)
+ET.register_namespace("wpml", DJI_WPML_NAMESPACE)
 
 
 def build_flight_mission_payload(
@@ -67,9 +93,10 @@ def build_flight_mission_payload(
                     "properties": {
                         "kind": "no_go_buffer",
                         "name": no_go_buffer["name"] or f"No-go {index}",
-                        "radius_m": no_go_buffer["radius_m"],
+                        "width_m": no_go_buffer["width_m"],
+                        "height_m": no_go_buffer["height_m"],
                     },
-                    "geometry": _buffer_feature_geometry(no_go_buffer["center"], no_go_buffer["radius_m"]),
+                    "geometry": _no_go_feature_geometry(no_go_buffer),
                 }
             )
 
@@ -142,7 +169,11 @@ def build_flight_mission_payload(
 
         total_waypoints += len(route_points)
         if previous_route_point and previous_route_point != route_points[0]:
-            transit_coordinates = [previous_route_point, route_points[0]]
+            transit_coordinates = _connect_geo_points_avoiding_no_go(
+                previous_route_point,
+                route_points[0],
+                no_go_buffers=normalized_parameters["no_go_buffers"],
+            )
             total_distance_m += _polyline_distance_m(transit_coordinates)
             route_features.append(
                 {
@@ -195,7 +226,12 @@ def build_flight_mission_payload(
         landing_point = normalized_parameters["landing_point"]
         landing_coordinates = [landing_point["lng"], landing_point["lat"]]
         if previous_route_point and previous_route_point != landing_coordinates:
-            total_distance_m += _polyline_distance_m([previous_route_point, landing_coordinates])
+            transit_coordinates = _connect_geo_points_avoiding_no_go(
+                previous_route_point,
+                landing_coordinates,
+                no_go_buffers=normalized_parameters["no_go_buffers"],
+            )
+            total_distance_m += _polyline_distance_m(transit_coordinates)
             route_features.append(
                 {
                     "type": "Feature",
@@ -203,7 +239,7 @@ def build_flight_mission_payload(
                         "kind": "transit",
                         "name": "Retur til landing",
                     },
-                    "geometry": {"type": "LineString", "coordinates": [previous_route_point, landing_coordinates]},
+                    "geometry": {"type": "LineString", "coordinates": transit_coordinates},
                 }
             )
         route_features.append(
@@ -250,8 +286,8 @@ def build_flight_mission_payload(
         "recommended_spacing": recommended_spacing or {},
         "warnings": warnings,
         "export_notes": [
-            "GeoJSON-bunten er første eksportprofil i Flyvendebønder.",
-            "Bruk eksporten som grunnlag for DJI-flyt til vi har en dedikert DJI-missionprofil.",
+            "GeoJSON-bunten er fortsatt tilgjengelig som generell fallback-eksport.",
+            "DJI WPML/KMZ brukes for støttede DJI-profiler når det er mulig.",
         ],
     }
 
@@ -319,6 +355,70 @@ def build_flight_mission_export_bundle(
     return buffer.getvalue()
 
 
+def build_flight_mission_dji_wpml_kmz(
+    *,
+    mission_id: int,
+    mission_name: str,
+    route_geojson: dict[str, Any],
+    parameters: dict[str, Any],
+    drone_profile: dict[str, Any],
+) -> bytes:
+    _validate_route_geojson_for_export(route_geojson)
+
+    dji_profile = _resolve_dji_wpml_profile(drone_profile)
+    if dji_profile is None:
+        profile_name = (drone_profile.get("name") or drone_profile.get("id") or "ukjent profil").strip()
+        raise ValueError(
+            f"DJI WPML-eksport støttes foreløpig ikke for {profile_name}. "
+            "Bruk DJI Mavic 3 Enterprise eller DJI Matrice 30T, eller eksporter som generell bundle."
+        )
+
+    normalized_parameters = _normalize_parameters(parameters)
+    ordered_coordinates = _ordered_route_coordinates(route_geojson)
+    if len(ordered_coordinates) < 2:
+        raise ValueError("Eksporten mangler minst én rute-linje")
+
+    capture_keys = _capture_coordinate_keys(route_geojson)
+    timestamp_ms = _utc_timestamp_ms()
+    speed_mps = _dji_auto_flight_speed_mps(drone_profile, dji_profile)
+    altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
+    takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
+    rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
+    gimbal_pitch_angle = -90.0
+
+    template_xml = _build_dji_template_kml(
+        mission_name=mission_name,
+        timestamp_ms=timestamp_ms,
+        coordinates=ordered_coordinates,
+        capture_keys=capture_keys,
+        altitude_m=altitude_m,
+        speed_mps=speed_mps,
+        gimbal_pitch_angle=gimbal_pitch_angle,
+        takeoff_security_height_m=takeoff_security_height_m,
+        normalized_parameters=normalized_parameters,
+        dji_profile=dji_profile,
+    )
+    waylines_xml = _build_dji_waylines_wpml(
+        mission_name=mission_name,
+        coordinates=ordered_coordinates,
+        capture_keys=capture_keys,
+        altitude_m=altitude_m,
+        speed_mps=speed_mps,
+        gimbal_pitch_angle=gimbal_pitch_angle,
+        takeoff_security_height_m=takeoff_security_height_m,
+        rth_height_m=rth_height_m,
+        dji_profile=dji_profile,
+    )
+
+    slug = _slugify(mission_name) or f"mission-{mission_id}"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("wpmz/template.kml", template_xml)
+        archive.writestr("wpmz/waylines.wpml", waylines_xml)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def _validate_export_bundle_inputs(
     *,
     mission_name: str,
@@ -372,6 +472,287 @@ def _validate_export_bundle_inputs(
         raise ValueError("Eksportmanifest mangler sammendrag")
     if summary.get("field_count") != len(fields):
         raise ValueError("Eksportmanifest og jorddata er ute av synk")
+
+
+def _validate_route_geojson_for_export(route_geojson: dict[str, Any]) -> None:
+    if not isinstance(route_geojson, dict) or route_geojson.get("type") != "FeatureCollection":
+        raise ValueError("Eksporten mangler gyldig rute-GeoJSON")
+    route_features = route_geojson.get("features")
+    if not isinstance(route_features, list) or not route_features:
+        raise ValueError("Eksporten mangler minst én rute-linje")
+    if not any(
+        isinstance(feature, dict)
+        and isinstance(feature.get("geometry"), dict)
+        and feature["geometry"].get("type") == "LineString"
+        and feature.get("properties", {}).get("kind") in {"route", "transit"}
+        for feature in route_features
+    ):
+        raise ValueError("Eksporten mangler minst én rute-linje")
+
+
+def _resolve_dji_wpml_profile(drone_profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    if drone_profile is None:
+        return None
+    profile_id = str(drone_profile.get("id") or "").strip()
+    profile = DJI_WPML_PROFILES.get(profile_id)
+    if profile is None:
+        return None
+    return {**profile, "id": profile_id, "name": drone_profile.get("name") or profile_id}
+
+
+def _ordered_route_coordinates(route_geojson: dict[str, Any]) -> list[list[float]]:
+    coordinates: list[list[float]] = []
+    for feature in route_geojson.get("features", []):
+        if not isinstance(feature, dict):
+            continue
+        geometry = feature.get("geometry") or {}
+        properties = feature.get("properties") or {}
+        if geometry.get("type") != "LineString":
+            continue
+        if properties.get("kind") not in {"route", "transit"}:
+            continue
+        for raw_point in geometry.get("coordinates") or []:
+            point = [round(float(raw_point[0]), 7), round(float(raw_point[1]), 7)]
+            if not coordinates or coordinates[-1] != point:
+                coordinates.append(point)
+    return coordinates
+
+
+def _capture_coordinate_keys(route_geojson: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for feature in route_geojson.get("features", []):
+        if not isinstance(feature, dict):
+            continue
+        geometry = feature.get("geometry") or {}
+        properties = feature.get("properties") or {}
+        if geometry.get("type") != "Point" or properties.get("kind") != "waypoint":
+            continue
+        raw_point = geometry.get("coordinates") or []
+        if len(raw_point) < 2:
+            continue
+        keys.add(_coordinate_key(raw_point))
+    return keys
+
+
+def _coordinate_key(point: list[float] | tuple[float, float]) -> str:
+    return f"{float(point[0]):.7f},{float(point[1]):.7f}"
+
+
+def _utc_timestamp_ms() -> int:
+    return int(datetime.utcnow().timestamp() * 1000)
+
+
+def _dji_auto_flight_speed_mps(drone_profile: dict[str, Any], dji_profile: dict[str, Any]) -> float:
+    configured = drone_profile.get("cruise_speed_mps")
+    if configured is None:
+        configured = dji_profile["default_speed_mps"]
+    return round(max(1.0, min(15.0, float(configured))), 1)
+
+
+def _build_dji_template_kml(
+    *,
+    mission_name: str,
+    timestamp_ms: int,
+    coordinates: list[list[float]],
+    capture_keys: set[str],
+    altitude_m: float,
+    speed_mps: float,
+    gimbal_pitch_angle: float,
+    takeoff_security_height_m: float,
+    normalized_parameters: dict[str, Any],
+    dji_profile: dict[str, Any],
+) -> bytes:
+    root = ET.Element(_kml_tag("kml"))
+    document = ET.SubElement(root, _kml_tag("Document"))
+    ET.SubElement(document, _wpml_tag("author")).text = "Flyvendebønder"
+    ET.SubElement(document, _wpml_tag("createTime")).text = str(timestamp_ms)
+    ET.SubElement(document, _wpml_tag("updateTime")).text = str(timestamp_ms)
+    _append_dji_mission_config(
+        document,
+        dji_profile=dji_profile,
+        takeoff_security_height_m=takeoff_security_height_m,
+        takeoff_ref_point=normalized_parameters.get("launch_point"),
+        global_transitional_speed_mps=speed_mps,
+    )
+
+    folder = ET.SubElement(document, _kml_tag("Folder"))
+    ET.SubElement(folder, _wpml_tag("templateType")).text = "waypoint"
+    ET.SubElement(folder, _wpml_tag("templateId")).text = "0"
+    coordinate_params = ET.SubElement(folder, _wpml_tag("waylineCoordinateSysParam"))
+    ET.SubElement(coordinate_params, _wpml_tag("coordinateMode")).text = "WGS84"
+    ET.SubElement(coordinate_params, _wpml_tag("heightMode")).text = "relativeToStartPoint"
+    ET.SubElement(coordinate_params, _wpml_tag("positioningType")).text = "GPS"
+    ET.SubElement(folder, _wpml_tag("autoFlightSpeed")).text = _xml_float(speed_mps)
+    ET.SubElement(folder, _wpml_tag("gimbalPitchMode")).text = "usePointSetting"
+    global_heading = ET.SubElement(folder, _wpml_tag("globalWaypointHeadingParam"))
+    ET.SubElement(global_heading, _wpml_tag("waypointHeadingMode")).text = "followWayline"
+    ET.SubElement(global_heading, _wpml_tag("waypointHeadingPathMode")).text = "followBadArc"
+    ET.SubElement(folder, _wpml_tag("globalWaypointTurnMode")).text = "toPointAndStopWithDiscontinuityCurvature"
+    ET.SubElement(folder, _wpml_tag("globalUseStraightLine")).text = "0"
+
+    action_group_id = 0
+    capture_index = 0
+    for index, point in enumerate(coordinates):
+        placemark = ET.SubElement(folder, _kml_tag("Placemark"))
+        _append_point_coordinates(placemark, point)
+        ET.SubElement(placemark, _wpml_tag("index")).text = str(index)
+        ET.SubElement(placemark, _wpml_tag("height")).text = _xml_float(altitude_m)
+        ET.SubElement(placemark, _wpml_tag("useGlobalHeight")).text = "1"
+        ET.SubElement(placemark, _wpml_tag("useGlobalSpeed")).text = "1"
+        ET.SubElement(placemark, _wpml_tag("useGlobalHeadingParam")).text = "1"
+        ET.SubElement(placemark, _wpml_tag("useGlobalTurnParam")).text = "1"
+        ET.SubElement(placemark, _wpml_tag("gimbalPitchAngle")).text = _xml_float(gimbal_pitch_angle)
+        if _coordinate_key(point) in capture_keys:
+            capture_index += 1
+            _append_take_photo_action_group(
+                placemark,
+                action_group_id=action_group_id,
+                waypoint_index=index,
+                file_suffix=f"shot-{capture_index:04d}",
+                dji_profile=dji_profile,
+            )
+            action_group_id += 1
+
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _build_dji_waylines_wpml(
+    *,
+    mission_name: str,
+    coordinates: list[list[float]],
+    capture_keys: set[str],
+    altitude_m: float,
+    speed_mps: float,
+    gimbal_pitch_angle: float,
+    takeoff_security_height_m: float,
+    rth_height_m: float,
+    dji_profile: dict[str, Any],
+) -> bytes:
+    root = ET.Element(_kml_tag("kml"))
+    document = ET.SubElement(root, _kml_tag("Document"))
+    _append_dji_mission_config(
+        document,
+        dji_profile=dji_profile,
+        takeoff_security_height_m=takeoff_security_height_m,
+        takeoff_ref_point=None,
+        global_transitional_speed_mps=speed_mps,
+        global_rth_height_m=rth_height_m,
+    )
+
+    folder = ET.SubElement(document, _kml_tag("Folder"))
+    ET.SubElement(folder, _wpml_tag("templateId")).text = "0"
+    ET.SubElement(folder, _wpml_tag("executeHeightMode")).text = "relativeToStartPoint"
+    ET.SubElement(folder, _wpml_tag("waylineId")).text = "0"
+    ET.SubElement(folder, _wpml_tag("autoFlightSpeed")).text = _xml_float(speed_mps)
+
+    action_group_id = 0
+    capture_index = 0
+    for index, point in enumerate(coordinates):
+        placemark = ET.SubElement(folder, _kml_tag("Placemark"))
+        _append_point_coordinates(placemark, point)
+        ET.SubElement(placemark, _wpml_tag("index")).text = str(index)
+        ET.SubElement(placemark, _wpml_tag("executeHeight")).text = _xml_float(altitude_m)
+        ET.SubElement(placemark, _wpml_tag("waypointSpeed")).text = _xml_float(speed_mps)
+        heading = ET.SubElement(placemark, _wpml_tag("waypointHeadingParam"))
+        ET.SubElement(heading, _wpml_tag("waypointHeadingMode")).text = "followWayline"
+        ET.SubElement(heading, _wpml_tag("waypointHeadingPathMode")).text = "followBadArc"
+        turn = ET.SubElement(placemark, _wpml_tag("waypointTurnParam"))
+        ET.SubElement(turn, _wpml_tag("waypointTurnMode")).text = "toPointAndStopWithDiscontinuityCurvature"
+        ET.SubElement(turn, _wpml_tag("waypointTurnDampingDist")).text = "0"
+        ET.SubElement(placemark, _wpml_tag("gimbalPitchAngle")).text = _xml_float(gimbal_pitch_angle)
+        if _coordinate_key(point) in capture_keys:
+            capture_index += 1
+            _append_take_photo_action_group(
+                placemark,
+                action_group_id=action_group_id,
+                waypoint_index=index,
+                file_suffix=f"shot-{capture_index:04d}",
+                dji_profile=dji_profile,
+            )
+            action_group_id += 1
+
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _append_dji_mission_config(
+    document: ET.Element,
+    *,
+    dji_profile: dict[str, Any],
+    takeoff_security_height_m: float,
+    takeoff_ref_point: dict[str, float] | None,
+    global_transitional_speed_mps: float,
+    global_rth_height_m: float | None = None,
+) -> None:
+    mission_config = ET.SubElement(document, _wpml_tag("missionConfig"))
+    ET.SubElement(mission_config, _wpml_tag("flyToWaylineMode")).text = "safely"
+    ET.SubElement(mission_config, _wpml_tag("finishAction")).text = "goHome"
+    ET.SubElement(mission_config, _wpml_tag("exitOnRCLost")).text = "goContinue"
+    ET.SubElement(mission_config, _wpml_tag("executeRCLostAction")).text = "hover"
+    ET.SubElement(mission_config, _wpml_tag("takeOffSecurityHeight")).text = _xml_float(takeoff_security_height_m)
+    ET.SubElement(mission_config, _wpml_tag("globalTransitionalSpeed")).text = _xml_float(global_transitional_speed_mps)
+    if global_rth_height_m is not None:
+        ET.SubElement(mission_config, _wpml_tag("globalRTHHeight")).text = _xml_float(global_rth_height_m)
+    if takeoff_ref_point is not None:
+        ET.SubElement(mission_config, _wpml_tag("takeOffRefPoint")).text = (
+            f"{takeoff_ref_point['lat']:.7f},{takeoff_ref_point['lng']:.7f},0"
+        )
+        ET.SubElement(mission_config, _wpml_tag("takeOffRefPointAGLHeight")).text = _xml_float(
+            takeoff_security_height_m
+        )
+
+    drone_info = ET.SubElement(mission_config, _wpml_tag("droneInfo"))
+    ET.SubElement(drone_info, _wpml_tag("droneEnumValue")).text = str(dji_profile["drone_enum_value"])
+    if dji_profile.get("drone_sub_enum_value") is not None:
+        ET.SubElement(drone_info, _wpml_tag("droneSubEnumValue")).text = str(dji_profile["drone_sub_enum_value"])
+
+    payload_info = ET.SubElement(mission_config, _wpml_tag("payloadInfo"))
+    ET.SubElement(payload_info, _wpml_tag("payloadEnumValue")).text = str(dji_profile["payload_enum_value"])
+    ET.SubElement(payload_info, _wpml_tag("payloadPositionIndex")).text = str(dji_profile["payload_position_index"])
+
+
+def _append_point_coordinates(parent: ET.Element, point: list[float]) -> None:
+    point_node = ET.SubElement(parent, _kml_tag("Point"))
+    coordinates = ET.SubElement(point_node, _kml_tag("coordinates"))
+    coordinates.text = f"{float(point[0]):.7f},{float(point[1]):.7f}"
+
+
+def _append_take_photo_action_group(
+    placemark: ET.Element,
+    *,
+    action_group_id: int,
+    waypoint_index: int,
+    file_suffix: str,
+    dji_profile: dict[str, Any],
+) -> None:
+    action_group = ET.SubElement(placemark, _wpml_tag("actionGroup"))
+    ET.SubElement(action_group, _wpml_tag("actionGroupId")).text = str(action_group_id)
+    ET.SubElement(action_group, _wpml_tag("actionGroupStartIndex")).text = str(waypoint_index)
+    ET.SubElement(action_group, _wpml_tag("actionGroupEndIndex")).text = str(waypoint_index)
+    ET.SubElement(action_group, _wpml_tag("actionGroupMode")).text = "sequence"
+    trigger = ET.SubElement(action_group, _wpml_tag("actionTrigger"))
+    ET.SubElement(trigger, _wpml_tag("actionTriggerType")).text = "reachPoint"
+    action = ET.SubElement(action_group, _wpml_tag("action"))
+    ET.SubElement(action, _wpml_tag("actionId")).text = "0"
+    ET.SubElement(action, _wpml_tag("actionActuatorFunc")).text = "takePhoto"
+    params = ET.SubElement(action, _wpml_tag("actionActuatorFuncParam"))
+    ET.SubElement(params, _wpml_tag("fileSuffix")).text = file_suffix
+    ET.SubElement(params, _wpml_tag("payloadPositionIndex")).text = str(dji_profile["payload_position_index"])
+    if dji_profile.get("payload_lens_index"):
+        ET.SubElement(params, _wpml_tag("payloadLensIndex")).text = str(dji_profile["payload_lens_index"])
+        ET.SubElement(params, _wpml_tag("useGlobalPayloadLensIndex")).text = "0"
+
+
+def _kml_tag(name: str) -> str:
+    return f"{{{KML_NAMESPACE}}}{name}"
+
+
+def _wpml_tag(name: str) -> str:
+    return f"{{{DJI_WPML_NAMESPACE}}}{name}"
+
+
+def _xml_float(value: float) -> str:
+    text = f"{float(value):.3f}"
+    return text.rstrip("0").rstrip(".")
 
 
 def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
@@ -496,50 +877,73 @@ def _build_field_route(
 
     effective_geometry = base_polygon
     applied_buffer_count = 0
+    no_go_geometries_local: list[Polygon] = []
     for buffer in no_go_buffers or []:
-        projected_center = _project_geo_point_to_local_meters(buffer["center"], origin=origin, centroid=centroid)
-        buffered_geometry = Point(projected_center).buffer(float(buffer["radius_m"]), resolution=24)
-        if not effective_geometry.intersects(buffered_geometry):
+        no_go_geometry = _no_go_geometry_local(buffer, origin=origin, centroid=centroid)
+        if no_go_geometry is None or no_go_geometry.is_empty:
             continue
-        effective_geometry = effective_geometry.difference(buffered_geometry)
+        no_go_geometries_local.append(no_go_geometry)
+        if not effective_geometry.intersects(no_go_geometry):
+            continue
+        effective_geometry = effective_geometry.difference(no_go_geometry)
         applied_buffer_count += 1
 
     if effective_geometry.is_empty:
         return {"points": [], "buffer_count": applied_buffer_count}
 
     rotated_geometry = affinity.rotate(effective_geometry, -route_angle_deg, origin=(0, 0), use_radians=False)
+    rotated_no_go_geometries = [
+        affinity.rotate(geometry, -route_angle_deg, origin=(0, 0), use_radians=False) for geometry in no_go_geometries_local
+    ]
     min_x, min_y, max_x, max_y = rotated_geometry.bounds
     if max_y - min_y < 0.5:
         return {"points": [], "buffer_count": applied_buffer_count}
 
-    route_points: list[list[float]] = []
+    route_points_rotated: list[list[float]] = []
     scan_y = min_y + (line_spacing_m / 2.0)
     reverse = False
+    previous_rotated_point: list[float] | None = None
 
     while scan_y <= max_y + 0.001:
         scanline = LineString([(min_x - 5.0, scan_y), (max_x + 5.0, scan_y)])
         intersections = rotated_geometry.intersection(scanline)
         segments = _extract_scanline_segments(intersections)
         if segments:
-            segment_points: list[list[float]] = []
             for start_x, end_x in segments:
                 if abs(end_x - start_x) < 1.0:
                     continue
                 segment = _segment_points(start_x, end_x, scan_y, waypoint_spacing_m)
                 if reverse:
                     segment.reverse()
-                segment_points.extend(segment)
                 reverse = not reverse
+                if not segment:
+                    continue
+                if previous_rotated_point is not None and previous_rotated_point != segment[0]:
+                    connector = _connect_points_avoiding_no_go(
+                        previous_rotated_point,
+                        segment[0],
+                        no_go_geometries=rotated_no_go_geometries,
+                    )
+                    for point in connector[1:]:
+                        if route_points_rotated and route_points_rotated[-1] == point:
+                            continue
+                        route_points_rotated.append(point)
 
-            if segment_points:
-                for point in segment_points:
-                    x_rot, y_rot = _rotate_point(point[0], point[1], route_angle_deg)
-                    lng, lat = _local_point_to_lng_lat(x_rot, y_rot, origin=origin, centroid=centroid)
-                    if route_points and route_points[-1] == [lng, lat]:
+                for point in segment:
+                    if route_points_rotated and route_points_rotated[-1] == point:
                         continue
-                    route_points.append([round(lng, 8), round(lat, 8)])
+                    route_points_rotated.append(point)
+                previous_rotated_point = segment[-1]
 
         scan_y += line_spacing_m
+
+    route_points: list[list[float]] = []
+    for point in route_points_rotated:
+        x_rot, y_rot = _rotate_point(point[0], point[1], route_angle_deg)
+        lng, lat = _local_point_to_lng_lat(x_rot, y_rot, origin=origin, centroid=centroid)
+        if route_points and route_points[-1] == [round(lng, 8), round(lat, 8)]:
+            continue
+        route_points.append([round(lng, 8), round(lat, 8)])
 
     return {"points": route_points, "buffer_count": applied_buffer_count}
 
@@ -685,16 +1089,26 @@ def _normalize_no_go_buffers(raw: list[Any]) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         center = _normalize_geo_point(item.get("center"))
+        width_m = item.get("width_m")
+        height_m = item.get("height_m")
         radius_m = item.get("radius_m")
-        if center is None or radius_m is None:
+        if center is None and not isinstance(item.get("bounds"), dict):
             continue
-        radius_value = round(max(3.0, float(radius_m)), 1)
+        if width_m is None and radius_m is not None:
+            width_m = float(radius_m) * 2
+        if height_m is None and radius_m is not None:
+            height_m = float(radius_m) * 2
+        if width_m is None or height_m is None:
+            continue
+        width_value = round(max(6.0, float(width_m)), 1)
+        height_value = round(max(6.0, float(height_m)), 1)
         normalized.append(
             {
                 "id": str(item.get("id") or f"buffer-{index + 1}"),
                 "name": (str(item.get("name") or "").strip() or None),
                 "center": center,
-                "radius_m": radius_value,
+                "width_m": width_value,
+                "height_m": height_value,
             }
         )
     return normalized
@@ -711,18 +1125,174 @@ def _project_geo_point_to_local_meters(
     return ((point["lng"] - avg_lng) * meters_lng, (point["lat"] - avg_lat) * meters_lat)
 
 
-def _buffer_feature_geometry(point: dict[str, float], radius_m: float) -> dict[str, Any]:
-    lat = point["lat"]
-    lng = point["lng"]
+def _no_go_geometry_local(
+    no_go_buffer: dict[str, Any],
+    *,
+    origin: tuple[float, float],
+    centroid: tuple[float, float],
+) -> Polygon | None:
+    center = no_go_buffer.get("center")
+    if not isinstance(center, dict):
+        return None
+    projected_center = _project_geo_point_to_local_meters(center, origin=origin, centroid=centroid)
+    width_m = float(no_go_buffer.get("width_m") or 0)
+    height_m = float(no_go_buffer.get("height_m") or 0)
+    if width_m <= 0 or height_m <= 0:
+        return None
+    half_width = width_m / 2.0
+    half_height = height_m / 2.0
+    center_x, center_y = projected_center
+    return Polygon(
+        [
+            (center_x - half_width, center_y - half_height),
+            (center_x + half_width, center_y - half_height),
+            (center_x + half_width, center_y + half_height),
+            (center_x - half_width, center_y + half_height),
+            (center_x - half_width, center_y - half_height),
+        ]
+    )
+
+
+def _no_go_feature_geometry(no_go_buffer: dict[str, Any]) -> dict[str, Any]:
+    center = no_go_buffer["center"]
+    lat = center["lat"]
+    lng = center["lng"]
     meters_lat = meters_per_degree_latitude()
     meters_lng = meters_per_degree_longitude(lat)
-    polygon_points: list[list[float]] = []
-    for step in range(0, 25):
-        angle = (math.pi * 2 * step) / 24
-        x = math.cos(angle) * radius_m
-        y = math.sin(angle) * radius_m
-        polygon_points.append([round(lng + (x / meters_lng), 8), round(lat + (y / meters_lat), 8)])
+    half_width = float(no_go_buffer["width_m"]) / 2.0
+    half_height = float(no_go_buffer["height_m"]) / 2.0
+    polygon_points = [
+        [round(lng - (half_width / meters_lng), 8), round(lat - (half_height / meters_lat), 8)],
+        [round(lng + (half_width / meters_lng), 8), round(lat - (half_height / meters_lat), 8)],
+        [round(lng + (half_width / meters_lng), 8), round(lat + (half_height / meters_lat), 8)],
+        [round(lng - (half_width / meters_lng), 8), round(lat + (half_height / meters_lat), 8)],
+        [round(lng - (half_width / meters_lng), 8), round(lat - (half_height / meters_lat), 8)],
+    ]
     return {"type": "Polygon", "coordinates": [polygon_points]}
+
+
+def _connect_points_avoiding_no_go(
+    start: list[float],
+    end: list[float],
+    *,
+    no_go_geometries: list[Polygon],
+) -> list[list[float]]:
+    direct_segment = LineString([tuple(start), tuple(end)])
+    blocking_geometry = next(
+        (
+            geometry
+            for geometry in no_go_geometries
+            if not geometry.is_empty and (direct_segment.crosses(geometry) or direct_segment.within(geometry) or direct_segment.intersects(geometry))
+        ),
+        None,
+    )
+    if blocking_geometry is None:
+        return [start, end]
+
+    min_x, min_y, max_x, max_y = blocking_geometry.bounds
+    margin = 4.0
+    candidates = [
+        [start, [start[0], max_y + margin], [end[0], max_y + margin], end],
+        [start, [start[0], min_y - margin], [end[0], min_y - margin], end],
+        [start, [max_x + margin, start[1]], [max_x + margin, end[1]], end],
+        [start, [min_x - margin, start[1]], [min_x - margin, end[1]], end],
+    ]
+
+    valid_candidates: list[list[list[float]]] = []
+    for candidate in candidates:
+        if _path_intersects_no_go(candidate, no_go_geometries):
+            continue
+        valid_candidates.append(candidate)
+
+    if not valid_candidates:
+        return [start, end]
+
+    valid_candidates.sort(key=_polyline_distance_local_m)
+    return valid_candidates[0]
+
+
+def _connect_geo_points_avoiding_no_go(
+    start: list[float],
+    end: list[float],
+    *,
+    no_go_buffers: list[dict[str, Any]],
+) -> list[list[float]]:
+    direct_segment = LineString([tuple(start), tuple(end)])
+    blocking_buffer = next(
+        (
+            buffer
+            for buffer in no_go_buffers
+            if _line_intersects_no_go_feature(direct_segment, _no_go_feature_geometry(buffer))
+        ),
+        None,
+    )
+    if blocking_buffer is None:
+        return [start, end]
+
+    center = blocking_buffer["center"]
+    meters_lat = meters_per_degree_latitude()
+    meters_lng = meters_per_degree_longitude(center["lat"])
+    margin_x = 6.0 / meters_lng
+    margin_y = 6.0 / meters_lat
+    half_width = float(blocking_buffer["width_m"]) / 2.0 / meters_lng
+    half_height = float(blocking_buffer["height_m"]) / 2.0 / meters_lat
+    min_lng = center["lng"] - half_width
+    max_lng = center["lng"] + half_width
+    min_lat = center["lat"] - half_height
+    max_lat = center["lat"] + half_height
+
+    candidates = [
+        [start, [start[0], max_lat + margin_y], [end[0], max_lat + margin_y], end],
+        [start, [start[0], min_lat - margin_y], [end[0], min_lat - margin_y], end],
+        [start, [max_lng + margin_x, start[1]], [max_lng + margin_x, end[1]], end],
+        [start, [min_lng - margin_x, start[1]], [min_lng - margin_x, end[1]], end],
+    ]
+
+    valid_candidates = [
+        candidate
+        for candidate in candidates
+        if not _geo_path_intersects_no_go(candidate, no_go_buffers)
+    ]
+    if not valid_candidates:
+        return [start, end]
+    valid_candidates.sort(key=_polyline_distance_m)
+    return valid_candidates[0]
+
+
+def _path_intersects_no_go(path: list[list[float]], no_go_geometries: list[Polygon]) -> bool:
+    for current, nxt in zip(path, path[1:]):
+        segment = LineString([tuple(current), tuple(nxt)])
+        for geometry in no_go_geometries:
+            if geometry.is_empty:
+                continue
+            if segment.crosses(geometry) or segment.within(geometry):
+                return True
+            if segment.intersects(geometry) and not segment.touches(geometry):
+                return True
+    return False
+
+
+def _geo_path_intersects_no_go(path: list[list[float]], no_go_buffers: list[dict[str, Any]]) -> bool:
+    for current, nxt in zip(path, path[1:]):
+        segment = LineString([tuple(current), tuple(nxt)])
+        for buffer in no_go_buffers:
+            if _line_intersects_no_go_feature(segment, _no_go_feature_geometry(buffer)):
+                return True
+    return False
+
+
+def _line_intersects_no_go_feature(segment: LineString, geometry: dict[str, Any]) -> bool:
+    no_go_polygon = Polygon(geometry["coordinates"][0])
+    if segment.crosses(no_go_polygon) or segment.within(no_go_polygon):
+        return True
+    return segment.intersects(no_go_polygon) and not segment.touches(no_go_polygon)
+
+
+def _polyline_distance_local_m(path: list[list[float]]) -> float:
+    distance = 0.0
+    for current, nxt in zip(path, path[1:]):
+        distance += math.hypot(nxt[0] - current[0], nxt[1] - current[1])
+    return distance
 
 
 def _slugify(value: str) -> str:

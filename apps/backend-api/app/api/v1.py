@@ -130,7 +130,9 @@ from ..services.media_staging import (
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
 from ..services.flight_missions import (
+    EXPORT_DJI_WPML_FORMAT,
     build_flight_mission_export_bundle,
+    build_flight_mission_dji_wpml_kmz,
     build_flight_mission_payload,
 )
 from ..services.planning import (
@@ -2118,6 +2120,7 @@ def delete_flight_mission(
 def export_flight_mission(
     mission_id: int,
     property_id: int | None = Query(default=None),
+    format: str = Query(default="auto"),
     _admin_session=Depends(require_admin_session),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -2127,21 +2130,60 @@ def export_flight_mission(
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
 
     try:
-        export_bytes = build_flight_mission_export_bundle(
-            mission_id=item.id,
-            mission_name=(item.name or f"Oppdrag {item.id}"),
-            fields=json.loads(item.field_snapshots_json),
-            route_geojson=json.loads(item.route_geojson_json),
-            export_manifest=json.loads(item.export_manifest_json),
-        )
+        mission_name = item.name or f"Oppdrag {item.id}"
+        route_geojson = json.loads(item.route_geojson_json)
+        fields = json.loads(item.field_snapshots_json)
+        export_manifest = json.loads(item.export_manifest_json)
+        parameters = json.loads(item.parameters_json)
+        drone_profile_snapshot = json.loads(item.drone_profile_snapshot_json or "{}")
+        export_format = format.strip().lower()
+        if export_format not in {"auto", "bundle", "dji-wpml"}:
+            raise HTTPException(status_code=400, detail="Ukjent eksportformat")
+
+        if export_format in {"auto", "dji-wpml"}:
+            try:
+                export_bytes = build_flight_mission_dji_wpml_kmz(
+                    mission_id=item.id,
+                    mission_name=mission_name,
+                    route_geojson=route_geojson,
+                    parameters=parameters,
+                    drone_profile=drone_profile_snapshot,
+                )
+                media_type = "application/vnd.google-earth.kmz"
+                filename = f"flyvendebonder-oppdrag-{item.id}.kmz"
+                response_format = EXPORT_DJI_WPML_FORMAT
+            except ValueError:
+                if export_format == "dji-wpml":
+                    raise
+                export_bytes = build_flight_mission_export_bundle(
+                    mission_id=item.id,
+                    mission_name=mission_name,
+                    fields=fields,
+                    route_geojson=route_geojson,
+                    export_manifest=export_manifest,
+                )
+                media_type = "application/zip"
+                filename = f"flyvendebonder-oppdrag-{item.id}.zip"
+                response_format = "bundle"
+        else:
+            export_bytes = build_flight_mission_export_bundle(
+                mission_id=item.id,
+                mission_name=mission_name,
+                fields=fields,
+                route_geojson=route_geojson,
+                export_manifest=export_manifest,
+            )
+            media_type = "application/zip"
+            filename = f"flyvendebonder-oppdrag-{item.id}.zip"
+            response_format = "bundle"
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Oppdraget kan ikke eksporteres: {exc}") from exc
     expires_at = datetime.utcnow() + timedelta(minutes=5)
-    filename = f"flyvendebonder-oppdrag-{item.id}.zip"
-    response = Response(content=export_bytes, media_type="application/zip")
+    response = Response(content=export_bytes, media_type=media_type)
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     response.headers["Cache-Control"] = "private, max-age=300"
     response.headers["Expires"] = expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    response.headers["X-Flyvendebonder-Export-Format"] = response_format
     return response
 
 

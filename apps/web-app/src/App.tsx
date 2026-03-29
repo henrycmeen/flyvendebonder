@@ -2010,7 +2010,7 @@ export default function App() {
             method: "POST",
             credentials: "same-origin",
             headers: {
-              Accept: "application/zip,application/json",
+              Accept: "application/vnd.google-earth.kmz,application/zip,application/json",
             },
           }),
         );
@@ -2026,9 +2026,10 @@ export default function App() {
         }
 
         const blob = await response.blob();
+        const exportFormat = response.headers.get("X-Flyvendebonder-Export-Format");
         const filename = filenameFromDisposition(
           response.headers.get("Content-Disposition"),
-          `flyvendebonder-oppdrag-${missionId}.zip`,
+          `flyvendebonder-oppdrag-${missionId}.kmz`,
         );
         const objectUrl = window.URL.createObjectURL(blob);
         const anchor = document.createElement("a");
@@ -2042,10 +2043,15 @@ export default function App() {
 
         const requestId = response.headers.get("X-Request-ID");
         const mission = flightMissions.find((item) => item.id === missionId);
-        setFlightMissionStatus(`Eksporterte ${mission?.name ?? `oppdrag ${missionId}`}.`);
+        setFlightMissionStatus(
+          exportFormat === "bundle"
+            ? `Eksporterte ${mission?.name ?? `oppdrag ${missionId}`} som generell bundle.`
+            : `Eksporterte ${mission?.name ?? `oppdrag ${missionId}`} som DJI KMZ.`,
+        );
         addLog("info", "Flyoppdrag eksportert", requestId, {
           missionId,
           filename,
+          exportFormat,
         });
       } catch (error) {
         const apiError = error as ApiError;

@@ -3,11 +3,18 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from xml.etree import ElementTree as ET
 
 import pytest
+from shapely.geometry import shape
 from sqlalchemy import select
 
-from app.services.flight_missions import EXPORT_BUNDLE_FORMAT, _segment_points, build_flight_mission_export_bundle
+from app.services.flight_missions import (
+    EXPORT_BUNDLE_FORMAT,
+    EXPORT_DJI_WPML_FORMAT,
+    _segment_points,
+    build_flight_mission_export_bundle,
+)
 from app.services.planning import get_drone_profile, suggest_spacing_for_profile
 
 
@@ -124,6 +131,109 @@ def test_flight_mission_roundtrip_and_export_bundle(client):
     route_geojson = json.loads(archive.read("route.geojson"))
     assert route_geojson["type"] == "FeatureCollection"
     assert any(feature["geometry"]["type"] == "LineString" for feature in route_geojson["features"])
+
+
+def test_flight_mission_export_returns_dji_kmz_for_supported_profile(client):
+    field = _create_field(client, name="DJI-jordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "DJI eksport",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mavic-3-enterprise",
+            "parameters": {
+                "altitude_m": 70,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 16,
+                "route_angle_deg": 15,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"] == "application/vnd.google-earth.kmz"
+    assert export_response.headers["X-Flyvendebonder-Export-Format"] == EXPORT_DJI_WPML_FORMAT
+    assert export_response.headers["Content-Disposition"].endswith('.kmz"')
+
+    archive = zipfile.ZipFile(io.BytesIO(export_response.content))
+    assert sorted(archive.namelist()) == ["wpmz/template.kml", "wpmz/waylines.wpml"]
+
+    template_root = ET.fromstring(archive.read("wpmz/template.kml"))
+    waylines_root = ET.fromstring(archive.read("wpmz/waylines.wpml"))
+    namespace = {"kml": "http://www.opengis.net/kml/2.2", "wpml": "http://www.dji.com/wpmz/1.0.2"}
+
+    assert template_root.find("./kml:Document/wpml:missionConfig", namespace) is not None
+    assert template_root.find(".//wpml:templateType", namespace).text == "waypoint"
+    assert waylines_root.find(".//wpml:executeHeightMode", namespace).text == "relativeToStartPoint"
+    assert waylines_root.find(".//wpml:droneEnumValue", namespace).text == "77"
+    assert waylines_root.find(".//wpml:payloadEnumValue", namespace).text == "66"
+    assert waylines_root.find(".//wpml:actionActuatorFunc", namespace).text == "takePhoto"
+
+
+def test_flight_mission_export_rejects_strict_dji_wpml_for_unsupported_profile(client):
+    field = _create_field(client, name="Mini-jordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Mini eksport",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export?format=dji-wpml")
+    assert export_response.status_code == 400
+    assert "DJI WPML-eksport støttes foreløpig ikke" in export_response.json()["detail"]
+
+
+def test_flight_mission_export_auto_falls_back_to_bundle_for_unsupported_profile(client):
+    field = _create_field(client, name="Fallback-jordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Fallback eksport",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"] == "application/zip"
+    assert export_response.headers["X-Flyvendebonder-Export-Format"] == "bundle"
+    assert export_response.headers["Content-Disposition"].endswith('.zip"')
+
+    archive = zipfile.ZipFile(io.BytesIO(export_response.content))
+    assert sorted(archive.namelist()) == [
+        "fallback-eksport.readme.txt",
+        "fields.geojson",
+        "manifest.json",
+        "route.geojson",
+    ]
+    manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["format"] == EXPORT_BUNDLE_FORMAT
 
 
 def test_flight_mission_can_be_deleted(client):
@@ -412,9 +522,10 @@ def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):
                 "no_go_buffers": [
                     {
                         "id": "mast-1",
-                        "name": "Strømmast",
+                        "name": "Strømsone",
                         "center": {"lat": 59.0005, "lng": 10.0007},
-                        "radius_m": 20,
+                        "width_m": 36,
+                        "height_m": 24,
                     }
                 ],
             },
@@ -431,4 +542,18 @@ def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):
     assert payload["parameters"]["launch_point"]["lat"] == 59.0002
     assert payload["parameters"]["landing_point"]["lng"] == 10.0011
     assert len(payload["parameters"]["no_go_buffers"]) == 1
+    assert payload["parameters"]["no_go_buffers"][0]["width_m"] == 36
+    assert payload["parameters"]["no_go_buffers"][0]["height_m"] == 24
     assert any(item["code"] == "no_go_buffers_applied" for item in payload["warnings"])
+    no_go_polygon = shape(
+        next(feature["geometry"] for feature in payload["route_geojson"]["features"] if feature["properties"]["kind"] == "no_go_buffer")
+    )
+    route_lines = [
+        shape(feature["geometry"])
+        for feature in payload["route_geojson"]["features"]
+        if feature["properties"]["kind"] in {"route", "transit"}
+    ]
+    assert not any(
+        line.crosses(no_go_polygon) or (line.intersects(no_go_polygon) and not line.touches(no_go_polygon))
+        for line in route_lines
+    )
