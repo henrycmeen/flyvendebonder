@@ -5,10 +5,14 @@ Flyvendebønder eksporterer nå ekte DJI-waylines som `KMZ` med `WPML` for støt
 
 ## Formater
 - `auto`
-  - prøver først å bygge DJI `KMZ`
-  - faller tilbake til generell bundle hvis profilen ikke støttes av WPML-sporet
+  - prøver først å bygge enterprise `DJI KMZ`
+  - prøver deretter `DJI Fly KMZ` for støttede forbrukerprofiler
+  - faller til slutt tilbake til generell bundle
 - `dji-wpml`
   - krever støttet DJI-profil
+  - returnerer `400` hvis profilen ikke støttes
+- `dji-fly`
+  - krever støttet `DJI Fly`-profil
   - returnerer `400` hvis profilen ikke støttes
 - `bundle`
   - tvinger gammel generell eksport
@@ -28,12 +32,13 @@ Ruten blir serialisert som waypoint-basert mission med:
 - `dji-mavic-3-enterprise`
 - `dji-matrice-30t`
 
-## Ikke støttet i v1
-- `dji-mini-4-pro`
+## Ikke støttet i enterprise WPML-sporet
+- `dji-mini-4-pro` bruker eget `DJI Fly`-spor, se `dji-fly-mini4pro-export-v1.md`
 - andre DJI-profiler som ikke er mappet til DJI sine offisielle WPML-enumverdier
 
 Disse får:
-- `bundle` ved `format=auto`
+- `DJI Fly KMZ` ved `format=auto` hvis profilen støttes der
+- ellers `bundle` ved `format=auto`
 - `400` ved `format=dji-wpml`
 
 ## Begrensninger

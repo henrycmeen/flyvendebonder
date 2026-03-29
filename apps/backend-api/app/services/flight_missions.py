@@ -23,6 +23,7 @@ RECOMMENDED_WAYPOINT_SPACING_RANGE_M = (8.0, 35.0)
 MIN_FIELD_AREA_FOR_ROUTE_M2 = 250.0
 EXPORT_BUNDLE_FORMAT = "flyvendebonder.flight-mission-bundle.v1"
 EXPORT_DJI_WPML_FORMAT = "dji.wpml.kmz.v1"
+EXPORT_DJI_FLY_KMZ_FORMAT = "dji.fly.kmz.v1"
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 DJI_WPML_NAMESPACE = "http://www.dji.com/wpmz/1.0.2"
 
@@ -45,6 +46,16 @@ DJI_WPML_PROFILES: dict[str, dict[str, Any]] = {
     },
 }
 
+DJI_FLY_KMZ_PROFILES: dict[str, dict[str, Any]] = {
+    "dji-mini-4-pro": {
+        "drone_enum_value": 68,
+        "default_speed_mps": 10.0,
+        "author": "fly",
+        "requires_temporary_mission": True,
+        "supports_waypoint_actions": False,
+    },
+}
+
 ET.register_namespace("", KML_NAMESPACE)
 ET.register_namespace("wpml", DJI_WPML_NAMESPACE)
 
@@ -58,7 +69,7 @@ def build_flight_mission_payload(
     planning_unit_ids: list[int] | None = None,
     drone_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    normalized_parameters = _normalize_parameters(parameters)
+    normalized_parameters = _normalize_parameters(parameters, drone_profile=drone_profile)
     recommended_spacing = suggest_spacing_for_profile(drone_profile, altitude_m=normalized_parameters["altitude_m"])
     warnings = _parameter_warnings(normalized_parameters, recommended_spacing=recommended_spacing)
 
@@ -419,6 +430,99 @@ def build_flight_mission_dji_wpml_kmz(
     return buffer.getvalue()
 
 
+def build_flight_mission_dji_fly_kmz(
+    *,
+    mission_id: int,
+    mission_name: str,
+    route_geojson: dict[str, Any],
+    parameters: dict[str, Any],
+    drone_profile: dict[str, Any],
+) -> bytes:
+    _validate_route_geojson_for_export(route_geojson)
+
+    dji_profile = _resolve_dji_fly_kmz_profile(drone_profile)
+    if dji_profile is None:
+        profile_name = (drone_profile.get("name") or drone_profile.get("id") or "ukjent profil").strip()
+        raise ValueError(
+            f"DJI Fly KMZ-eksport støttes foreløpig ikke for {profile_name}. "
+            "Bruk DJI Mini 4 Pro, eller eksporter som generell bundle."
+        )
+
+    normalized_parameters = _normalize_parameters(parameters)
+    ordered_coordinates = _ordered_route_coordinates(route_geojson)
+    if len(ordered_coordinates) < 2:
+        raise ValueError("Eksporten mangler minst én rute-linje")
+
+    timestamp_ms = _utc_timestamp_ms()
+    speed_mps = _dji_auto_flight_speed_mps(drone_profile, dji_profile)
+    altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
+    takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
+    rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
+    gimbal_pitch_angle = -90.0
+    route_distance_m = _polyline_distance_m(ordered_coordinates)
+    route_duration_s = estimate_mission_duration(
+        route_distance_m=route_distance_m,
+        waypoint_count=len(ordered_coordinates),
+        drone_profile=drone_profile,
+    )
+
+    template_xml = _build_dji_template_kml(
+        mission_name=mission_name,
+        timestamp_ms=timestamp_ms,
+        coordinates=ordered_coordinates,
+        capture_keys=set(),
+        altitude_m=altitude_m,
+        speed_mps=speed_mps,
+        gimbal_pitch_angle=gimbal_pitch_angle,
+        takeoff_security_height_m=takeoff_security_height_m,
+        normalized_parameters=normalized_parameters,
+        dji_profile=dji_profile,
+        include_payload_info=False,
+        author=dji_profile.get("author") or "fly",
+        use_straight_line=1,
+    )
+    waylines_xml = _build_dji_waylines_wpml(
+        mission_name=mission_name,
+        coordinates=ordered_coordinates,
+        capture_keys=set(),
+        altitude_m=altitude_m,
+        speed_mps=speed_mps,
+        gimbal_pitch_angle=gimbal_pitch_angle,
+        takeoff_security_height_m=takeoff_security_height_m,
+        rth_height_m=rth_height_m,
+        dji_profile=dji_profile,
+        include_payload_info=False,
+        waypoint_turn_mode="coordinateTurn",
+        rc_lost_action="goBack",
+        exit_on_rc_lost="executeLostAction",
+        folder_distance_m=route_distance_m,
+        folder_duration_s=route_duration_s,
+        use_straight_line=1,
+    )
+
+    slug = _slugify(mission_name) or f"mission-{mission_id}"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("wpmz/template.kml", template_xml)
+        archive.writestr("wpmz/waylines.wpml", waylines_xml)
+        archive.writestr(
+            f"{slug}.readme.txt",
+            "\n".join(
+                [
+                    f"Oppdrag: {mission_name}",
+                    "DJI Fly / Mini 4 Pro:",
+                    "1. Opprett en midlertidig waypoint-rute i DJI Fly.",
+                    "2. Finn mission-filen i waypoint-mappen på enheten/kontrolleren.",
+                    "3. Gi denne KMZ-filen samme navn som den midlertidige mission-filen og erstatt den.",
+                    "4. Åpne ruten i DJI Fly og kontroller waypointene før flyging.",
+                    "Merk: Intervallfoto for kartlegging må normalt startes manuelt i DJI Fly.",
+                ]
+            ),
+        )
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def _validate_export_bundle_inputs(
     *,
     mission_name: str,
@@ -500,6 +604,16 @@ def _resolve_dji_wpml_profile(drone_profile: dict[str, Any] | None) -> dict[str,
     return {**profile, "id": profile_id, "name": drone_profile.get("name") or profile_id}
 
 
+def _resolve_dji_fly_kmz_profile(drone_profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    if drone_profile is None:
+        return None
+    profile_id = str(drone_profile.get("id") or "").strip()
+    profile = DJI_FLY_KMZ_PROFILES.get(profile_id)
+    if profile is None:
+        return None
+    return {**profile, "id": profile_id, "name": drone_profile.get("name") or profile_id}
+
+
 def _ordered_route_coordinates(route_geojson: dict[str, Any]) -> list[list[float]]:
     coordinates: list[list[float]] = []
     for feature in route_geojson.get("features", []):
@@ -561,10 +675,13 @@ def _build_dji_template_kml(
     takeoff_security_height_m: float,
     normalized_parameters: dict[str, Any],
     dji_profile: dict[str, Any],
+    include_payload_info: bool = True,
+    author: str = "Flyvendebønder",
+    use_straight_line: int = 0,
 ) -> bytes:
     root = ET.Element(_kml_tag("kml"))
     document = ET.SubElement(root, _kml_tag("Document"))
-    ET.SubElement(document, _wpml_tag("author")).text = "Flyvendebønder"
+    ET.SubElement(document, _wpml_tag("author")).text = author
     ET.SubElement(document, _wpml_tag("createTime")).text = str(timestamp_ms)
     ET.SubElement(document, _wpml_tag("updateTime")).text = str(timestamp_ms)
     _append_dji_mission_config(
@@ -573,6 +690,7 @@ def _build_dji_template_kml(
         takeoff_security_height_m=takeoff_security_height_m,
         takeoff_ref_point=normalized_parameters.get("launch_point"),
         global_transitional_speed_mps=speed_mps,
+        include_payload_info=include_payload_info,
     )
 
     folder = ET.SubElement(document, _kml_tag("Folder"))
@@ -588,7 +706,7 @@ def _build_dji_template_kml(
     ET.SubElement(global_heading, _wpml_tag("waypointHeadingMode")).text = "followWayline"
     ET.SubElement(global_heading, _wpml_tag("waypointHeadingPathMode")).text = "followBadArc"
     ET.SubElement(folder, _wpml_tag("globalWaypointTurnMode")).text = "toPointAndStopWithDiscontinuityCurvature"
-    ET.SubElement(folder, _wpml_tag("globalUseStraightLine")).text = "0"
+    ET.SubElement(folder, _wpml_tag("globalUseStraightLine")).text = str(int(use_straight_line))
 
     action_group_id = 0
     capture_index = 0
@@ -601,6 +719,7 @@ def _build_dji_template_kml(
         ET.SubElement(placemark, _wpml_tag("useGlobalSpeed")).text = "1"
         ET.SubElement(placemark, _wpml_tag("useGlobalHeadingParam")).text = "1"
         ET.SubElement(placemark, _wpml_tag("useGlobalTurnParam")).text = "1"
+        ET.SubElement(placemark, _wpml_tag("useStraightLine")).text = str(int(use_straight_line))
         ET.SubElement(placemark, _wpml_tag("gimbalPitchAngle")).text = _xml_float(gimbal_pitch_angle)
         if _coordinate_key(point) in capture_keys:
             capture_index += 1
@@ -627,6 +746,13 @@ def _build_dji_waylines_wpml(
     takeoff_security_height_m: float,
     rth_height_m: float,
     dji_profile: dict[str, Any],
+    include_payload_info: bool = True,
+    waypoint_turn_mode: str = "toPointAndStopWithDiscontinuityCurvature",
+    rc_lost_action: str = "hover",
+    exit_on_rc_lost: str = "goContinue",
+    folder_distance_m: float | None = None,
+    folder_duration_s: float | None = None,
+    use_straight_line: int = 0,
 ) -> bytes:
     root = ET.Element(_kml_tag("kml"))
     document = ET.SubElement(root, _kml_tag("Document"))
@@ -637,12 +763,19 @@ def _build_dji_waylines_wpml(
         takeoff_ref_point=None,
         global_transitional_speed_mps=speed_mps,
         global_rth_height_m=rth_height_m,
+        include_payload_info=include_payload_info,
+        rc_lost_action=rc_lost_action,
+        exit_on_rc_lost=exit_on_rc_lost,
     )
 
     folder = ET.SubElement(document, _kml_tag("Folder"))
     ET.SubElement(folder, _wpml_tag("templateId")).text = "0"
     ET.SubElement(folder, _wpml_tag("executeHeightMode")).text = "relativeToStartPoint"
     ET.SubElement(folder, _wpml_tag("waylineId")).text = "0"
+    if folder_distance_m is not None:
+        ET.SubElement(folder, _wpml_tag("distance")).text = str(int(round(folder_distance_m)))
+    if folder_duration_s is not None:
+        ET.SubElement(folder, _wpml_tag("duration")).text = str(int(round(folder_duration_s)))
     ET.SubElement(folder, _wpml_tag("autoFlightSpeed")).text = _xml_float(speed_mps)
 
     action_group_id = 0
@@ -657,8 +790,9 @@ def _build_dji_waylines_wpml(
         ET.SubElement(heading, _wpml_tag("waypointHeadingMode")).text = "followWayline"
         ET.SubElement(heading, _wpml_tag("waypointHeadingPathMode")).text = "followBadArc"
         turn = ET.SubElement(placemark, _wpml_tag("waypointTurnParam"))
-        ET.SubElement(turn, _wpml_tag("waypointTurnMode")).text = "toPointAndStopWithDiscontinuityCurvature"
+        ET.SubElement(turn, _wpml_tag("waypointTurnMode")).text = waypoint_turn_mode
         ET.SubElement(turn, _wpml_tag("waypointTurnDampingDist")).text = "0"
+        ET.SubElement(placemark, _wpml_tag("useStraightLine")).text = str(int(use_straight_line))
         ET.SubElement(placemark, _wpml_tag("gimbalPitchAngle")).text = _xml_float(gimbal_pitch_angle)
         if _coordinate_key(point) in capture_keys:
             capture_index += 1
@@ -682,12 +816,15 @@ def _append_dji_mission_config(
     takeoff_ref_point: dict[str, float] | None,
     global_transitional_speed_mps: float,
     global_rth_height_m: float | None = None,
+    include_payload_info: bool = True,
+    rc_lost_action: str = "hover",
+    exit_on_rc_lost: str = "goContinue",
 ) -> None:
     mission_config = ET.SubElement(document, _wpml_tag("missionConfig"))
     ET.SubElement(mission_config, _wpml_tag("flyToWaylineMode")).text = "safely"
     ET.SubElement(mission_config, _wpml_tag("finishAction")).text = "goHome"
-    ET.SubElement(mission_config, _wpml_tag("exitOnRCLost")).text = "goContinue"
-    ET.SubElement(mission_config, _wpml_tag("executeRCLostAction")).text = "hover"
+    ET.SubElement(mission_config, _wpml_tag("exitOnRCLost")).text = exit_on_rc_lost
+    ET.SubElement(mission_config, _wpml_tag("executeRCLostAction")).text = rc_lost_action
     ET.SubElement(mission_config, _wpml_tag("takeOffSecurityHeight")).text = _xml_float(takeoff_security_height_m)
     ET.SubElement(mission_config, _wpml_tag("globalTransitionalSpeed")).text = _xml_float(global_transitional_speed_mps)
     if global_rth_height_m is not None:
@@ -705,9 +842,10 @@ def _append_dji_mission_config(
     if dji_profile.get("drone_sub_enum_value") is not None:
         ET.SubElement(drone_info, _wpml_tag("droneSubEnumValue")).text = str(dji_profile["drone_sub_enum_value"])
 
-    payload_info = ET.SubElement(mission_config, _wpml_tag("payloadInfo"))
-    ET.SubElement(payload_info, _wpml_tag("payloadEnumValue")).text = str(dji_profile["payload_enum_value"])
-    ET.SubElement(payload_info, _wpml_tag("payloadPositionIndex")).text = str(dji_profile["payload_position_index"])
+    if include_payload_info:
+        payload_info = ET.SubElement(mission_config, _wpml_tag("payloadInfo"))
+        ET.SubElement(payload_info, _wpml_tag("payloadEnumValue")).text = str(dji_profile["payload_enum_value"])
+        ET.SubElement(payload_info, _wpml_tag("payloadPositionIndex")).text = str(dji_profile["payload_position_index"])
 
 
 def _append_point_coordinates(parent: ET.Element, point: list[float]) -> None:
@@ -755,8 +893,12 @@ def _xml_float(value: float) -> str:
     return text.rstrip("0").rstrip(".")
 
 
-def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _normalize_parameters(
+    parameters: dict[str, Any],
+    *,
+    drone_profile: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized = {
         "altitude_m": round(float(parameters["altitude_m"]), 2),
         "line_spacing_m": round(float(parameters["line_spacing_m"]), 2),
         "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
@@ -765,6 +907,11 @@ def _normalize_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
         "landing_point": _normalize_geo_point(parameters.get("landing_point")),
         "no_go_buffers": _normalize_no_go_buffers(parameters.get("no_go_buffers") or []),
     }
+    suggested_spacing = suggest_spacing_for_profile(drone_profile, altitude_m=normalized["altitude_m"])
+    if suggested_spacing is not None:
+        normalized["line_spacing_m"] = suggested_spacing["line_spacing_m"]
+        normalized["waypoint_spacing_m"] = suggested_spacing["waypoint_spacing_m"]
+    return normalized
 
 
 def estimate_mission_duration(

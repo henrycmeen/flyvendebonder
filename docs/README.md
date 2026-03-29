@@ -11,6 +11,7 @@
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `docs/drift/planlegging-workspace-v1.md` – første kontrakt for den nye planleggingsarbeidsflaten
 - `docs/drift/dji-wpml-export-v1.md` – første ekte DJI KMZ/WPML-eksport for støttede enterprise-profiler
+- `docs/drift/dji-fly-mini4pro-export-v1.md` – første Mini 4 Pro / DJI Fly KMZ-eksport og praktisk filflyt
 - `Linear` – backlog og prosjektstatus (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
 - `GitHub Issues` – repo-nære saker og historisk backlog (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `docs/status/` – statuslogg av det som er bygget
@@ -25,5 +26,6 @@
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `docs/drift/planlegging-workspace-v1.md` – hvordan planenheter, splitting og flytidsestimat fungerer
 - `docs/drift/dji-wpml-export-v1.md` – hva som faktisk eksporteres som DJI KMZ, og hva som fortsatt faller tilbake til bundle
+- `docs/drift/dji-fly-mini4pro-export-v1.md` – hvordan Mini 4 Pro bruker DJI Fly-sporet i stedet for Pilot 2
 - `Linear` – prioritering og triage
 - `AGENTS.md` – interne arbeidsregler for repoet

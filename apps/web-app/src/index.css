@@ -362,6 +362,58 @@ body {
     0 8px 18px rgba(93, 46, 18, 0.22);
 }
 
+.fb-field-handle--danger {
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 238, 236, 0.96), rgba(255, 238, 236, 0.52) 32%, transparent 33%),
+    linear-gradient(180deg, #d9493b, #b42318);
+  box-shadow:
+    0 0 0 3px rgba(217, 45, 32, 0.18),
+    0 8px 18px rgba(123, 24, 16, 0.22);
+}
+
+.fb-field-handle--center {
+  width: 20px;
+  height: 20px;
+}
+
+.fb-field-label--selected {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(248, 251, 255, 0.98);
+  color: #18448c;
+  box-shadow:
+    0 10px 24px rgba(37, 99, 235, 0.12),
+    0 0 0 4px rgba(96, 165, 250, 0.12);
+}
+
+.fb-planning-map[data-map-mode="resolve"],
+.fb-planning-map[data-map-mode="split"],
+.fb-planning-map[data-map-mode="launch"],
+.fb-planning-map[data-map-mode="landing"],
+.fb-planning-map[data-map-mode="no-go"] {
+  cursor: crosshair;
+}
+
+.fb-planning-map[data-map-mode="select"] .fb-planning-unit,
+.fb-planning-map[data-map-mode="resolve"] .fb-planning-unit {
+  cursor: pointer;
+}
+
+.fb-planning-map .fb-planning-unit {
+  transition:
+    fill-opacity var(--fb-motion-duration-small) var(--fb-motion-easing-standard),
+    stroke-width var(--fb-motion-duration-small) var(--fb-motion-easing-standard),
+    opacity var(--fb-motion-duration-small) var(--fb-motion-easing-standard),
+    filter var(--fb-motion-duration-small) var(--fb-motion-easing-standard);
+}
+
+.fb-planning-map .fb-planning-unit:hover {
+  filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.12));
+}
+
+.fb-planning-map .fb-planning-unit--selected {
+  filter: drop-shadow(0 0 12px rgba(37, 99, 235, 0.22));
+}
+
 @media (max-width: 767px) {
   .fb-liquid-filter {
     max-width: min(320px, calc(100vw - 1.5rem));

@@ -109,6 +109,11 @@ function roundSpacing(value: number): number {
   return Math.max(1, Math.round(value * 10) / 10);
 }
 
+function formatMeters(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "Ukjent";
+  return `${roundSpacing(value)} m`;
+}
+
 function suggestSpacing(
   profile: DroneProfile | null,
   altitudeM: number,
@@ -134,6 +139,25 @@ function suggestSpacing(
   };
 }
 
+function syncParametersWithSuggestedSpacing(
+  current: FlightMissionParameters,
+  profile: DroneProfile | null,
+): FlightMissionParameters {
+  const suggestedSpacing = suggestSpacing(profile, current.altitude_m);
+  if (!suggestedSpacing) return current;
+  if (
+    current.line_spacing_m === suggestedSpacing.line_spacing_m &&
+    current.waypoint_spacing_m === suggestedSpacing.waypoint_spacing_m
+  ) {
+    return current;
+  }
+  return {
+    ...current,
+    line_spacing_m: suggestedSpacing.line_spacing_m,
+    waypoint_spacing_m: suggestedSpacing.waypoint_spacing_m,
+  };
+}
+
 function durationTone(status: string | null): string {
   if (status === "over_limit") return "text-[color:var(--fb-accent-danger)]";
   if (status === "warning") return "text-[color:var(--fb-map-analysis-accent)]";
@@ -155,16 +179,23 @@ function classifyUnitBucket(unit: PlanningUnit, propertyLabel: string | undefine
 }
 
 function unitCountLabel(count: number): string {
-  return count === 1 ? "1 jord klart for planlegging." : `${count} jorder klare for planlegging.`;
+  return count === 1 ? "1 område klart for planlegging." : `${count} områder klare for planlegging.`;
 }
 
 function normalizeMissionParameters(parameters: Partial<FlightMissionParameters> | null | undefined): FlightMissionParameters {
+  const normalizedNoGoBuffers = Array.isArray(parameters?.no_go_buffers)
+    ? parameters.no_go_buffers.map((buffer) => ({
+        ...buffer,
+        width_m: Number(buffer.width_m ?? ((buffer.radius_m ?? 15) * 2)),
+        height_m: Number(buffer.height_m ?? ((buffer.radius_m ?? 15) * 2)),
+      }))
+    : [];
   return {
     ...DEFAULT_FLIGHT_MISSION_PARAMETERS,
     ...parameters,
     launch_point: parameters?.launch_point ?? null,
     landing_point: parameters?.landing_point ?? null,
-    no_go_buffers: Array.isArray(parameters?.no_go_buffers) ? parameters.no_go_buffers : [],
+    no_go_buffers: normalizedNoGoBuffers,
   };
 }
 
@@ -173,7 +204,8 @@ function createNoGoBuffer(point: GeoPoint): NoGoBuffer {
     id: `buffer-${Date.now()}-${Math.round(point.lat * 1000)}-${Math.round(point.lng * 1000)}`,
     name: null,
     center: point,
-    radius_m: 25,
+    width_m: 28,
+    height_m: 20,
   };
 }
 
@@ -248,7 +280,8 @@ export function PlanningPage({
   const [missionName, setMissionName] = useState("");
   const [parameters, setParameters] = useState<FlightMissionParameters>(DEFAULT_FLIGHT_MISSION_PARAMETERS);
   const [preview, setPreview] = useState<FlightMissionPreview | null>(null);
-  const [previewStatus, setPreviewStatus] = useState("Velg ett jord for å beregne flytid.");
+  const [previewPending, setPreviewPending] = useState(false);
+  const [previewStatus, setPreviewStatus] = useState("");
   const [toolMode, setToolMode] = useState<PlanningToolMode>(initialToolMode(canEdit));
   const [splitPoints, setSplitPoints] = useState<GeoPoint[]>([]);
   const [findBusy, setFindBusy] = useState(false);
@@ -264,7 +297,7 @@ export function PlanningPage({
   const [hoveredSuggestion, setHoveredSuggestion] = useState<PreviewSuggestion | null>(null);
   const [pinnedSuggestion, setPinnedSuggestion] = useState<PreviewSuggestion | null>(null);
   const [suggestionFocusToken, setSuggestionFocusToken] = useState(0);
-  const [spacingMode, setSpacingMode] = useState<"auto" | "manual">("auto");
+  const [selectedNoGoBufferId, setSelectedNoGoBufferId] = useState<string | null>(null);
 
   const selectedUnit = useMemo(
     () => units.find((item) => item.id === selectedUnitId) ?? null,
@@ -350,7 +383,6 @@ export function PlanningPage({
       const unit = units.find((item) => item.id === unitId) ?? null;
       setHoveredSuggestion(null);
       setPinnedSuggestion(null);
-      setSpacingMode("auto");
       setSelectedUnitId(unitId);
       setSelectedMissionUnitIds([unitId]);
       setSplitPoints([]);
@@ -359,7 +391,7 @@ export function PlanningPage({
         setMissionName(unit?.name ? `Plan ${unit.name}` : "");
         setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
         setPreview(null);
-        setPreviewStatus("Jord valgt. Juster innstillingene og lagre planen.");
+        setPreviewStatus("");
       }
     },
     [onSelectMission, units],
@@ -428,8 +460,8 @@ export function PlanningPage({
         statusText ??
           (nextUnits.length === 0
             ? canEdit
-              ? "Ingen jorder ennå. Trykk Nytt jord og klikk i kartet, eller hent eierjorder under Innstillinger."
-              : "Ingen jorder lagt inn ennå."
+              ? "Ingen områder ennå. Trykk Nytt område og klikk i kartet, eller hent inn områder under Innstillinger."
+              : "Ingen områder lagt inn ennå."
             : unitCountLabel(nextUnits.length)),
       );
     },
@@ -485,16 +517,16 @@ export function PlanningPage({
       applyUnits(
         nextUnits,
         createdCount > 0
-          ? `Hentet ${createdCount} nye jord${createdCount === 1 ? "" : "er"} som utkast fra eier-eiendommene dine.`
+          ? `Hentet ${createdCount} nye område${createdCount === 1 ? "" : "r"} fra eiendommene dine.`
           : nextUnits.length > 0
-            ? "Alle eierjorder er allerede klare i listen."
-            : "Fant ingen nye eierjorder å legge inn.",
+            ? "Alle områdene er allerede klare i listen."
+            : "Fant ingen nye områder å legge inn.",
       );
       setSettingsOpen(false);
       await loadSuggestions();
     } catch (error) {
       const apiError = error as ApiError;
-      setUnitsStatus(`Kunne ikke hente eierjorder: ${apiError.message}`);
+      setUnitsStatus(`Kunne ikke hente områder: ${apiError.message}`);
     } finally {
       setSyncAllBusy(false);
     }
@@ -520,8 +552,9 @@ export function PlanningPage({
   useEffect(() => {
     setMissionName("");
     setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
+    setSelectedNoGoBufferId(null);
     setPreview(null);
-    setPreviewStatus("Velg eller opprett et jord for å begynne.");
+    setPreviewStatus("");
     setSplitPoints([]);
     void Promise.all([loadUnits(), loadSuggestions()]);
   }, [canEdit, loadSuggestions, loadUnits]);
@@ -540,13 +573,16 @@ export function PlanningPage({
 
   useEffect(() => {
     if (!selectedUnit || selectedMissionUnitIds.length === 0 || !selectedDroneProfileId) {
+      setPreviewPending(false);
       setPreview(null);
-      setPreviewStatus("Velg ett jord for å beregne flytid.");
+      setPreviewStatus("");
       return;
     }
 
     let cancelled = false;
-    setPreviewStatus("Beregner plan …");
+    setPreviewPending(true);
+    setPreview(null);
+    setPreviewStatus("Oppdaterer rute …");
     void apiPost<FlightMissionPreview>("/api/v1/flight-missions/preview", {
       property_id: selectedUnit.property_id,
       name: missionName || undefined,
@@ -557,11 +593,13 @@ export function PlanningPage({
       .then(({ data }) => {
         if (cancelled) return;
         setPreview(data);
-        setPreviewStatus("Flyplan beregnet fra valgt jord.");
+        setPreviewPending(false);
+        setPreviewStatus("");
       })
       .catch((error) => {
         if (cancelled) return;
         const apiError = error as ApiError;
+        setPreviewPending(false);
         setPreview(null);
         setPreviewStatus(`Kunne ikke beregne plan: ${apiError.message}`);
       });
@@ -575,9 +613,10 @@ export function PlanningPage({
     if (!selectedUnit) {
       setMissionName("");
       setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
-      setSpacingMode("auto");
+      setSelectedNoGoBufferId(null);
+      setPreviewPending(false);
       setPreview(null);
-      setPreviewStatus("Velg eller opprett et jord for å begynne.");
+    setPreviewStatus("");
       return;
     }
 
@@ -591,13 +630,16 @@ export function PlanningPage({
       ).filter((unitId, index, items) => items.indexOf(unitId) === index);
 
       if (missionUnitIds.includes(selectedUnit.id)) {
+        const nextProfileId = activeMission.drone_profile_id || selectedDroneProfileId;
+        const nextProfile = profiles.find((profile) => profile.id === nextProfileId) ?? selectedDroneProfile;
         setSelectedMissionUnitIds([selectedUnit.id]);
         setMissionName(activeMission.name ?? selectedUnit.name);
         setSelectedDroneProfileId((current) => activeMission.drone_profile_id || current);
-        setParameters(normalizeMissionParameters(activeMission.parameters));
-        setSpacingMode("manual");
+        setParameters(syncParametersWithSuggestedSpacing(normalizeMissionParameters(activeMission.parameters), nextProfile));
+        setSelectedNoGoBufferId(activeMission.parameters?.no_go_buffers?.[0]?.id ?? null);
+        setPreviewPending(false);
         setPreview(activeMission);
-        setPreviewStatus("Plan lastet for valgt jord.");
+        setPreviewStatus("");
         setToolMode((current) =>
           current === "resolve" || current === "launch" || current === "landing" || current === "no_go"
             ? current
@@ -610,10 +652,11 @@ export function PlanningPage({
 
     setSelectedMissionUnitIds([selectedUnit.id]);
     setMissionName(selectedUnit.name);
-    setParameters(DEFAULT_FLIGHT_MISSION_PARAMETERS);
-    setSpacingMode("auto");
+    setParameters(syncParametersWithSuggestedSpacing(DEFAULT_FLIGHT_MISSION_PARAMETERS, selectedDroneProfile));
+    setSelectedNoGoBufferId(null);
+    setPreviewPending(false);
     setPreview(null);
-    setPreviewStatus("Juster parametre og lagre plan for dette jordet.");
+    setPreviewStatus("");
     setToolMode((current) =>
       current === "edit" ||
       current === "split" ||
@@ -625,24 +668,12 @@ export function PlanningPage({
         : "select",
     );
     setSplitPoints([]);
-  }, [activeMission, selectedUnit]);
+  }, [activeMission, profiles, selectedDroneProfile, selectedDroneProfileId, selectedUnit]);
 
   useEffect(() => {
-    if (spacingMode !== "auto" || !suggestedSpacing) return;
-    setParameters((current) => {
-      if (
-        current.line_spacing_m === suggestedSpacing.line_spacing_m &&
-        current.waypoint_spacing_m === suggestedSpacing.waypoint_spacing_m
-      ) {
-        return current;
-      }
-      return {
-        ...current,
-        line_spacing_m: suggestedSpacing.line_spacing_m,
-        waypoint_spacing_m: suggestedSpacing.waypoint_spacing_m,
-      };
-    });
-  }, [spacingMode, suggestedSpacing]);
+    if (!suggestedSpacing) return;
+    setParameters((current) => syncParametersWithSuggestedSpacing(current, selectedDroneProfile));
+  }, [selectedDroneProfile, suggestedSpacing]);
 
   const handleAddSplitPoint = useCallback(
     (point: GeoPoint) => {
@@ -688,7 +719,7 @@ export function PlanningPage({
       ...current,
       launch_point: point,
     }));
-    setPreviewStatus("Startpunkt oppdatert.");
+    setPreviewStatus("Oppdaterer rute med nytt startpunkt …");
     setToolMode("select");
   }, []);
 
@@ -697,20 +728,22 @@ export function PlanningPage({
       ...current,
       landing_point: point,
     }));
-    setPreviewStatus("Landingspunkt oppdatert.");
+    setPreviewStatus("Oppdaterer rute med nytt landingspunkt …");
     setToolMode("select");
   }, []);
 
   const handleAddNoGoBuffer = useCallback((point: GeoPoint) => {
     const nextBuffer = createNoGoBuffer(point);
+    setSelectedNoGoBufferId(nextBuffer.id);
     setParameters((current) => ({
       ...current,
       no_go_buffers: [...current.no_go_buffers, nextBuffer],
     }));
-    setPreviewStatus("La til hinderbuffer i rutegrunnlaget.");
+    setPreviewStatus("Oppdaterer rute med nytt hinder …");
   }, []);
 
-  const handleUpdateNoGoBufferRadius = useCallback((bufferId: string | null, radiusM: number) => {
+  const handleUpdateNoGoBufferSize = useCallback(
+    (bufferId: string | null, nextSize: Partial<Pick<NoGoBuffer, "width_m" | "height_m" | "center">>) => {
     if (!bufferId) return;
     setParameters((current) => ({
       ...current,
@@ -718,19 +751,25 @@ export function PlanningPage({
         buffer.id === bufferId
           ? {
               ...buffer,
-              radius_m: Math.max(3, radiusM),
+              ...nextSize,
+              width_m: Math.max(6, Number(nextSize.width_m ?? buffer.width_m)),
+              height_m: Math.max(6, Number(nextSize.height_m ?? buffer.height_m)),
+              center: nextSize.center ?? buffer.center,
             }
           : buffer,
       ),
     }));
+    setPreviewStatus("Oppdaterer rute etter hinderendring …");
   }, []);
 
   const handleRemoveNoGoBuffer = useCallback((bufferId: string | null) => {
     if (!bufferId) return;
+    setSelectedNoGoBufferId((current) => (current === bufferId ? null : current));
     setParameters((current) => ({
       ...current,
       no_go_buffers: current.no_go_buffers.filter((buffer) => buffer.id !== bufferId),
     }));
+    setPreviewStatus("Oppdaterer rute uten hinderet …");
   }, []);
 
   const handleResolvePoint = useCallback(
@@ -781,8 +820,8 @@ export function PlanningPage({
         }
         setUnitsStatus(
           data.imported_field
-            ? `Fant og importerte ${data.candidate_name ?? data.unit.name} fra ${data.property_label ?? propertyLabelById.get(data.property_id) ?? data.matrikkelnummer ?? "teigen"}. Nytt jord er fortsatt aktivt.`
-            : `Fant ${data.candidate_name ?? data.unit.name} og valgte den i planen. Nytt jord er fortsatt aktivt.`,
+            ? `Fant og importerte ${data.candidate_name ?? data.unit.name} fra ${data.property_label ?? propertyLabelById.get(data.property_id) ?? data.matrikkelnummer ?? "teigen"}. Nytt område er fortsatt aktivt.`
+            : `Fant ${data.candidate_name ?? data.unit.name} og valgte den i planen. Nytt område er fortsatt aktivt.`,
         );
         await loadSuggestions();
       } catch (error) {
@@ -790,7 +829,7 @@ export function PlanningPage({
         if (apiError.status === 404) {
           setUnitsStatus("Fant ingen teig der. Klikk lenger inn i teigen og prøv igjen.");
         } else {
-          setUnitsStatus(`Kunne ikke finne jord fra kartklikk: ${apiError.message}`);
+          setUnitsStatus(`Kunne ikke finne område fra kartklikk: ${apiError.message}`);
         }
       } finally {
         setFindBusy(false);
@@ -805,6 +844,7 @@ export function PlanningPage({
       loadSuggestions,
       noGoMode,
       onReloadProfile,
+      properties.length,
       propertyLabelById,
       resolveMode,
       splitMode,
@@ -832,7 +872,7 @@ export function PlanningPage({
         const nextUnits = [...syncedUnits, ...untouchedUnits].sort(
           (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at) || b.id - a.id,
         );
-        applyUnits(nextUnits, `${candidate.name} ble lagt inn som jordutkast.`);
+        applyUnits(nextUnits, `${candidate.name} ble lagt inn som område.`);
         const createdUnit = nextUnits.find((item) => item.source_field_plot_id === createdField.data.id) ?? null;
         if (createdUnit) {
           setSelectedUnitId(createdUnit.id);
@@ -842,7 +882,7 @@ export function PlanningPage({
         await loadSuggestions();
       } catch (error) {
         const apiError = error as ApiError;
-        setUnitsStatus(`Kunne ikke opprette jord fra forslag: ${apiError.message}`);
+        setUnitsStatus(`Kunne ikke opprette område fra forslag: ${apiError.message}`);
       } finally {
         setSuggestionCreateKey(null);
       }
@@ -906,7 +946,7 @@ export function PlanningPage({
         setUnitsStatus(`Oppdaterte avgrensningen for ${selectedUnit.source_field_name}.`);
       } catch (error) {
         const apiError = error as ApiError;
-        setUnitsStatus(`Kunne ikke oppdatere jordet: ${apiError.message}`);
+        setUnitsStatus(`Kunne ikke oppdatere området: ${apiError.message}`);
       } finally {
         setFieldGeometryBusy(false);
       }
@@ -930,7 +970,7 @@ export function PlanningPage({
       setUnitsStatus(`Slettet ${selectedUnit.source_field_name}.`);
     } catch (error) {
       const apiError = error as ApiError;
-      setUnitsStatus(`Kunne ikke slette jord: ${apiError.message}`);
+      setUnitsStatus(`Kunne ikke slette området: ${apiError.message}`);
     } finally {
       setFieldDeleteBusy(false);
     }
@@ -943,14 +983,15 @@ export function PlanningPage({
     setPinnedSuggestion(null);
     setSelectedMissionUnitIds([]);
     setMissionName("");
-    setSpacingMode("auto");
+    setParameters(syncParametersWithSuggestedSpacing(DEFAULT_FLIGHT_MISSION_PARAMETERS, selectedDroneProfile));
+    setSelectedNoGoBufferId(null);
     setPreview(null);
-    setPreviewStatus("Klikk på et jord i kartet for å lage et nytt jordutkast.");
-    setUnitsStatus("Nytt jord er aktivt. Klikk lenger inn i jordet du vil hente inn som utkast.");
+    setPreviewStatus("Klikk i kartet for å hente inn et område.");
+    setUnitsStatus("Nytt område er aktivt. Klikk lenger inn i området du vil hente inn.");
     setToolMode(canEdit ? "resolve" : "select");
     setSplitPoints([]);
     setSettingsOpen(false);
-  }, [canEdit, onSelectMission]);
+  }, [canEdit, onSelectMission, selectedDroneProfile]);
 
   const handlePreviewSuggestion = useCallback(
     (candidate: PlanningSuggestion, pin = false) => {
@@ -964,7 +1005,7 @@ export function PlanningPage({
       setSelectedUnitId(null);
       onSelectMission(null);
       setPreview(null);
-      setPreviewStatus("Forslag valgt. Se plasseringen i kartet før du eventuelt oppretter jordet.");
+      setPreviewStatus("");
       if (pin) {
         setPinnedSuggestion(preview);
         setSuggestionFocusToken((current) => current + 1);
@@ -985,7 +1026,7 @@ export function PlanningPage({
       <aside className="flex min-h-0 flex-col overflow-hidden bg-fb-surface-page">
         <div className="relative px-4 py-4">
           <div className="flex items-start justify-between gap-3">
-            <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Jorder</p>
+            <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Områder</p>
             <div className="flex shrink-0 items-center gap-2">
               <HoverActionButton
                 type="button"
@@ -993,10 +1034,10 @@ export function PlanningPage({
                 variant="default"
                 onClick={handleStartNewField}
                 disabled={!canEdit || properties.length === 0}
-                help="Start et nytt jord ved å klikke på jordet i kartet."
+                help="Start et nytt område ved å klikke i kartet."
               >
                 <Plus className="h-3.5 w-3.5" />
-                Nytt jord
+                Nytt område
               </HoverActionButton>
               <HoverActionButton
                 type="button"
@@ -1004,7 +1045,7 @@ export function PlanningPage({
                 variant="outline"
                 onClick={() => setSettingsOpen((current) => !current)}
                 disabled={!canEdit || properties.length === 0}
-                help="Åpne handlinger for å hente inn bondens jorder fra eiendommene du eier."
+                help="Åpne handlinger for å hente inn områder fra eiendommene dine."
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </HoverActionButton>
@@ -1018,11 +1059,11 @@ export function PlanningPage({
                 className="w-full justify-start"
                 onClick={() => void handleSyncOwnedFields()}
                 loading={syncAllBusy}
-                loadingLabel="Henter jorder"
-                help="Hent inn alle jordene du eier og legg dem i listen som utkast."
+                loadingLabel="Henter områder"
+                help="Hent inn områder fra eiendommene dine og legg dem i listen."
               >
                 <RefreshCw className="h-3.5 w-3.5" />
-                Hent alle eierjorder
+                Hent områder
               </HoverActionButton>
             </div>
           ) : null}
@@ -1038,7 +1079,7 @@ export function PlanningPage({
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Filtrer jorder og forslag …"
+              placeholder="Filtrer områder og forslag …"
               className="w-full rounded-xl bg-fb-surface-ghost px-9 py-2.5 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
             />
           </label>
@@ -1047,18 +1088,14 @@ export function PlanningPage({
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="divide-y divide-fb-border-subtle">
             <section className="px-4 py-3">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Jorder</p>
-                <span className="text-xs text-fb-text-secondary">{filteredUnits.length}</span>
-              </div>
               {filteredUnits.length === 0 ? (
-                <div className="px-1 py-4 text-sm text-fb-text-secondary">Ingen jorder ennå.</div>
+                <div className="px-1 py-4 text-sm text-fb-text-secondary">Ingen områder ennå.</div>
               ) : (
                 <div className="space-y-4">
                   {([
-                    ["field", "Jord"],
-                    ["forest", "Skog"],
-                    ["unknown", "Uavklart"],
+                    ["field", "Til flyging"],
+                    ["forest", "Skogområder"],
+                    ["unknown", "Andre områder"],
                   ] as const).map(([bucket, label]) => {
                     const items = groupedUnits[bucket];
                     if (items.length === 0) return null;
@@ -1117,9 +1154,9 @@ export function PlanningPage({
                 <div className="mb-3 flex flex-wrap gap-2">
                   {([
                     ["all", "Alle"],
-                    ["field", "Jord"],
+                    ["field", "Flyflater"],
                     ["forest", "Skog"],
-                    ["unknown", "Uavklart"],
+                    ["unknown", "Andre"],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -1169,7 +1206,7 @@ export function PlanningPage({
                           size="sm"
                           variant="ghost"
                           onClick={() => handlePreviewSuggestion(candidate, true)}
-                          help="Vis hvor dette jordet ligger i kartet uten å opprette det."
+                          help="Vis hvor dette området ligger i kartet uten å opprette det."
                         >
                           Vis i kart
                         </HoverActionButton>
@@ -1181,9 +1218,9 @@ export function PlanningPage({
                           disabled={!canEdit}
                           loading={suggestionCreateKey === candidateKey}
                           loadingLabel="Oppretter"
-                          help="Opprett dette jordet som utkast og åpne det i planleggingen."
+                          help="Opprett dette området og åpne det i planleggingen."
                         >
-                          Opprett jord
+                          Opprett område
                         </HoverActionButton>
                       </div>
                     </div>
@@ -1200,10 +1237,7 @@ export function PlanningPage({
         <div className="px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="mt-1 text-xl font-semibold text-fb-text-primary">
-                {selectedUnit?.name ?? "Jord"}
-              </h2>
-              {selectedUnit ? <p className="mt-2 text-sm text-fb-text-secondary">{previewStatus}</p> : null}
+              {selectedUnit && previewStatus ? <p className="mt-1 text-sm text-fb-text-secondary">{previewStatus}</p> : null}
             </div>
             {selectedUnit ? (
               <div className="flex flex-wrap gap-2">
@@ -1217,11 +1251,11 @@ export function PlanningPage({
                   }}
                   disabled={!canEdit || selectedUnit.parent_unit_id != null}
                   loading={fieldGeometryBusy}
-                  loadingLabel="Lagrer jord"
+                  loadingLabel="Lagrer område"
                   help={
                     selectedUnit.parent_unit_id != null
-                      ? "Finjustering med dragging er foreløpig bare tilgjengelig for hele jorder."
-                      : "Dra i punktene i kartet for å justere jordgrensen."
+                      ? "Finjustering med dragging er foreløpig bare tilgjengelig for hele områder."
+                      : "Dra i punktene i kartet for å justere grensen."
                   }
                 >
                   <PencilLine className="h-3.5 w-3.5" />
@@ -1238,7 +1272,7 @@ export function PlanningPage({
                   disabled={!canEdit}
                   loading={splitBusy}
                   loadingLabel="Deler"
-                  help="Del jordet ved å klikke to punkter i kartet."
+                  help="Del området ved å klikke to punkter i kartet."
                 >
                   <Scissors className="h-3.5 w-3.5" />
                   Del
@@ -1250,11 +1284,11 @@ export function PlanningPage({
                   onClick={() => void handleDeleteSelectedField()}
                   disabled={!canEdit}
                   loading={fieldDeleteBusy}
-                  loadingLabel="Sletter jord"
-                  help="Slett hele jordet permanent."
+                  loadingLabel="Sletter område"
+                  help="Slett hele området permanent."
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  Slett jord
+                  Slett område
                 </HoverActionButton>
               </div>
             ) : null}
@@ -1272,7 +1306,7 @@ export function PlanningPage({
                   setToolMode("select");
                   setSplitPoints([]);
                 }}
-                help="Velg et jord i kartet eller listen."
+                help="Velg et område i kartet eller listen."
               >
                 <MousePointer2 className="h-4 w-4" />
               </HoverActionButton>
@@ -1287,7 +1321,7 @@ export function PlanningPage({
                 disabled={!canEdit}
                 loading={findBusy}
                 loadingLabel="Finner"
-                help="Klikk i kartet for å lage et nytt jord fra kartdata."
+                help="Klikk i kartet for å lage et nytt område fra kartdata."
               >
                 <Plus className="h-4 w-4" />
               </HoverActionButton>
@@ -1341,7 +1375,7 @@ export function PlanningPage({
                 disabled={!canEdit || !selectedUnit || selectedUnit.parent_unit_id != null}
                 loading={fieldGeometryBusy}
                 loadingLabel="Lagrer"
-                help="Dra i punktene rundt valgt jord for å justere grensen."
+                help="Dra i punktene rundt valgt område for å justere grensen."
               >
                 <PencilLine className="h-4 w-4" />
               </HoverActionButton>
@@ -1356,16 +1390,16 @@ export function PlanningPage({
                 disabled={!canEdit || !selectedUnit}
                 loading={splitBusy}
                 loadingLabel="Deler"
-                help="Klikk to punkter i kartet for å dele valgt jord."
+                help="Klikk to punkter i kartet for å dele valgt område."
               >
                 <Scissors className="h-4 w-4" />
               </HoverActionButton>
             </div>
             {resolveMode ? (
               <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
-                <p className="text-xs font-medium text-fb-text-primary">Nytt jord er aktivt</p>
+                <p className="text-xs font-medium text-fb-text-primary">Nytt område er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
-                  Klikk lenger inn i jordet du vil hente inn. Hvis ingenting treffer, får du beskjed og kan prøve på nytt.
+                  Klikk lenger inn i området du vil hente inn. Hvis ingenting treffer, får du beskjed og kan prøve på nytt.
                 </p>
               </div>
             ) : null}
@@ -1387,15 +1421,17 @@ export function PlanningPage({
             ) : null}
             {noGoMode ? (
               <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
-                <p className="text-xs font-medium text-fb-text-primary">Hinderbuffer er aktiv</p>
+                <p className="text-xs font-medium text-fb-text-primary">Hinder er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
-                  Klikk i kartet for å legge inn en no-go sone. Du kan justere radiusen i høyrepanelet etterpå.
+                  Klikk i kartet for å legge inn en rektangulær no-go sone. Dra i håndtakene for å flytte eller justere den.
                 </p>
               </div>
             ) : null}
             <PlanningMap
               units={units}
               missions={selectedUnitMission ? [selectedUnitMission] : activeMission ? [activeMission] : []}
+              previewMission={preview}
+              previewPending={previewPending}
               previewSuggestion={previewSuggestion}
               suggestionFocusToken={suggestionFocusToken}
               activeMissionId={selectedUnitMission?.id ?? activeMissionId}
@@ -1411,6 +1447,7 @@ export function PlanningPage({
               launchPoint={parameters.launch_point}
               landingPoint={parameters.landing_point}
               noGoBuffers={parameters.no_go_buffers}
+              selectedNoGoBufferId={selectedNoGoBufferId}
               baseMapStyle={baseMapStyle}
               showZoomControls={false}
               mapGrayscale={mapGrayscale}
@@ -1421,6 +1458,11 @@ export function PlanningPage({
               onSetLaunchPoint={handleSetLaunchPoint}
               onSetLandingPoint={handleSetLandingPoint}
               onAddNoGoBuffer={handleAddNoGoBuffer}
+              onSelectNoGoBuffer={setSelectedNoGoBufferId}
+              onMoveNoGoBuffer={(bufferId, center) => handleUpdateNoGoBufferSize(bufferId, { center })}
+              onResizeNoGoBuffer={(bufferId, widthM, heightM) =>
+                handleUpdateNoGoBufferSize(bufferId, { width_m: widthM, height_m: heightM })
+              }
               onUnitGeometryChange={(geometry) => void handleUpdateSelectedFieldGeometry(geometry)}
             />
           </div>
@@ -1458,7 +1500,15 @@ export function PlanningPage({
                     <span className="mb-1.5 block text-xs font-medium text-fb-text-secondary">Droneprofil</span>
                     <select
                       value={selectedDroneProfileId}
-                      onChange={(event) => setSelectedDroneProfileId(event.target.value)}
+                      onChange={(event) => {
+                        setSelectedDroneProfileId(event.target.value);
+                        setParameters((current) =>
+                          syncParametersWithSuggestedSpacing(
+                            current,
+                            profiles.find((profile) => profile.id === event.target.value) ?? null,
+                          ),
+                        );
+                      }}
                       className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                     >
                       {profiles.map((profile) => (
@@ -1473,8 +1523,6 @@ export function PlanningPage({
                     {([
                       ["altitude_m", "Høyde", 1, 500],
                       ["route_angle_deg", "Vinkel", 0, 180],
-                      ["line_spacing_m", "Linjeavstand", 1, 200],
-                      ["waypoint_spacing_m", "Waypoint", 1, 200],
                     ] as const).map(([key, label, min, max]) => (
                       <label key={key} className="block">
                         <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">{label}</span>
@@ -1486,12 +1534,19 @@ export function PlanningPage({
                           value={parameters[key]}
                           onChange={(event) => {
                             const nextValue = Number(event.target.value) || parameters[key];
-                            if (key === "line_spacing_m" || key === "waypoint_spacing_m") {
-                              setSpacingMode("manual");
-                            }
                             setParameters((current) => ({
-                              ...current,
-                              [key]: nextValue,
+                              ...(key === "altitude_m"
+                                ? syncParametersWithSuggestedSpacing(
+                                    {
+                                      ...current,
+                                      [key]: nextValue,
+                                    },
+                                    selectedDroneProfile,
+                                  )
+                                : {
+                                    ...current,
+                                    [key]: nextValue,
+                                  }),
                             }));
                           }}
                           className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
@@ -1499,24 +1554,33 @@ export function PlanningPage({
                       </label>
                     ))}
                   </div>
-                  {suggestedSpacing ? (
-                    <div className="flex items-center justify-between gap-3 text-xs text-fb-text-secondary">
-                      <p>
-                        {spacingMode === "auto"
-                          ? `Avstander følger høyde automatisk: ${suggestedSpacing.line_spacing_m} m linje, ${suggestedSpacing.waypoint_spacing_m} m waypoint.`
-                          : `Anbefalt ved ${parameters.altitude_m} m: ${suggestedSpacing.line_spacing_m} m linje, ${suggestedSpacing.waypoint_spacing_m} m waypoint.`}
-                      </p>
-                      {spacingMode === "manual" ? (
-                        <button
-                          type="button"
-                          className="shrink-0 rounded-full bg-fb-surface-ghost px-2.5 py-1 font-medium text-fb-text-primary transition-colors hover:bg-white"
-                          onClick={() => setSpacingMode("auto")}
-                        >
-                          Bruk anbefalt
-                        </button>
-                      ) : null}
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Avstander</p>
+                      <span className="rounded-full bg-fb-text-primary px-2.5 py-1 text-xs font-medium text-white">Auto</span>
                     </div>
-                  ) : null}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ["line_spacing_m", "Linjeavstand"],
+                        ["waypoint_spacing_m", "Waypoint"],
+                      ] as const).map(([key, label]) => (
+                        <div key={key} className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">{label}</span>
+                          <div className="w-full rounded-xl bg-white/65 px-3 py-2 text-sm text-fb-text-primary">
+                            {formatMeters(parameters[key])}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {suggestedSpacing ? (
+                      <p className="text-xs text-fb-text-secondary">
+                        {`${formatMeters(suggestedSpacing.line_spacing_m)} linje · ${formatMeters(suggestedSpacing.waypoint_spacing_m)} waypoint`}
+                      </p>
+                    ) : null}
+                  </div>
 
                   <div className="grid gap-2">
                     <div className="grid grid-cols-2 gap-2">
@@ -1549,7 +1613,7 @@ export function PlanningPage({
                       )}
                       onClick={() => setToolMode((current) => (current === "no_go" ? "select" : "no_go"))}
                     >
-                      Legg til hinderbuffer
+                      Legg til hinder
                     </button>
                     {parameters.launch_point ? (
                       <p className="text-xs text-fb-text-secondary">
@@ -1563,31 +1627,64 @@ export function PlanningPage({
                     ) : null}
                     {parameters.no_go_buffers.length > 0 ? (
                       <div className="space-y-2">
+                        <div className="grid grid-cols-[minmax(0,1fr),4.75rem,4.75rem,auto] items-center gap-2 px-2 text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">
+                          <span>Hinder</span>
+                          <span>Bredde</span>
+                          <span>Høyde</span>
+                          <span></span>
+                        </div>
                         {parameters.no_go_buffers.map((buffer, index) => (
-                          <div key={buffer.id ?? index} className="grid grid-cols-[minmax(0,1fr),4.5rem,auto] items-center gap-2">
-                            <div className="min-w-0">
+                          <div
+                            key={buffer.id ?? index}
+                            className={cn(
+                              "grid grid-cols-[minmax(0,1fr),4.75rem,4.75rem,auto] items-center gap-2 rounded-xl px-2 py-2 transition-colors",
+                              selectedNoGoBufferId === buffer.id ? "bg-fb-surface-ghost" : "",
+                            )}
+                            onClick={() => setSelectedNoGoBufferId(buffer.id)}
+                          >
+                            <button type="button" className="min-w-0 text-left">
                               <p className="truncate text-xs font-medium text-fb-text-primary">
-                                {buffer.name || `Hinderbuffer ${index + 1}`}
+                                {buffer.name || `Hinder ${index + 1}`}
                               </p>
                               <p className="text-[11px] text-fb-text-secondary">
                                 {buffer.center.lat.toFixed(5)}, {buffer.center.lng.toFixed(5)}
                               </p>
-                            </div>
+                            </button>
                             <input
                               type="number"
-                              min={3}
+                              min={6}
                               max={300}
                               step="1"
-                              value={buffer.radius_m}
+                              value={buffer.width_m}
+                              onClick={(event) => event.stopPropagation()}
                               onChange={(event) =>
-                                handleUpdateNoGoBufferRadius(buffer.id, Number(event.target.value) || buffer.radius_m)
+                                handleUpdateNoGoBufferSize(buffer.id, {
+                                  width_m: Number(event.target.value) || buffer.width_m,
+                                })
+                              }
+                              className="w-full rounded-xl bg-fb-surface-ghost px-2 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                            />
+                            <input
+                              type="number"
+                              min={6}
+                              max={300}
+                              step="1"
+                              value={buffer.height_m}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) =>
+                                handleUpdateNoGoBufferSize(buffer.id, {
+                                  height_m: Number(event.target.value) || buffer.height_m,
+                                })
                               }
                               className="w-full rounded-xl bg-fb-surface-ghost px-2 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                             />
                             <button
                               type="button"
                               className="rounded-xl bg-fb-surface-ghost px-2.5 py-2 text-xs font-medium text-fb-text-primary transition-colors hover:bg-white"
-                              onClick={() => handleRemoveNoGoBuffer(buffer.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleRemoveNoGoBuffer(buffer.id);
+                              }}
                             >
                               Fjern
                             </button>
@@ -1607,7 +1704,7 @@ export function PlanningPage({
                     {formatDuration(preview?.estimated_duration_s ?? null)}
                   </p>
                   <p className="mt-1 text-xs text-fb-text-secondary">
-                    {preview ? missionStatusLabel(preview.duration_status) : "Beregnes når jordet er klart."}
+                  {preview ? missionStatusLabel(preview.duration_status) : "Beregnes når området er klart."}
                   </p>
                   {previewWarnings.length > 0 ? (
                     <p className="mt-2 text-xs text-fb-text-secondary">{previewWarnings.length} varsel i rutegrunnlaget.</p>
@@ -1622,7 +1719,7 @@ export function PlanningPage({
                     disabled={!canEdit || selectedMissionUnitIds.length === 0}
                     loading={createBusy}
                     loadingLabel={selectedUnitMission ? "Oppdaterer plan" : "Lagrer plan"}
-                    help={selectedUnitMission ? "Oppdater planen som allerede er lagret for dette jordet." : "Lagre en ny plan for dette jordet."}
+                    help={selectedUnitMission ? "Oppdater planen som allerede er lagret for dette området." : "Lagre en ny plan for dette området."}
                   >
                     <Plane className="h-4 w-4" />
                     {selectedUnitMission ? "Oppdater plan" : "Lagre plan"}
@@ -1636,7 +1733,7 @@ export function PlanningPage({
                         loading={missionExportBusyId === selectedUnitMission.id}
                         loadingLabel="Eksporterer"
                         disabled={!canEdit}
-                        help="Eksporter planen for dette jordet."
+                        help="Eksporter planen for dette området."
                       >
                         <Download className="h-4 w-4" />
                         Eksporter
@@ -1648,7 +1745,7 @@ export function PlanningPage({
                         loading={missionDeleteBusyId === selectedUnitMission.id}
                         loadingLabel="Sletter"
                         disabled={!canEdit}
-                        help="Slett den lagrede planen for dette jordet."
+                        help="Slett den lagrede planen for dette området."
                       >
                         <Trash2 className="h-4 w-4" />
                         Slett plan
@@ -1658,32 +1755,7 @@ export function PlanningPage({
                 </div>
               </div>
             ) : (
-              <div className="flex h-full min-h-[18rem] items-center justify-center">
-                <div className="max-w-sm text-center">
-                  <p className="text-sm font-semibold text-fb-text-primary">
-                    {toolMode === "resolve"
-                      ? "Klikk på et jord i kartet"
-                      : toolMode === "launch"
-                        ? "Klikk i kartet for startpunkt"
-                        : toolMode === "landing"
-                          ? "Klikk i kartet for landingspunkt"
-                          : toolMode === "no_go"
-                            ? "Klikk i kartet for hinderbuffer"
-                            : "Velg et jord i listen"}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-fb-text-secondary">
-                    {toolMode === "resolve"
-                      ? "Vi prøver å fylle jordet automatisk, så du kan finjustere det og lage plan."
-                      : toolMode === "launch"
-                        ? "Neste kartklikk blir brukt som startpunkt for ruten."
-                        : toolMode === "landing"
-                          ? "Neste kartklikk blir brukt som landingspunkt for ruten."
-                          : toolMode === "no_go"
-                            ? "Neste kartklikk legger inn en hinderbuffer som ruten skal unngå."
-                            : "Når du velger et jord, får du opp kart, justering av grenser, droneprofil og estimert flytid her."}
-                  </p>
-                </div>
-              </div>
+              <div className="h-full min-h-[18rem]" />
             )}
           </div>
         </div>

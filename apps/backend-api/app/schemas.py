@@ -146,7 +146,9 @@ class NoGoBuffer(BaseModel):
     id: str | None = None
     name: str | None = None
     center: GeoPoint
-    radius_m: float = Field(gt=0, le=500)
+    width_m: float = Field(default=30, gt=0, le=500)
+    height_m: float = Field(default=30, gt=0, le=500)
+    radius_m: float | None = Field(default=None, gt=0, le=500)
 
 
 class GeoJSONPoint(BaseModel):

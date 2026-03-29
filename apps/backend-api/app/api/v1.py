@@ -130,7 +130,9 @@ from ..services.media_staging import (
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
 from ..services.flight_missions import (
+    EXPORT_DJI_FLY_KMZ_FORMAT,
     EXPORT_DJI_WPML_FORMAT,
+    build_flight_mission_dji_fly_kmz,
     build_flight_mission_export_bundle,
     build_flight_mission_dji_wpml_kmz,
     build_flight_mission_payload,
@@ -2137,23 +2139,52 @@ def export_flight_mission(
         parameters = json.loads(item.parameters_json)
         drone_profile_snapshot = json.loads(item.drone_profile_snapshot_json or "{}")
         export_format = format.strip().lower()
-        if export_format not in {"auto", "bundle", "dji-wpml"}:
+        if export_format not in {"auto", "bundle", "dji-wpml", "dji-fly"}:
             raise HTTPException(status_code=400, detail="Ukjent eksportformat")
 
-        if export_format in {"auto", "dji-wpml"}:
+        if export_format in {"auto", "dji-wpml", "dji-fly"}:
             try:
-                export_bytes = build_flight_mission_dji_wpml_kmz(
-                    mission_id=item.id,
-                    mission_name=mission_name,
-                    route_geojson=route_geojson,
-                    parameters=parameters,
-                    drone_profile=drone_profile_snapshot,
-                )
+                if export_format == "dji-fly":
+                    export_bytes = build_flight_mission_dji_fly_kmz(
+                        mission_id=item.id,
+                        mission_name=mission_name,
+                        route_geojson=route_geojson,
+                        parameters=parameters,
+                        drone_profile=drone_profile_snapshot,
+                    )
+                    response_format = EXPORT_DJI_FLY_KMZ_FORMAT
+                elif export_format == "dji-wpml":
+                    export_bytes = build_flight_mission_dji_wpml_kmz(
+                        mission_id=item.id,
+                        mission_name=mission_name,
+                        route_geojson=route_geojson,
+                        parameters=parameters,
+                        drone_profile=drone_profile_snapshot,
+                    )
+                    response_format = EXPORT_DJI_WPML_FORMAT
+                else:
+                    try:
+                        export_bytes = build_flight_mission_dji_wpml_kmz(
+                            mission_id=item.id,
+                            mission_name=mission_name,
+                            route_geojson=route_geojson,
+                            parameters=parameters,
+                            drone_profile=drone_profile_snapshot,
+                        )
+                        response_format = EXPORT_DJI_WPML_FORMAT
+                    except ValueError:
+                        export_bytes = build_flight_mission_dji_fly_kmz(
+                            mission_id=item.id,
+                            mission_name=mission_name,
+                            route_geojson=route_geojson,
+                            parameters=parameters,
+                            drone_profile=drone_profile_snapshot,
+                        )
+                        response_format = EXPORT_DJI_FLY_KMZ_FORMAT
                 media_type = "application/vnd.google-earth.kmz"
                 filename = f"flyvendebonder-oppdrag-{item.id}.kmz"
-                response_format = EXPORT_DJI_WPML_FORMAT
             except ValueError:
-                if export_format == "dji-wpml":
+                if export_format in {"dji-wpml", "dji-fly"}:
                     raise
                 export_bytes = build_flight_mission_export_bundle(
                     mission_id=item.id,

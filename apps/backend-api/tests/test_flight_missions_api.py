@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.services.flight_missions import (
     EXPORT_BUNDLE_FORMAT,
+    EXPORT_DJI_FLY_KMZ_FORMAT,
     EXPORT_DJI_WPML_FORMAT,
     _segment_points,
     build_flight_mission_export_bundle,
@@ -199,13 +200,13 @@ def test_flight_mission_export_rejects_strict_dji_wpml_for_unsupported_profile(c
     assert "DJI WPML-eksport støttes foreløpig ikke" in export_response.json()["detail"]
 
 
-def test_flight_mission_export_auto_falls_back_to_bundle_for_unsupported_profile(client):
-    field = _create_field(client, name="Fallback-jordet")
+def test_flight_mission_export_auto_returns_dji_fly_kmz_for_mini_4_pro(client):
+    field = _create_field(client, name="Mini Fly-jordet")
 
     create_response = client.post(
         "/api/v1/flight-missions",
         json={
-            "name": "Fallback eksport",
+            "name": "Mini Fly eksport",
             "field_ids": [field["id"]],
             "drone_profile_id": "dji-mini-4-pro",
             "parameters": {
@@ -221,19 +222,64 @@ def test_flight_mission_export_auto_falls_back_to_bundle_for_unsupported_profile
 
     export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export")
     assert export_response.status_code == 200
-    assert export_response.headers["content-type"] == "application/zip"
-    assert export_response.headers["X-Flyvendebonder-Export-Format"] == "bundle"
-    assert export_response.headers["Content-Disposition"].endswith('.zip"')
+    assert export_response.headers["content-type"] == "application/vnd.google-earth.kmz"
+    assert export_response.headers["X-Flyvendebonder-Export-Format"] == EXPORT_DJI_FLY_KMZ_FORMAT
+    assert export_response.headers["Content-Disposition"].endswith('.kmz"')
 
     archive = zipfile.ZipFile(io.BytesIO(export_response.content))
     assert sorted(archive.namelist()) == [
-        "fallback-eksport.readme.txt",
-        "fields.geojson",
-        "manifest.json",
-        "route.geojson",
+        "mini-fly-eksport.readme.txt",
+        "wpmz/template.kml",
+        "wpmz/waylines.wpml",
     ]
-    manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["format"] == EXPORT_BUNDLE_FORMAT
+
+    template_root = ET.fromstring(archive.read("wpmz/template.kml"))
+    waylines_root = ET.fromstring(archive.read("wpmz/waylines.wpml"))
+    namespace = {"kml": "http://www.opengis.net/kml/2.2", "wpml": "http://www.dji.com/wpmz/1.0.2"}
+
+    assert template_root.find("./kml:Document/wpml:author", namespace).text == "fly"
+    assert template_root.find(".//wpml:globalUseStraightLine", namespace).text == "1"
+    assert template_root.find(".//wpml:droneEnumValue", namespace).text == "68"
+    assert template_root.find(".//wpml:payloadInfo", namespace) is None
+    assert template_root.find(".//wpml:actionActuatorFunc", namespace) is None
+
+    assert waylines_root.find(".//wpml:droneEnumValue", namespace).text == "68"
+    assert waylines_root.find(".//wpml:executeRCLostAction", namespace).text == "goBack"
+    assert waylines_root.find(".//wpml:exitOnRCLost", namespace).text == "executeLostAction"
+    assert waylines_root.find(".//wpml:distance", namespace) is not None
+    assert waylines_root.find(".//wpml:duration", namespace) is not None
+    assert waylines_root.find(".//wpml:payloadInfo", namespace) is None
+    assert waylines_root.find(".//wpml:actionActuatorFunc", namespace) is None
+
+    readme = archive.read("mini-fly-eksport.readme.txt").decode("utf-8")
+    assert "DJI Fly / Mini 4 Pro" in readme
+    assert "midlertidig waypoint-rute i DJI Fly" in readme
+
+
+def test_flight_mission_export_supports_strict_dji_fly_for_mini_4_pro(client):
+    field = _create_field(client, name="Mini strict-jordet")
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Mini strict eksport",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export?format=dji-fly")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"] == "application/vnd.google-earth.kmz"
+    assert export_response.headers["X-Flyvendebonder-Export-Format"] == EXPORT_DJI_FLY_KMZ_FORMAT
 
 
 def test_flight_mission_can_be_deleted(client):
@@ -501,6 +547,34 @@ def test_spacing_recommendation_scales_with_altitude():
     assert high is not None
     assert high["line_spacing_m"] > low["line_spacing_m"]
     assert high["waypoint_spacing_m"] > low["waypoint_spacing_m"]
+
+
+def test_flight_mission_uses_profile_spacing_instead_of_manual_values(client):
+    field = _create_field(client, name="Autospacing-jordet")
+    profile = get_drone_profile("dji-mini-4-pro")
+    assert profile is not None
+    suggested = suggest_spacing_for_profile(profile, altitude_m=100)
+    assert suggested is not None
+
+    response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Autospacing",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 100,
+                "line_spacing_m": 4,
+                "waypoint_spacing_m": 4,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["parameters"]["line_spacing_m"] == suggested["line_spacing_m"]
+    assert payload["parameters"]["waypoint_spacing_m"] == suggested["waypoint_spacing_m"]
 
 
 def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):

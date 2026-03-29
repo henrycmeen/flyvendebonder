@@ -63,7 +63,9 @@ export interface NoGoBuffer {
   id: string | null;
   name: string | null;
   center: GeoPoint;
-  radius_m: number;
+  width_m: number;
+  height_m: number;
+  radius_m?: number | null;
 }
 
 export interface SamplingStrategy {
