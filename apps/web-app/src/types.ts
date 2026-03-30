@@ -133,6 +133,8 @@ export interface FlightMissionParameters {
   line_spacing_m: number;
   waypoint_spacing_m: number;
   route_angle_deg: number;
+  camera_preset_id: string | null;
+  ground_offset_m: number;
   launch_point: GeoPoint | null;
   landing_point: GeoPoint | null;
   no_go_buffers: NoGoBuffer[];
@@ -250,14 +252,29 @@ export interface PlanningPointResolveResponse {
   distance_m: number | null;
 }
 
+export interface CameraPreset {
+  id: string;
+  name: string;
+  sensor_width_mm: number;
+  sensor_height_mm: number;
+  focal_length_mm: number;
+  image_width_px: number;
+  image_height_px: number;
+}
+
 export interface DroneProfile {
   id: string;
   name: string;
   cruise_speed_mps: number;
+  capture_interval_s: number;
+  max_mapping_speed_mps: number;
   launch_overhead_s: number;
   waypoint_turn_overhead_s: number;
   max_flight_time_s: number;
   reserve_percent: number;
+  default_ground_offset_m: number;
+  default_camera_preset_id: string | null;
+  camera_presets: CameraPreset[];
   ground_footprint_width_ratio: number;
   ground_footprint_height_ratio: number;
   target_side_overlap: number;

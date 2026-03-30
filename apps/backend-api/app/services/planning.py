@@ -21,6 +21,8 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "id": "dji-mini-4-pro",
         "name": "DJI Mini 4 Pro",
         "cruise_speed_mps": 10.0,
+        "capture_interval_s": 2.0,
+        "max_mapping_speed_mps": 11.5,
         "launch_overhead_s": 90,
         "waypoint_turn_overhead_s": 4,
         "max_flight_time_s": 1800,
@@ -29,11 +31,35 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "ground_footprint_height_ratio": 1.35,
         "target_side_overlap": 0.72,
         "target_front_overlap": 0.72,
+        "default_ground_offset_m": 0.0,
+        "default_camera_preset_id": "mini4-12mp",
+        "camera_presets": [
+            {
+                "id": "mini4-12mp",
+                "name": "DJI Mini 4 Pro (12 MP)",
+                "sensor_width_mm": 9.7,
+                "sensor_height_mm": 7.3,
+                "focal_length_mm": 6.88,
+                "image_width_px": 4032,
+                "image_height_px": 3024,
+            },
+            {
+                "id": "mini4-48mp",
+                "name": "DJI Mini 4 Pro (48 MP)",
+                "sensor_width_mm": 9.7,
+                "sensor_height_mm": 7.3,
+                "focal_length_mm": 6.88,
+                "image_width_px": 8064,
+                "image_height_px": 6048,
+            },
+        ],
     },
     {
         "id": "dji-mavic-3-enterprise",
         "name": "DJI Mavic 3 Enterprise",
         "cruise_speed_mps": 13.0,
+        "capture_interval_s": 2.0,
+        "max_mapping_speed_mps": 12.0,
         "launch_overhead_s": 90,
         "waypoint_turn_overhead_s": 3,
         "max_flight_time_s": 2400,
@@ -42,11 +68,15 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "ground_footprint_height_ratio": 1.55,
         "target_side_overlap": 0.75,
         "target_front_overlap": 0.78,
+        "default_ground_offset_m": 0.0,
+        "camera_presets": [],
     },
     {
         "id": "dji-matrice-30t",
         "name": "DJI Matrice 30T",
         "cruise_speed_mps": 15.0,
+        "capture_interval_s": 2.0,
+        "max_mapping_speed_mps": 12.0,
         "launch_overhead_s": 120,
         "waypoint_turn_overhead_s": 3,
         "max_flight_time_s": 2100,
@@ -55,6 +85,8 @@ DRONE_PROFILES: list[dict[str, Any]] = [
         "ground_footprint_height_ratio": 1.55,
         "target_side_overlap": 0.75,
         "target_front_overlap": 0.78,
+        "default_ground_offset_m": 0.0,
+        "camera_presets": [],
     },
 ]
 
@@ -73,19 +105,87 @@ def get_drone_profile(profile_id: str | None) -> dict[str, Any] | None:
     return None
 
 
+def get_camera_preset(
+    profile: dict[str, Any] | None,
+    camera_preset_id: str | None = None,
+) -> dict[str, Any] | None:
+    if profile is None:
+        return None
+    camera_presets = profile.get("camera_presets") or []
+    if not isinstance(camera_presets, list) or len(camera_presets) == 0:
+        return None
+
+    normalized_requested = camera_preset_id.strip() if isinstance(camera_preset_id, str) and camera_preset_id.strip() else None
+    default_camera_preset_id = profile.get("default_camera_preset_id")
+    for preset in camera_presets:
+        if normalized_requested and preset.get("id") == normalized_requested:
+            return dict(preset)
+    if isinstance(default_camera_preset_id, str):
+        for preset in camera_presets:
+            if preset.get("id") == default_camera_preset_id:
+                return dict(preset)
+    return dict(camera_presets[0])
+
+
 def suggest_spacing_for_profile(
     profile: dict[str, Any] | None,
     *,
     altitude_m: float,
-) -> dict[str, float] | None:
+    camera_preset_id: str | None = None,
+    ground_offset_m: float = 0.0,
+) -> dict[str, Any] | None:
     if profile is None or not math.isfinite(altitude_m) or altitude_m <= 0:
         return None
 
-    footprint_width_m = float(altitude_m) * float(profile["ground_footprint_width_ratio"])
-    footprint_height_m = float(altitude_m) * float(profile["ground_footprint_height_ratio"])
+    normalized_ground_offset_m = float(ground_offset_m) if math.isfinite(ground_offset_m) else 0.0
+    effective_altitude_m = max(1.0, float(altitude_m) - max(0.0, normalized_ground_offset_m))
+    target_side_overlap = float(profile["target_side_overlap"])
+    target_front_overlap = float(profile["target_front_overlap"])
+    capture_interval_s = max(0.2, float(profile.get("capture_interval_s") or 2.0))
+    max_mapping_speed_mps = max(0.5, float(profile.get("max_mapping_speed_mps") or profile["cruise_speed_mps"]))
+
+    camera_preset = get_camera_preset(profile, camera_preset_id)
+    if camera_preset is not None:
+        sensor_width_mm = float(camera_preset["sensor_width_mm"])
+        sensor_height_mm = float(camera_preset["sensor_height_mm"])
+        focal_length_mm = float(camera_preset["focal_length_mm"])
+        image_width_px = float(camera_preset["image_width_px"])
+        image_height_px = float(camera_preset["image_height_px"])
+
+        footprint_width_m = effective_altitude_m * (sensor_width_mm / focal_length_mm)
+        footprint_height_m = effective_altitude_m * (sensor_height_mm / focal_length_mm)
+        gsd_width_cm = (effective_altitude_m * sensor_width_mm) / (image_width_px * focal_length_mm) * 100
+        gsd_height_cm = (effective_altitude_m * sensor_height_mm) / (image_height_px * focal_length_mm) * 100
+
+        waypoint_spacing_m = max(1.0, round(footprint_width_m * (1 - target_front_overlap), 1))
+        recommended_ground_speed_mps = min(max_mapping_speed_mps, waypoint_spacing_m / capture_interval_s)
+        return {
+            "camera_preset_id": camera_preset["id"],
+            "line_spacing_m": max(1.0, round(footprint_height_m * (1 - target_side_overlap), 1)),
+            "waypoint_spacing_m": waypoint_spacing_m,
+            "footprint_width_m": round(footprint_width_m, 2),
+            "footprint_height_m": round(footprint_height_m, 2),
+            "effective_altitude_m": round(effective_altitude_m, 2),
+            "ground_offset_m": round(max(0.0, normalized_ground_offset_m), 2),
+            "gsd_width_cm": round(gsd_width_cm, 2),
+            "gsd_height_cm": round(gsd_height_cm, 2),
+            "capture_interval_s": round(capture_interval_s, 2),
+            "recommended_ground_speed_mps": round(recommended_ground_speed_mps, 2),
+            "max_mapping_speed_mps": round(max_mapping_speed_mps, 2),
+        }
+
+    footprint_width_m = effective_altitude_m * float(profile["ground_footprint_width_ratio"])
+    footprint_height_m = effective_altitude_m * float(profile["ground_footprint_height_ratio"])
+    waypoint_spacing_m = max(1.0, round(footprint_height_m * (1 - target_front_overlap), 1))
+    recommended_ground_speed_mps = min(max_mapping_speed_mps, waypoint_spacing_m / capture_interval_s)
     return {
-        "line_spacing_m": max(1.0, round(footprint_width_m * (1 - float(profile["target_side_overlap"])), 1)),
-        "waypoint_spacing_m": max(1.0, round(footprint_height_m * (1 - float(profile["target_front_overlap"])), 1)),
+        "line_spacing_m": max(1.0, round(footprint_width_m * (1 - target_side_overlap), 1)),
+        "waypoint_spacing_m": waypoint_spacing_m,
+        "effective_altitude_m": round(effective_altitude_m, 2),
+        "ground_offset_m": round(max(0.0, normalized_ground_offset_m), 2),
+        "capture_interval_s": round(capture_interval_s, 2),
+        "recommended_ground_speed_mps": round(recommended_ground_speed_mps, 2),
+        "max_mapping_speed_mps": round(max_mapping_speed_mps, 2),
     }
 
 

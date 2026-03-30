@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PlanningMap } from "@/components/planning-map";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
+  CameraPreset,
   DroneProfile,
   DroneProfileListResponse,
   FieldCandidate,
@@ -34,6 +35,8 @@ const DEFAULT_FLIGHT_MISSION_PARAMETERS: FlightMissionParameters = {
   line_spacing_m: 18,
   waypoint_spacing_m: 18,
   route_angle_deg: 0,
+  camera_preset_id: null,
+  ground_offset_m: 0,
   launch_point: null,
   landing_point: null,
   no_go_buffers: [],
@@ -114,28 +117,93 @@ function formatMeters(value: number | null | undefined): string {
   return `${roundSpacing(value)} m`;
 }
 
+function getCameraPreset(profile: DroneProfile | null, cameraPresetId: string | null | undefined): CameraPreset | null {
+  if (!profile || !Array.isArray(profile.camera_presets) || profile.camera_presets.length === 0) return null;
+  const normalizedRequested = typeof cameraPresetId === "string" && cameraPresetId.trim() ? cameraPresetId.trim() : null;
+  if (normalizedRequested) {
+    const requested = profile.camera_presets.find((preset) => preset.id === normalizedRequested);
+    if (requested) return requested;
+  }
+  if (profile.default_camera_preset_id) {
+    const defaultPreset = profile.camera_presets.find((preset) => preset.id === profile.default_camera_preset_id);
+    if (defaultPreset) return defaultPreset;
+  }
+  return profile.camera_presets[0] ?? null;
+}
+
 function suggestSpacing(
   profile: DroneProfile | null,
   altitudeM: number,
-): { line_spacing_m: number; waypoint_spacing_m: number } | null {
+  cameraPresetId: string | null | undefined,
+  groundOffsetM = 0,
+): {
+  line_spacing_m: number;
+  waypoint_spacing_m: number;
+  capture_interval_s?: number;
+  recommended_ground_speed_mps?: number;
+  max_mapping_speed_mps?: number;
+  footprint_width_m?: number;
+  footprint_height_m?: number;
+  effective_altitude_m?: number;
+  gsd_width_cm?: number;
+  gsd_height_cm?: number;
+} | null {
   if (!profile || !Number.isFinite(altitudeM) || altitudeM <= 0) return null;
-  const widthRatio = Number(profile.ground_footprint_width_ratio);
-  const heightRatio = Number(profile.ground_footprint_height_ratio);
+  const effectiveAltitudeM = Math.max(1, altitudeM - Math.max(0, Number.isFinite(groundOffsetM) ? groundOffsetM : 0));
   const sideOverlap = Number(profile.target_side_overlap);
   const frontOverlap = Number(profile.target_front_overlap);
-  if (
-    !Number.isFinite(widthRatio) ||
-    !Number.isFinite(heightRatio) ||
-    !Number.isFinite(sideOverlap) ||
-    !Number.isFinite(frontOverlap)
-  ) {
+  if (!Number.isFinite(sideOverlap) || !Number.isFinite(frontOverlap)) {
     return null;
   }
-  const footprintWidthM = altitudeM * widthRatio;
-  const footprintHeightM = altitudeM * heightRatio;
+
+  const cameraPreset = getCameraPreset(profile, cameraPresetId);
+  if (cameraPreset) {
+    const footprintWidthM = effectiveAltitudeM * (cameraPreset.sensor_width_mm / cameraPreset.focal_length_mm);
+    const footprintHeightM = effectiveAltitudeM * (cameraPreset.sensor_height_mm / cameraPreset.focal_length_mm);
+    const captureIntervalS = Math.max(0.2, Number(profile.capture_interval_s || 2));
+    const waypointSpacingM = roundSpacing(footprintWidthM * (1 - frontOverlap));
+    const recommendedGroundSpeedMps = Math.min(
+      Number(profile.max_mapping_speed_mps || profile.cruise_speed_mps || 10),
+      waypointSpacingM / captureIntervalS,
+    );
+    const gsdWidthCm =
+      (effectiveAltitudeM * cameraPreset.sensor_width_mm) / (cameraPreset.image_width_px * cameraPreset.focal_length_mm) * 100;
+    const gsdHeightCm =
+      (effectiveAltitudeM * cameraPreset.sensor_height_mm) / (cameraPreset.image_height_px * cameraPreset.focal_length_mm) * 100;
+    return {
+      line_spacing_m: roundSpacing(footprintHeightM * (1 - sideOverlap)),
+      waypoint_spacing_m: waypointSpacingM,
+      capture_interval_s: roundSpacing(captureIntervalS),
+      recommended_ground_speed_mps: roundSpacing(recommendedGroundSpeedMps),
+      max_mapping_speed_mps: roundSpacing(Number(profile.max_mapping_speed_mps || profile.cruise_speed_mps || 10)),
+      footprint_width_m: roundSpacing(footprintWidthM),
+      footprint_height_m: roundSpacing(footprintHeightM),
+      effective_altitude_m: roundSpacing(effectiveAltitudeM),
+      gsd_width_cm: roundSpacing(gsdWidthCm),
+      gsd_height_cm: roundSpacing(gsdHeightCm),
+    };
+  }
+
+  const widthRatio = Number(profile.ground_footprint_width_ratio);
+  const heightRatio = Number(profile.ground_footprint_height_ratio);
+  if (!Number.isFinite(widthRatio) || !Number.isFinite(heightRatio)) {
+    return null;
+  }
+  const footprintWidthM = effectiveAltitudeM * widthRatio;
+  const footprintHeightM = effectiveAltitudeM * heightRatio;
+  const captureIntervalS = Math.max(0.2, Number(profile.capture_interval_s || 2));
+  const waypointSpacingM = roundSpacing(footprintHeightM * (1 - frontOverlap));
+  const recommendedGroundSpeedMps = Math.min(
+    Number(profile.max_mapping_speed_mps || profile.cruise_speed_mps || 10),
+    waypointSpacingM / captureIntervalS,
+  );
   return {
     line_spacing_m: roundSpacing(footprintWidthM * (1 - sideOverlap)),
-    waypoint_spacing_m: roundSpacing(footprintHeightM * (1 - frontOverlap)),
+    waypoint_spacing_m: waypointSpacingM,
+    capture_interval_s: roundSpacing(captureIntervalS),
+    recommended_ground_speed_mps: roundSpacing(recommendedGroundSpeedMps),
+    max_mapping_speed_mps: roundSpacing(Number(profile.max_mapping_speed_mps || profile.cruise_speed_mps || 10)),
+    effective_altitude_m: roundSpacing(effectiveAltitudeM),
   };
 }
 
@@ -143,9 +211,12 @@ function syncParametersWithSuggestedSpacing(
   current: FlightMissionParameters,
   profile: DroneProfile | null,
 ): FlightMissionParameters {
-  const suggestedSpacing = suggestSpacing(profile, current.altitude_m);
+  const resolvedPreset = getCameraPreset(profile, current.camera_preset_id);
+  const nextCameraPresetId = resolvedPreset?.id ?? null;
+  const suggestedSpacing = suggestSpacing(profile, current.altitude_m, nextCameraPresetId, current.ground_offset_m);
   if (!suggestedSpacing) return current;
   if (
+    current.camera_preset_id === nextCameraPresetId &&
     current.line_spacing_m === suggestedSpacing.line_spacing_m &&
     current.waypoint_spacing_m === suggestedSpacing.waypoint_spacing_m
   ) {
@@ -153,6 +224,7 @@ function syncParametersWithSuggestedSpacing(
   }
   return {
     ...current,
+    camera_preset_id: nextCameraPresetId,
     line_spacing_m: suggestedSpacing.line_spacing_m,
     waypoint_spacing_m: suggestedSpacing.waypoint_spacing_m,
   };
@@ -193,6 +265,8 @@ function normalizeMissionParameters(parameters: Partial<FlightMissionParameters>
   return {
     ...DEFAULT_FLIGHT_MISSION_PARAMETERS,
     ...parameters,
+    camera_preset_id: parameters?.camera_preset_id ?? null,
+    ground_offset_m: Number(parameters?.ground_offset_m ?? 0),
     launch_point: parameters?.launch_point ?? null,
     landing_point: parameters?.landing_point ?? null,
     no_go_buffers: normalizedNoGoBuffers,
@@ -307,9 +381,19 @@ export function PlanningPage({
     () => profiles.find((profile) => profile.id === selectedDroneProfileId) ?? null,
     [profiles, selectedDroneProfileId],
   );
+  const selectedCameraPreset = useMemo(
+    () => getCameraPreset(selectedDroneProfile, parameters.camera_preset_id),
+    [parameters.camera_preset_id, selectedDroneProfile],
+  );
   const suggestedSpacing = useMemo(
-    () => suggestSpacing(selectedDroneProfile, parameters.altitude_m),
-    [parameters.altitude_m, selectedDroneProfile],
+    () =>
+      suggestSpacing(
+        selectedDroneProfile,
+        parameters.altitude_m,
+        selectedCameraPreset?.id ?? parameters.camera_preset_id,
+        parameters.ground_offset_m,
+      ),
+    [parameters.altitude_m, parameters.camera_preset_id, parameters.ground_offset_m, selectedCameraPreset?.id, selectedDroneProfile],
   );
   const editMode = toolMode === "edit";
   const splitMode = toolMode === "split";
@@ -330,7 +414,7 @@ export function PlanningPage({
     if (selectedUnitMission.drone_profile_id === "dji-mini-4-pro") {
       return {
         title: "DJI Fly",
-        body: "Eksporten blir en KMZ for Mini 4 Pro. Lag en midlertidig waypoint-rute i DJI Fly først, og erstatt deretter mission-filen med den eksporterte KMZ-filen.",
+        body: "Eksporten blir en KMZ for Mini 4 Pro. Lag en midlertidig waypoint-rute i DJI Fly, lukk appen, erstatt mission-filen med den eksporterte KMZ-filen, og åpne ruten igjen. Ikke lagre missionen på nytt i DJI Fly etter import.",
       };
     }
     if (selectedUnitMission.drone_profile_id.startsWith("dji-")) {
@@ -1538,6 +1622,34 @@ export function PlanningPage({
                     </select>
                   </label>
 
+                  {selectedDroneProfile && selectedDroneProfile.camera_presets.length > 1 ? (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-fb-text-secondary">Kamera</span>
+                      <select
+                        value={selectedCameraPreset?.id ?? ""}
+                        onChange={(event) => {
+                          const nextPresetId = event.target.value || null;
+                          setParameters((current) =>
+                            syncParametersWithSuggestedSpacing(
+                              {
+                                ...current,
+                                camera_preset_id: nextPresetId,
+                              },
+                              selectedDroneProfile,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                      >
+                        {selectedDroneProfile.camera_presets.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
                   <div className="grid grid-cols-2 gap-2">
                     {([
                       ["altitude_m", "Høyde", 1, 500],
@@ -1597,6 +1709,10 @@ export function PlanningPage({
                     {suggestedSpacing ? (
                       <p className="text-xs text-fb-text-secondary">
                         {`${formatMeters(suggestedSpacing.line_spacing_m)} linje · ${formatMeters(suggestedSpacing.waypoint_spacing_m)} waypoint`}
+                        {selectedCameraPreset ? ` · ${selectedCameraPreset.name}` : ""}
+                        {suggestedSpacing.recommended_ground_speed_mps
+                          ? ` · ${suggestedSpacing.recommended_ground_speed_mps.toFixed(1)} m/s`
+                          : ""}
                       </p>
                     ) : null}
                   </div>
@@ -1725,6 +1841,11 @@ export function PlanningPage({
                   <p className="mt-1 text-xs text-fb-text-secondary">
                   {preview ? missionStatusLabel(preview.duration_status) : "Beregnes når området er klart."}
                   </p>
+                  {suggestedSpacing?.recommended_ground_speed_mps ? (
+                    <p className="mt-1 text-xs text-fb-text-secondary">
+                      Beregnet ved {suggestedSpacing.recommended_ground_speed_mps.toFixed(1)} m/s opptaksfart.
+                    </p>
+                  ) : null}
                   {previewWarnings.length > 0 ? (
                     <p className="mt-2 text-xs text-fb-text-secondary">{previewWarnings.length} varsel i rutegrunnlaget.</p>
                   ) : null}

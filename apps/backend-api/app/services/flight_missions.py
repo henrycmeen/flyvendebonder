@@ -70,7 +70,12 @@ def build_flight_mission_payload(
     drone_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_parameters = _normalize_parameters(parameters, drone_profile=drone_profile)
-    recommended_spacing = suggest_spacing_for_profile(drone_profile, altitude_m=normalized_parameters["altitude_m"])
+    recommended_spacing = suggest_spacing_for_profile(
+        drone_profile,
+        altitude_m=normalized_parameters["altitude_m"],
+        camera_preset_id=normalized_parameters.get("camera_preset_id"),
+        ground_offset_m=normalized_parameters.get("ground_offset_m", 0.0),
+    )
     warnings = _parameter_warnings(normalized_parameters, recommended_spacing=recommended_spacing)
 
     field_snapshots: list[dict[str, Any]] = []
@@ -155,6 +160,8 @@ def build_flight_mission_payload(
             line_spacing_m=normalized_parameters["line_spacing_m"],
             waypoint_spacing_m=normalized_parameters["waypoint_spacing_m"],
             no_go_buffers=normalized_parameters["no_go_buffers"],
+            preferred_start_point=normalized_parameters["launch_point"],
+            preferred_end_point=normalized_parameters["landing_point"],
         )
         route_points = route_result["points"]
         if len(route_points) < 2:
@@ -271,6 +278,7 @@ def build_flight_mission_payload(
         route_distance_m=total_distance_m,
         waypoint_count=total_waypoints,
         drone_profile=drone_profile,
+        recommended_spacing=recommended_spacing,
     )
     duration_status = planning_duration_status(estimated_duration_s, drone_profile)
     manifest = {
@@ -291,6 +299,9 @@ def build_flight_mission_payload(
             "route_distance_m": round(total_distance_m, 1),
             "estimated_duration_s": estimated_duration_s,
             "duration_status": duration_status,
+            "recommended_ground_speed_mps": recommended_spacing.get("recommended_ground_speed_mps")
+            if recommended_spacing
+            else None,
         },
         "parameters": normalized_parameters,
         "drone_profile": drone_profile or {},
@@ -391,7 +402,17 @@ def build_flight_mission_dji_wpml_kmz(
 
     capture_keys = _capture_coordinate_keys(route_geojson)
     timestamp_ms = _utc_timestamp_ms()
-    speed_mps = _dji_auto_flight_speed_mps(drone_profile, dji_profile)
+    recommended_spacing = suggest_spacing_for_profile(
+        drone_profile,
+        altitude_m=normalized_parameters["altitude_m"],
+        camera_preset_id=normalized_parameters.get("camera_preset_id"),
+        ground_offset_m=normalized_parameters.get("ground_offset_m", 0.0),
+    )
+    speed_mps = _dji_auto_flight_speed_mps(
+        drone_profile,
+        dji_profile,
+        recommended_spacing=recommended_spacing,
+    )
     altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
     takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
     rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
@@ -454,7 +475,17 @@ def build_flight_mission_dji_fly_kmz(
         raise ValueError("Eksporten mangler minst én rute-linje")
 
     timestamp_ms = _utc_timestamp_ms()
-    speed_mps = _dji_auto_flight_speed_mps(drone_profile, dji_profile)
+    recommended_spacing = suggest_spacing_for_profile(
+        drone_profile,
+        altitude_m=normalized_parameters["altitude_m"],
+        camera_preset_id=normalized_parameters.get("camera_preset_id"),
+        ground_offset_m=normalized_parameters.get("ground_offset_m", 0.0),
+    )
+    speed_mps = _dji_auto_flight_speed_mps(
+        drone_profile,
+        dji_profile,
+        recommended_spacing=recommended_spacing,
+    )
     altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
     takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
     rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
@@ -464,6 +495,7 @@ def build_flight_mission_dji_fly_kmz(
         route_distance_m=route_distance_m,
         waypoint_count=len(ordered_coordinates),
         drone_profile=drone_profile,
+        recommended_spacing=recommended_spacing,
     )
 
     template_xml = _build_dji_template_kml(
@@ -512,9 +544,11 @@ def build_flight_mission_dji_fly_kmz(
                     f"Oppdrag: {mission_name}",
                     "DJI Fly / Mini 4 Pro:",
                     "1. Opprett en midlertidig waypoint-rute i DJI Fly.",
-                    "2. Finn mission-filen i waypoint-mappen på enheten/kontrolleren.",
-                    "3. Gi denne KMZ-filen samme navn som den midlertidige mission-filen og erstatt den.",
-                    "4. Åpne ruten i DJI Fly og kontroller waypointene før flyging.",
+                    "2. Lukk DJI Fly helt.",
+                    "3. Finn mission-filen i waypoint-mappen på enheten/kontrolleren.",
+                    "4. Gi denne KMZ-filen samme navn som den midlertidige mission-filen og erstatt den.",
+                    "5. Åpne ruten i DJI Fly og kontroller waypointene før flyging.",
+                    "Viktig: Ikke lagre eller rediger missionen på nytt i DJI Fly etter import dersom du vil bevare den eksporterte strukturen.",
                     "Merk: Intervallfoto for kartlegging må normalt startes manuelt i DJI Fly.",
                 ]
             ),
@@ -656,11 +690,20 @@ def _utc_timestamp_ms() -> int:
     return int(datetime.utcnow().timestamp() * 1000)
 
 
-def _dji_auto_flight_speed_mps(drone_profile: dict[str, Any], dji_profile: dict[str, Any]) -> float:
+def _dji_auto_flight_speed_mps(
+    drone_profile: dict[str, Any],
+    dji_profile: dict[str, Any],
+    *,
+    recommended_spacing: dict[str, Any] | None = None,
+) -> float:
     configured = drone_profile.get("cruise_speed_mps")
     if configured is None:
         configured = dji_profile["default_speed_mps"]
-    return round(max(1.0, min(15.0, float(configured))), 1)
+    speed_mps = max(1.0, min(15.0, float(configured)))
+    capture_limited_speed = _recommended_capture_speed_mps(drone_profile=drone_profile, recommended_spacing=recommended_spacing)
+    if capture_limited_speed is not None:
+        speed_mps = min(speed_mps, capture_limited_speed)
+    return round(speed_mps, 1)
 
 
 def _build_dji_template_kml(
@@ -903,11 +946,20 @@ def _normalize_parameters(
         "line_spacing_m": round(float(parameters["line_spacing_m"]), 2),
         "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
         "route_angle_deg": round(float(parameters["route_angle_deg"]), 2),
+        "camera_preset_id": (str(parameters.get("camera_preset_id")).strip() or None)
+        if parameters.get("camera_preset_id") is not None
+        else None,
+        "ground_offset_m": round(max(0.0, float(parameters.get("ground_offset_m") or 0.0)), 2),
         "launch_point": _normalize_geo_point(parameters.get("launch_point")),
         "landing_point": _normalize_geo_point(parameters.get("landing_point")),
         "no_go_buffers": _normalize_no_go_buffers(parameters.get("no_go_buffers") or []),
     }
-    suggested_spacing = suggest_spacing_for_profile(drone_profile, altitude_m=normalized["altitude_m"])
+    suggested_spacing = suggest_spacing_for_profile(
+        drone_profile,
+        altitude_m=normalized["altitude_m"],
+        camera_preset_id=normalized["camera_preset_id"],
+        ground_offset_m=normalized["ground_offset_m"],
+    )
     if suggested_spacing is not None:
         normalized["line_spacing_m"] = suggested_spacing["line_spacing_m"]
         normalized["waypoint_spacing_m"] = suggested_spacing["waypoint_spacing_m"]
@@ -919,16 +971,36 @@ def estimate_mission_duration(
     route_distance_m: float,
     waypoint_count: int,
     drone_profile: dict[str, Any] | None,
+    recommended_spacing: dict[str, Any] | None = None,
 ) -> float | None:
     if drone_profile is None:
         return None
 
     cruise_speed_mps = max(0.1, float(drone_profile["cruise_speed_mps"]))
+    capture_limited_speed = _recommended_capture_speed_mps(drone_profile=drone_profile, recommended_spacing=recommended_spacing)
+    effective_speed_mps = min(cruise_speed_mps, capture_limited_speed) if capture_limited_speed is not None else cruise_speed_mps
     launch_overhead_s = max(0.0, float(drone_profile["launch_overhead_s"]))
     waypoint_turn_overhead_s = max(0.0, float(drone_profile["waypoint_turn_overhead_s"]))
-    estimated_duration_s = (route_distance_m / cruise_speed_mps) + launch_overhead_s
+    estimated_duration_s = (route_distance_m / effective_speed_mps) + launch_overhead_s
     estimated_duration_s += waypoint_turn_overhead_s * max(waypoint_count - 1, 0)
     return round(estimated_duration_s, 1)
+
+
+def _recommended_capture_speed_mps(
+    *,
+    drone_profile: dict[str, Any] | None,
+    recommended_spacing: dict[str, Any] | None,
+) -> float | None:
+    if drone_profile is None or not recommended_spacing:
+        return None
+    recommended_speed = recommended_spacing.get("recommended_ground_speed_mps")
+    if recommended_speed is None or not math.isfinite(float(recommended_speed)):
+        return None
+    max_mapping_speed = drone_profile.get("max_mapping_speed_mps")
+    speed_mps = max(0.1, float(recommended_speed))
+    if max_mapping_speed is not None and math.isfinite(float(max_mapping_speed)):
+        speed_mps = min(speed_mps, float(max_mapping_speed))
+    return round(speed_mps, 2)
 
 
 def _parameter_warnings(
@@ -1016,6 +1088,8 @@ def _build_field_route(
     line_spacing_m: float,
     waypoint_spacing_m: float,
     no_go_buffers: list[dict[str, Any]] | None = None,
+    preferred_start_point: dict[str, float] | None = None,
+    preferred_end_point: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     projected_ring, origin, centroid = _project_ring_to_local_meters(ring)
     base_polygon = Polygon(projected_ring)
@@ -1092,7 +1166,62 @@ def _build_field_route(
             continue
         route_points.append([round(lng, 8), round(lat, 8)])
 
+    route_points = _optimize_route_direction_for_launch_and_landing(
+        route_points,
+        preferred_start_point=preferred_start_point,
+        preferred_end_point=preferred_end_point,
+    )
+
     return {"points": route_points, "buffer_count": applied_buffer_count}
+
+
+def _optimize_route_direction_for_launch_and_landing(
+    route_points: list[list[float]],
+    *,
+    preferred_start_point: dict[str, float] | None,
+    preferred_end_point: dict[str, float] | None,
+) -> list[list[float]]:
+    if len(route_points) < 2:
+        return route_points
+    if preferred_start_point is None and preferred_end_point is None:
+        return route_points
+
+    reversed_points = list(reversed(route_points))
+    forward_score = _route_endpoint_score(
+        route_points,
+        preferred_start_point=preferred_start_point,
+        preferred_end_point=preferred_end_point,
+    )
+    reversed_score = _route_endpoint_score(
+        reversed_points,
+        preferred_start_point=preferred_start_point,
+        preferred_end_point=preferred_end_point,
+    )
+    return reversed_points if reversed_score + 0.01 < forward_score else route_points
+
+
+def _route_endpoint_score(
+    route_points: list[list[float]],
+    *,
+    preferred_start_point: dict[str, float] | None,
+    preferred_end_point: dict[str, float] | None,
+) -> float:
+    score = 0.0
+    if preferred_start_point is not None:
+        score += _haversine_distance_m(
+            preferred_start_point["lat"],
+            preferred_start_point["lng"],
+            route_points[0][1],
+            route_points[0][0],
+        )
+    if preferred_end_point is not None:
+        score += _haversine_distance_m(
+            route_points[-1][1],
+            route_points[-1][0],
+            preferred_end_point["lat"],
+            preferred_end_point["lng"],
+        )
+    return score
 
 
 def _project_ring_to_local_meters(

@@ -343,7 +343,13 @@ def test_flight_mission_preview_and_create_from_planning_units_with_drone_profil
 
     profiles_response = client.get("/api/v1/drone-profiles")
     assert profiles_response.status_code == 200
-    profile_id = profiles_response.json()["profiles"][0]["id"]
+    profile = profiles_response.json()["profiles"][0]
+    profile_id = profile["id"]
+    assert profile["camera_presets"]
+    assert profile["default_camera_preset_id"] == "mini4-12mp"
+    assert {preset["id"] for preset in profile["camera_presets"]} >= {"mini4-12mp", "mini4-48mp"}
+    assert profile["capture_interval_s"] == 2.0
+    assert profile["max_mapping_speed_mps"] == 11.5
 
     preview_response = client.post(
         "/api/v1/flight-missions/preview",

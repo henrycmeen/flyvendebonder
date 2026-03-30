@@ -14,6 +14,7 @@ from app.services.flight_missions import (
     EXPORT_DJI_FLY_KMZ_FORMAT,
     EXPORT_DJI_WPML_FORMAT,
     _segment_points,
+    estimate_mission_duration,
     build_flight_mission_export_bundle,
 )
 from app.services.planning import get_drone_profile, suggest_spacing_for_profile
@@ -540,20 +541,68 @@ def test_spacing_recommendation_scales_with_altitude():
     profile = get_drone_profile("dji-mini-4-pro")
     assert profile is not None
 
-    low = suggest_spacing_for_profile(profile, altitude_m=45)
-    high = suggest_spacing_for_profile(profile, altitude_m=120)
+    low = suggest_spacing_for_profile(profile, altitude_m=45, camera_preset_id="mini4-12mp")
+    high = suggest_spacing_for_profile(profile, altitude_m=120, camera_preset_id="mini4-12mp")
 
     assert low is not None
     assert high is not None
     assert high["line_spacing_m"] > low["line_spacing_m"]
     assert high["waypoint_spacing_m"] > low["waypoint_spacing_m"]
+    assert high["gsd_width_cm"] > low["gsd_width_cm"]
+
+
+def test_spacing_recommendation_uses_effective_altitude():
+    profile = get_drone_profile("dji-mini-4-pro")
+    assert profile is not None
+
+    base = suggest_spacing_for_profile(profile, altitude_m=100, camera_preset_id="mini4-12mp", ground_offset_m=0)
+    offset = suggest_spacing_for_profile(profile, altitude_m=100, camera_preset_id="mini4-12mp", ground_offset_m=15)
+
+    assert base is not None
+    assert offset is not None
+    assert offset["effective_altitude_m"] == 85.0
+    assert offset["line_spacing_m"] < base["line_spacing_m"]
+    assert offset["waypoint_spacing_m"] < base["waypoint_spacing_m"]
+
+
+def test_spacing_recommendation_includes_capture_speed():
+    profile = get_drone_profile("dji-mini-4-pro")
+    assert profile is not None
+
+    low = suggest_spacing_for_profile(profile, altitude_m=20, camera_preset_id="mini4-12mp")
+    high = suggest_spacing_for_profile(profile, altitude_m=100, camera_preset_id="mini4-12mp")
+
+    assert low is not None
+    assert high is not None
+    assert low["capture_interval_s"] == 2.0
+    assert low["max_mapping_speed_mps"] == 11.5
+    assert high["recommended_ground_speed_mps"] > low["recommended_ground_speed_mps"]
+
+
+def test_estimated_duration_uses_capture_limited_speed():
+    profile = get_drone_profile("dji-mini-4-pro")
+    assert profile is not None
+    recommended_spacing = suggest_spacing_for_profile(profile, altitude_m=20, camera_preset_id="mini4-12mp")
+    assert recommended_spacing is not None
+    assert recommended_spacing["recommended_ground_speed_mps"] < profile["cruise_speed_mps"]
+
+    duration = estimate_mission_duration(
+        route_distance_m=1000,
+        waypoint_count=10,
+        drone_profile=profile,
+        recommended_spacing=recommended_spacing,
+    )
+
+    assert duration is not None
+    baseline_duration = round((1000 / profile["cruise_speed_mps"]) + profile["launch_overhead_s"] + profile["waypoint_turn_overhead_s"] * 9, 1)
+    assert duration > baseline_duration
 
 
 def test_flight_mission_uses_profile_spacing_instead_of_manual_values(client):
     field = _create_field(client, name="Autospacing-jordet")
     profile = get_drone_profile("dji-mini-4-pro")
     assert profile is not None
-    suggested = suggest_spacing_for_profile(profile, altitude_m=100)
+    suggested = suggest_spacing_for_profile(profile, altitude_m=100, camera_preset_id="mini4-12mp")
     assert suggested is not None
 
     response = client.post(
@@ -564,6 +613,7 @@ def test_flight_mission_uses_profile_spacing_instead_of_manual_values(client):
             "drone_profile_id": "dji-mini-4-pro",
             "parameters": {
                 "altitude_m": 100,
+                "camera_preset_id": "mini4-12mp",
                 "line_spacing_m": 4,
                 "waypoint_spacing_m": 4,
                 "route_angle_deg": 0,
@@ -575,6 +625,8 @@ def test_flight_mission_uses_profile_spacing_instead_of_manual_values(client):
     payload = response.json()
     assert payload["parameters"]["line_spacing_m"] == suggested["line_spacing_m"]
     assert payload["parameters"]["waypoint_spacing_m"] == suggested["waypoint_spacing_m"]
+    assert payload["parameters"]["camera_preset_id"] == "mini4-12mp"
+    assert payload["export_manifest"]["summary"]["recommended_ground_speed_mps"] == suggested["recommended_ground_speed_mps"]
 
 
 def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):
@@ -631,3 +683,39 @@ def test_flight_mission_supports_launch_landing_and_no_go_buffers(client):
         line.crosses(no_go_polygon) or (line.intersects(no_go_polygon) and not line.touches(no_go_polygon))
         for line in route_lines
     )
+
+
+def test_launch_point_influences_route_direction(client):
+    field = _create_field(client, name="Startoptimalisering")
+
+    response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Startoptimalisering",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+                "launch_point": {"lat": 59.00095, "lng": 10.00125},
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    route_line = next(
+        feature["geometry"]["coordinates"]
+        for feature in payload["route_geojson"]["features"]
+        if feature["properties"]["kind"] == "route"
+    )
+    launch_point = payload["parameters"]["launch_point"]
+    first_distance = _distance_to_point(launch_point, route_line[0])
+    last_distance = _distance_to_point(launch_point, route_line[-1])
+    assert first_distance <= last_distance
+
+
+def _distance_to_point(point: dict[str, float], coordinate: list[float]) -> float:
+    return abs(point["lat"] - coordinate[1]) + abs(point["lng"] - coordinate[0])

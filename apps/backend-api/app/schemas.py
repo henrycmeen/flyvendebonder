@@ -298,14 +298,29 @@ class PlanningPointResolveOut(BaseModel):
     distance_m: int | None = None
 
 
+class CameraPresetOut(BaseModel):
+    id: str
+    name: str
+    sensor_width_mm: float
+    sensor_height_mm: float
+    focal_length_mm: float
+    image_width_px: int
+    image_height_px: int
+
+
 class DroneProfileOut(BaseModel):
     id: str
     name: str
     cruise_speed_mps: float
+    capture_interval_s: float = 2.0
+    max_mapping_speed_mps: float
     launch_overhead_s: int
     waypoint_turn_overhead_s: int
     max_flight_time_s: int
     reserve_percent: float
+    default_ground_offset_m: float = 0.0
+    default_camera_preset_id: str | None = None
+    camera_presets: list[CameraPresetOut] = Field(default_factory=list)
     ground_footprint_width_ratio: float
     ground_footprint_height_ratio: float
     target_side_overlap: float
@@ -326,6 +341,8 @@ class FlightMissionParameters(BaseModel):
     line_spacing_m: float = Field(default=18.0, gt=0, le=200)
     waypoint_spacing_m: float = Field(default=18.0, gt=0, le=200)
     route_angle_deg: float = Field(default=0.0, ge=0, le=180)
+    camera_preset_id: str | None = None
+    ground_offset_m: float = Field(default=0.0, ge=0, le=200)
     launch_point: GeoPoint | None = None
     landing_point: GeoPoint | None = None
     no_go_buffers: list[NoGoBuffer] = Field(default_factory=list)
