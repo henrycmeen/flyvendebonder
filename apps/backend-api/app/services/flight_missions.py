@@ -16,11 +16,15 @@ from ..models import Property
 from .field_plots import normalize_polygon_coordinates, polygon_area_m2
 from .planning import planning_duration_status, suggest_spacing_for_profile
 from .quality_metrics import meters_per_degree_latitude, meters_per_degree_longitude
+from .terrain import TERRAIN_SOURCE_KARTVERKET_DEM, TerrainSamplingError, sample_terrain_elevations, summarize_terrain_elevations
 
 RECOMMENDED_ALTITUDE_RANGE_M = (20.0, 120.0)
 RECOMMENDED_LINE_SPACING_RANGE_M = (8.0, 35.0)
 RECOMMENDED_WAYPOINT_SPACING_RANGE_M = (8.0, 35.0)
 MIN_FIELD_AREA_FOR_ROUTE_M2 = 250.0
+MIN_RELATIVE_WAYPOINT_HEIGHT_M = 8.0
+TERRAIN_MODE_FLAT = "flat"
+TERRAIN_MODE_DEM_AGL = "dem_agl"
 EXPORT_BUNDLE_FORMAT = "flyvendebonder.flight-mission-bundle.v1"
 EXPORT_DJI_WPML_FORMAT = "dji.wpml.kmz.v1"
 EXPORT_DJI_FLY_KMZ_FORMAT = "dji.fly.kmz.v1"
@@ -272,6 +276,8 @@ def build_flight_mission_payload(
         )
 
     route_geojson = {"type": "FeatureCollection", "features": route_features}
+    terrain_context = _build_terrain_context(route_geojson=route_geojson, parameters=normalized_parameters)
+    warnings.extend(terrain_context["warnings"])
     generated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     mission_name = (name or f"Oppdrag {property_obj.gnr}/{property_obj.bnr}").strip()
     estimated_duration_s = estimate_mission_duration(
@@ -303,6 +309,7 @@ def build_flight_mission_payload(
             if recommended_spacing
             else None,
         },
+        "terrain": terrain_context["summary"],
         "parameters": normalized_parameters,
         "drone_profile": drone_profile or {},
         "recommended_spacing": recommended_spacing or {},
@@ -384,6 +391,7 @@ def build_flight_mission_dji_wpml_kmz(
     route_geojson: dict[str, Any],
     parameters: dict[str, Any],
     drone_profile: dict[str, Any],
+    export_manifest: dict[str, Any] | None = None,
 ) -> bytes:
     _validate_route_geojson_for_export(route_geojson)
 
@@ -399,6 +407,11 @@ def build_flight_mission_dji_wpml_kmz(
     ordered_coordinates = _ordered_route_coordinates(route_geojson)
     if len(ordered_coordinates) < 2:
         raise ValueError("Eksporten mangler minst én rute-linje")
+    waypoint_heights_m, takeoff_ref_point = _resolve_export_waypoint_heights(
+        ordered_coordinates=ordered_coordinates,
+        normalized_parameters=normalized_parameters,
+        export_manifest=export_manifest,
+    )
 
     capture_keys = _capture_coordinate_keys(route_geojson)
     timestamp_ms = _utc_timestamp_ms()
@@ -413,7 +426,7 @@ def build_flight_mission_dji_wpml_kmz(
         dji_profile,
         recommended_spacing=recommended_spacing,
     )
-    altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
+    altitude_m = max(max(waypoint_heights_m), 1.2)
     takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
     rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
     gimbal_pitch_angle = -90.0
@@ -422,19 +435,20 @@ def build_flight_mission_dji_wpml_kmz(
         mission_name=mission_name,
         timestamp_ms=timestamp_ms,
         coordinates=ordered_coordinates,
+        waypoint_heights_m=waypoint_heights_m,
         capture_keys=capture_keys,
-        altitude_m=altitude_m,
         speed_mps=speed_mps,
         gimbal_pitch_angle=gimbal_pitch_angle,
         takeoff_security_height_m=takeoff_security_height_m,
         normalized_parameters=normalized_parameters,
         dji_profile=dji_profile,
+        takeoff_ref_point=takeoff_ref_point,
     )
     waylines_xml = _build_dji_waylines_wpml(
         mission_name=mission_name,
         coordinates=ordered_coordinates,
+        waypoint_heights_m=waypoint_heights_m,
         capture_keys=capture_keys,
-        altitude_m=altitude_m,
         speed_mps=speed_mps,
         gimbal_pitch_angle=gimbal_pitch_angle,
         takeoff_security_height_m=takeoff_security_height_m,
@@ -458,6 +472,7 @@ def build_flight_mission_dji_fly_kmz(
     route_geojson: dict[str, Any],
     parameters: dict[str, Any],
     drone_profile: dict[str, Any],
+    export_manifest: dict[str, Any] | None = None,
 ) -> bytes:
     _validate_route_geojson_for_export(route_geojson)
 
@@ -473,6 +488,11 @@ def build_flight_mission_dji_fly_kmz(
     ordered_coordinates = _ordered_route_coordinates(route_geojson)
     if len(ordered_coordinates) < 2:
         raise ValueError("Eksporten mangler minst én rute-linje")
+    waypoint_heights_m, takeoff_ref_point = _resolve_export_waypoint_heights(
+        ordered_coordinates=ordered_coordinates,
+        normalized_parameters=normalized_parameters,
+        export_manifest=export_manifest,
+    )
 
     timestamp_ms = _utc_timestamp_ms()
     recommended_spacing = suggest_spacing_for_profile(
@@ -486,7 +506,7 @@ def build_flight_mission_dji_fly_kmz(
         dji_profile,
         recommended_spacing=recommended_spacing,
     )
-    altitude_m = max(1.2, float(normalized_parameters["altitude_m"]))
+    altitude_m = max(max(waypoint_heights_m), 1.2)
     takeoff_security_height_m = round(max(20.0, min(120.0, altitude_m)), 1)
     rth_height_m = round(max(takeoff_security_height_m, altitude_m + 20.0), 1)
     gimbal_pitch_angle = -90.0
@@ -502,8 +522,8 @@ def build_flight_mission_dji_fly_kmz(
         mission_name=mission_name,
         timestamp_ms=timestamp_ms,
         coordinates=ordered_coordinates,
+        waypoint_heights_m=waypoint_heights_m,
         capture_keys=set(),
-        altitude_m=altitude_m,
         speed_mps=speed_mps,
         gimbal_pitch_angle=gimbal_pitch_angle,
         takeoff_security_height_m=takeoff_security_height_m,
@@ -512,12 +532,13 @@ def build_flight_mission_dji_fly_kmz(
         include_payload_info=False,
         author=dji_profile.get("author") or "fly",
         use_straight_line=1,
+        takeoff_ref_point=takeoff_ref_point,
     )
     waylines_xml = _build_dji_waylines_wpml(
         mission_name=mission_name,
         coordinates=ordered_coordinates,
+        waypoint_heights_m=waypoint_heights_m,
         capture_keys=set(),
-        altitude_m=altitude_m,
         speed_mps=speed_mps,
         gimbal_pitch_angle=gimbal_pitch_angle,
         takeoff_security_height_m=takeoff_security_height_m,
@@ -549,6 +570,7 @@ def build_flight_mission_dji_fly_kmz(
                     "4. Gi denne KMZ-filen samme navn som den midlertidige mission-filen og erstatt den.",
                     "5. Åpne ruten i DJI Fly og kontroller waypointene før flyging.",
                     "Viktig: Ikke lagre eller rediger missionen på nytt i DJI Fly etter import dersom du vil bevare den eksporterte strukturen.",
+                    "Hvis planen bruker Følg terreng, er waypoint-høydene allerede terrengkorrigert i KMZ-filen og skal normalt ikke justeres manuelt i DJI Fly.",
                     "Merk: Intervallfoto for kartlegging må normalt startes manuelt i DJI Fly.",
                 ]
             ),
@@ -711,13 +733,14 @@ def _build_dji_template_kml(
     mission_name: str,
     timestamp_ms: int,
     coordinates: list[list[float]],
+    waypoint_heights_m: list[float],
     capture_keys: set[str],
-    altitude_m: float,
     speed_mps: float,
     gimbal_pitch_angle: float,
     takeoff_security_height_m: float,
     normalized_parameters: dict[str, Any],
     dji_profile: dict[str, Any],
+    takeoff_ref_point: dict[str, float] | None = None,
     include_payload_info: bool = True,
     author: str = "Flyvendebønder",
     use_straight_line: int = 0,
@@ -731,7 +754,7 @@ def _build_dji_template_kml(
         document,
         dji_profile=dji_profile,
         takeoff_security_height_m=takeoff_security_height_m,
-        takeoff_ref_point=normalized_parameters.get("launch_point"),
+        takeoff_ref_point=takeoff_ref_point,
         global_transitional_speed_mps=speed_mps,
         include_payload_info=include_payload_info,
     )
@@ -757,7 +780,7 @@ def _build_dji_template_kml(
         placemark = ET.SubElement(folder, _kml_tag("Placemark"))
         _append_point_coordinates(placemark, point)
         ET.SubElement(placemark, _wpml_tag("index")).text = str(index)
-        ET.SubElement(placemark, _wpml_tag("height")).text = _xml_float(altitude_m)
+        ET.SubElement(placemark, _wpml_tag("height")).text = _xml_float(waypoint_heights_m[index])
         ET.SubElement(placemark, _wpml_tag("useGlobalHeight")).text = "1"
         ET.SubElement(placemark, _wpml_tag("useGlobalSpeed")).text = "1"
         ET.SubElement(placemark, _wpml_tag("useGlobalHeadingParam")).text = "1"
@@ -782,8 +805,8 @@ def _build_dji_waylines_wpml(
     *,
     mission_name: str,
     coordinates: list[list[float]],
+    waypoint_heights_m: list[float],
     capture_keys: set[str],
-    altitude_m: float,
     speed_mps: float,
     gimbal_pitch_angle: float,
     takeoff_security_height_m: float,
@@ -827,7 +850,7 @@ def _build_dji_waylines_wpml(
         placemark = ET.SubElement(folder, _kml_tag("Placemark"))
         _append_point_coordinates(placemark, point)
         ET.SubElement(placemark, _wpml_tag("index")).text = str(index)
-        ET.SubElement(placemark, _wpml_tag("executeHeight")).text = _xml_float(altitude_m)
+        ET.SubElement(placemark, _wpml_tag("executeHeight")).text = _xml_float(waypoint_heights_m[index])
         ET.SubElement(placemark, _wpml_tag("waypointSpeed")).text = _xml_float(speed_mps)
         heading = ET.SubElement(placemark, _wpml_tag("waypointHeadingParam"))
         ET.SubElement(heading, _wpml_tag("waypointHeadingMode")).text = "followWayline"
@@ -946,6 +969,7 @@ def _normalize_parameters(
         "line_spacing_m": round(float(parameters["line_spacing_m"]), 2),
         "waypoint_spacing_m": round(float(parameters["waypoint_spacing_m"]), 2),
         "route_angle_deg": round(float(parameters["route_angle_deg"]), 2),
+        "terrain_mode": _normalize_terrain_mode(parameters.get("terrain_mode")),
         "camera_preset_id": (str(parameters.get("camera_preset_id")).strip() or None)
         if parameters.get("camera_preset_id") is not None
         else None,
@@ -964,6 +988,154 @@ def _normalize_parameters(
         normalized["line_spacing_m"] = suggested_spacing["line_spacing_m"]
         normalized["waypoint_spacing_m"] = suggested_spacing["waypoint_spacing_m"]
     return normalized
+
+
+def _normalize_terrain_mode(raw: Any) -> str:
+    normalized = str(raw or TERRAIN_MODE_FLAT).strip().lower()
+    if normalized == TERRAIN_MODE_DEM_AGL:
+        return TERRAIN_MODE_DEM_AGL
+    return TERRAIN_MODE_FLAT
+
+
+def _build_terrain_context(
+    *,
+    route_geojson: dict[str, Any],
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    ordered_coordinates = _ordered_route_coordinates(route_geojson)
+    requested_mode = parameters.get("terrain_mode", TERRAIN_MODE_FLAT)
+    summary: dict[str, Any] = {
+        "terrain_mode": TERRAIN_MODE_FLAT,
+        "requested_terrain_mode": requested_mode,
+        "terrain_source": None,
+        "takeoff_reference_point": None,
+        "takeoff_reference_elevation_m": None,
+        "min_terrain_elevation_m": None,
+        "max_terrain_elevation_m": None,
+        "min_relative_waypoint_height_m": round(float(parameters["altitude_m"]), 2),
+        "max_relative_waypoint_height_m": round(float(parameters["altitude_m"]), 2),
+        "relative_waypoint_heights_m": [round(float(parameters["altitude_m"]), 2) for _ in ordered_coordinates],
+    }
+    warnings: list[dict[str, Any]] = []
+    if not ordered_coordinates:
+        return {"summary": summary, "warnings": warnings}
+
+    reference_point = parameters.get("launch_point") or {"lng": ordered_coordinates[0][0], "lat": ordered_coordinates[0][1]}
+    summary["takeoff_reference_point"] = reference_point
+
+    elevations: list[float | None] | None = None
+    min_elevation_m: float | None = None
+    max_elevation_m: float | None = None
+    takeoff_reference_elevation_m: float | None = None
+
+    try:
+        sample_points = [{"lng": point[0], "lat": point[1]} for point in ordered_coordinates]
+        elevations = sample_terrain_elevations(sample_points)
+        min_elevation_m, max_elevation_m = summarize_terrain_elevations(elevations)
+        takeoff_reference_elevation_m = _sample_reference_elevation(reference_point=reference_point, ordered_coordinates=ordered_coordinates, elevations=elevations)
+        summary["terrain_source"] = TERRAIN_SOURCE_KARTVERKET_DEM
+        summary["takeoff_reference_elevation_m"] = takeoff_reference_elevation_m
+        summary["min_terrain_elevation_m"] = min_elevation_m
+        summary["max_terrain_elevation_m"] = max_elevation_m
+    except Exception:
+        elevations = None
+
+    flat_altitudes = [round(float(parameters["altitude_m"]), 2) for _ in ordered_coordinates]
+    if requested_mode != TERRAIN_MODE_DEM_AGL:
+        summary["relative_waypoint_heights_m"] = flat_altitudes
+        if min_elevation_m is not None and max_elevation_m is not None and (max_elevation_m - min_elevation_m) >= 10:
+            warnings.append(
+                _warning(
+                    "terrain_following_recommended",
+                    "info",
+                    f"Terrenget varierer {max_elevation_m - min_elevation_m:.1f} m langs ruta. Følg terreng anbefales.",
+                )
+            )
+        return {"summary": summary, "warnings": warnings}
+
+    if parameters.get("launch_point") is None:
+        warnings.append(
+            _warning(
+                "terrain_reference_defaults_to_route_start",
+                "info",
+                "Følg terreng bruker første rute-punkt som referanse til du setter et startpunkt.",
+            )
+        )
+
+    if elevations is None or any(elevation is None for elevation in elevations) or takeoff_reference_elevation_m is None:
+        summary["relative_waypoint_heights_m"] = flat_altitudes
+        warnings.append(
+            _warning(
+                "terrain_data_unavailable_fallback_flat",
+                "warning",
+                "Terrengdata mangler for deler av ruta. Planen falt tilbake til flat høyde.",
+            )
+        )
+        return {"summary": summary, "warnings": warnings}
+
+    relative_heights: list[float] = []
+    clamp_count = 0
+    desired_agl_m = float(parameters["altitude_m"])
+    for elevation in elevations:
+        assert elevation is not None
+        relative_height_m = desired_agl_m + (float(elevation) - float(takeoff_reference_elevation_m))
+        if relative_height_m < MIN_RELATIVE_WAYPOINT_HEIGHT_M:
+            relative_height_m = MIN_RELATIVE_WAYPOINT_HEIGHT_M
+            clamp_count += 1
+        relative_heights.append(round(relative_height_m, 2))
+
+    summary["terrain_mode"] = TERRAIN_MODE_DEM_AGL
+    summary["relative_waypoint_heights_m"] = relative_heights
+    summary["min_relative_waypoint_height_m"] = round(min(relative_heights), 2)
+    summary["max_relative_waypoint_height_m"] = round(max(relative_heights), 2)
+    if clamp_count > 0:
+        warnings.append(
+            _warning(
+                "terrain_height_clamped",
+                "warning",
+                f"{clamp_count} waypoint-høyde(r) ble løftet til minst {MIN_RELATIVE_WAYPOINT_HEIGHT_M:g} m over startreferansen.",
+            )
+        )
+    return {"summary": summary, "warnings": warnings}
+
+
+def _sample_reference_elevation(
+    *,
+    reference_point: dict[str, float],
+    ordered_coordinates: list[list[float]],
+    elevations: list[float | None],
+) -> float | None:
+    reference_key = _coordinate_key([reference_point["lng"], reference_point["lat"]])
+    for index, coordinate in enumerate(ordered_coordinates):
+        if _coordinate_key(coordinate) == reference_key:
+            elevation = elevations[index]
+            return round(float(elevation), 2) if elevation is not None else None
+
+    sampled = sample_terrain_elevations([reference_point])
+    if not sampled or sampled[0] is None:
+        return None
+    return round(float(sampled[0]), 2)
+
+
+def _resolve_export_waypoint_heights(
+    *,
+    ordered_coordinates: list[list[float]],
+    normalized_parameters: dict[str, Any],
+    export_manifest: dict[str, Any] | None,
+) -> tuple[list[float], dict[str, float] | None]:
+    default_altitude = round(float(normalized_parameters["altitude_m"]), 2)
+    terrain = export_manifest.get("terrain") if isinstance(export_manifest, dict) else None
+    if isinstance(terrain, dict):
+        raw_heights = terrain.get("relative_waypoint_heights_m")
+        if isinstance(raw_heights, list) and len(raw_heights) == len(ordered_coordinates):
+            heights = [round(float(value), 2) for value in raw_heights]
+            raw_ref_point = terrain.get("takeoff_reference_point")
+            takeoff_ref_point = raw_ref_point if isinstance(raw_ref_point, dict) and "lat" in raw_ref_point and "lng" in raw_ref_point else None
+            return heights, takeoff_ref_point
+    takeoff_ref_point = normalized_parameters.get("launch_point")
+    if takeoff_ref_point is None and ordered_coordinates:
+        takeoff_ref_point = {"lng": ordered_coordinates[0][0], "lat": ordered_coordinates[0][1]}
+    return [default_altitude for _ in ordered_coordinates], takeoff_ref_point
 
 
 def estimate_mission_duration(

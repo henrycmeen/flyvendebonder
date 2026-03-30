@@ -334,6 +334,7 @@ class DroneProfileListResponse(BaseModel):
 
 FlightMissionStatus = Literal["ready"]
 FlightMissionWarningSeverity = Literal["info", "warning"]
+FlightMissionTerrainMode = Literal["flat", "dem_agl"]
 
 
 class FlightMissionParameters(BaseModel):
@@ -341,6 +342,7 @@ class FlightMissionParameters(BaseModel):
     line_spacing_m: float = Field(default=18.0, gt=0, le=200)
     waypoint_spacing_m: float = Field(default=18.0, gt=0, le=200)
     route_angle_deg: float = Field(default=0.0, ge=0, le=180)
+    terrain_mode: FlightMissionTerrainMode = "flat"
     camera_preset_id: str | None = None
     ground_offset_m: float = Field(default=0.0, ge=0, le=200)
     launch_point: GeoPoint | None = None

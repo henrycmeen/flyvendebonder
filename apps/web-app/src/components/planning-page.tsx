@@ -18,6 +18,7 @@ import type {
   FlightMission,
   FlightMissionParameters,
   FlightMissionPreview,
+  FlightMissionTerrainMode,
   GeoJSONPolygon,
   GeoPoint,
   NoGoBuffer,
@@ -35,6 +36,7 @@ const DEFAULT_FLIGHT_MISSION_PARAMETERS: FlightMissionParameters = {
   line_spacing_m: 18,
   waypoint_spacing_m: 18,
   route_angle_deg: 0,
+  terrain_mode: "dem_agl",
   camera_preset_id: null,
   ground_offset_m: 0,
   launch_point: null,
@@ -265,12 +267,32 @@ function normalizeMissionParameters(parameters: Partial<FlightMissionParameters>
   return {
     ...DEFAULT_FLIGHT_MISSION_PARAMETERS,
     ...parameters,
+    terrain_mode: parameters?.terrain_mode === "dem_agl" ? "dem_agl" : "flat",
     camera_preset_id: parameters?.camera_preset_id ?? null,
     ground_offset_m: Number(parameters?.ground_offset_m ?? 0),
     launch_point: parameters?.launch_point ?? null,
     landing_point: parameters?.landing_point ?? null,
     no_go_buffers: normalizedNoGoBuffers,
   };
+}
+
+type TerrainSummary = {
+  terrain_mode: FlightMissionTerrainMode;
+  requested_terrain_mode?: FlightMissionTerrainMode | string | null;
+  terrain_source?: string | null;
+  takeoff_reference_elevation_m?: number | null;
+  min_terrain_elevation_m?: number | null;
+  max_terrain_elevation_m?: number | null;
+  min_relative_waypoint_height_m?: number | null;
+  max_relative_waypoint_height_m?: number | null;
+};
+
+function getTerrainSummary(mission: FlightMissionPreview | FlightMission | null | undefined): TerrainSummary | null {
+  const terrain = mission?.export_manifest && typeof mission.export_manifest === "object"
+    ? (mission.export_manifest as Record<string, unknown>).terrain
+    : null;
+  if (!terrain || typeof terrain !== "object") return null;
+  return terrain as TerrainSummary;
 }
 
 function createNoGoBuffer(point: GeoPoint): NoGoBuffer {
@@ -429,6 +451,7 @@ export function PlanningPage({
     };
   }, [selectedUnitMission]);
   const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const terrainSummary = useMemo(() => getTerrainSummary(preview), [preview]);
   const unitGeometryKeys = useMemo(
     () => new Set(units.map((unit) => geometryKey(unit.geometry?.coordinates))),
     [units],
@@ -1684,6 +1707,53 @@ export function PlanningPage({
                         />
                       </label>
                     ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Terreng</p>
+                      <div className="flex items-center gap-1 rounded-full bg-fb-surface-ghost p-1">
+                        {([
+                          ["flat", "Flat"],
+                          ["dem_agl", "Følg terreng"],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                              parameters.terrain_mode === mode
+                                ? "bg-fb-text-primary text-white"
+                                : "text-fb-text-secondary hover:text-fb-text-primary",
+                            )}
+                            onClick={() =>
+                              setParameters((current) => ({
+                                ...current,
+                                terrain_mode: mode,
+                              }))
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {parameters.terrain_mode === "dem_agl" ? (
+                      <p className="text-xs text-fb-text-secondary">Høyde holdes over terrenget langs ruta.</p>
+                    ) : null}
+                    {parameters.terrain_mode === "dem_agl" && !parameters.launch_point ? (
+                      <p className="text-xs text-fb-text-secondary">Sett gjerne startpunkt før eksport, så blir terrengreferansen tydelig.</p>
+                    ) : null}
+                    {terrainSummary?.min_terrain_elevation_m != null && terrainSummary?.max_terrain_elevation_m != null ? (
+                      <p className="text-xs text-fb-text-secondary">
+                        Terrengspenn: {(terrainSummary.max_terrain_elevation_m - terrainSummary.min_terrain_elevation_m).toFixed(1)} m
+                        {terrainSummary.terrain_mode === "dem_agl" &&
+                        terrainSummary.min_relative_waypoint_height_m != null &&
+                        terrainSummary.max_relative_waypoint_height_m != null
+                          ? ` · rutehøyde ${terrainSummary.min_relative_waypoint_height_m.toFixed(1)}–${terrainSummary.max_relative_waypoint_height_m.toFixed(1)} m`
+                          : ""}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2">

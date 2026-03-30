@@ -2151,6 +2151,7 @@ def export_flight_mission(
                         route_geojson=route_geojson,
                         parameters=parameters,
                         drone_profile=drone_profile_snapshot,
+                        export_manifest=export_manifest,
                     )
                     response_format = EXPORT_DJI_FLY_KMZ_FORMAT
                 elif export_format == "dji-wpml":
@@ -2160,6 +2161,7 @@ def export_flight_mission(
                         route_geojson=route_geojson,
                         parameters=parameters,
                         drone_profile=drone_profile_snapshot,
+                        export_manifest=export_manifest,
                     )
                     response_format = EXPORT_DJI_WPML_FORMAT
                 else:
@@ -2170,6 +2172,7 @@ def export_flight_mission(
                             route_geojson=route_geojson,
                             parameters=parameters,
                             drone_profile=drone_profile_snapshot,
+                            export_manifest=export_manifest,
                         )
                         response_format = EXPORT_DJI_WPML_FORMAT
                     except ValueError:
@@ -2179,6 +2182,7 @@ def export_flight_mission(
                             route_geojson=route_geojson,
                             parameters=parameters,
                             drone_profile=drone_profile_snapshot,
+                            export_manifest=export_manifest,
                         )
                         response_format = EXPORT_DJI_FLY_KMZ_FORMAT
                 media_type = "application/vnd.google-earth.kmz"

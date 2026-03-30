@@ -18,6 +18,7 @@ from app.services.flight_missions import (
     build_flight_mission_export_bundle,
 )
 from app.services.planning import get_drone_profile, suggest_spacing_for_profile
+from app.services.terrain import TerrainSamplingError
 
 
 def _sample_polygon(offset: float = 0.0) -> dict:
@@ -281,6 +282,107 @@ def test_flight_mission_export_supports_strict_dji_fly_for_mini_4_pro(client):
     assert export_response.status_code == 200
     assert export_response.headers["content-type"] == "application/vnd.google-earth.kmz"
     assert export_response.headers["X-Flyvendebonder-Export-Format"] == EXPORT_DJI_FLY_KMZ_FORMAT
+
+
+def test_flight_mission_preview_dem_agl_uses_launch_point_as_terrain_reference(client, monkeypatch):
+    field = _create_field(client, name="Terrengjordet")
+
+    def fake_samples(points):
+        values = []
+        for point in points:
+            if abs(point["lat"] - 59.0001) < 0.000001 and abs(point["lng"] - 9.9999) < 0.000001:
+                values.append(100.0)
+            else:
+                values.append(100.0 + ((point["lng"] - 10.0) * 10_000))
+        return values
+
+    monkeypatch.setattr("app.services.flight_missions.sample_terrain_elevations", fake_samples)
+
+    preview_response = client.post(
+        "/api/v1/flight-missions/preview",
+        json={
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "terrain_mode": "dem_agl",
+                "altitude_m": 45,
+                "route_angle_deg": 0,
+                "launch_point": {"lat": 59.0001, "lng": 9.9999},
+            },
+        },
+    )
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    terrain = preview["export_manifest"]["terrain"]
+    assert terrain["terrain_mode"] == "dem_agl"
+    assert terrain["takeoff_reference_elevation_m"] == 100.0
+    assert terrain["min_relative_waypoint_height_m"] < terrain["max_relative_waypoint_height_m"]
+    assert any(feature["properties"].get("kind") == "transit" for feature in preview["route_geojson"]["features"])
+
+
+def test_flight_mission_export_writes_terrain_corrected_relative_heights(client, monkeypatch):
+    field = _create_field(client, name="Terrengeksport")
+
+    def fake_samples(points):
+        return [120.0 + (index * 0.8) for index, _ in enumerate(points)]
+
+    monkeypatch.setattr("app.services.flight_missions.sample_terrain_elevations", fake_samples)
+
+    create_response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Terreng eksport",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "terrain_mode": "dem_agl",
+                "altitude_m": 45,
+                "route_angle_deg": 0,
+                "launch_point": {"lat": 59.0001, "lng": 9.9999},
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    mission = create_response.json()
+    terrain = mission["export_manifest"]["terrain"]
+    assert terrain["terrain_mode"] == "dem_agl"
+
+    export_response = client.post(f"/api/v1/flight-missions/{mission['id']}/export?format=dji-fly")
+    assert export_response.status_code == 200
+
+    archive = zipfile.ZipFile(io.BytesIO(export_response.content))
+    waylines_root = ET.fromstring(archive.read("wpmz/waylines.wpml"))
+    namespace = {"kml": "http://www.opengis.net/kml/2.2", "wpml": "http://www.dji.com/wpmz/1.0.2"}
+    heights = [float(node.text) for node in waylines_root.findall(".//wpml:executeHeight", namespace)]
+    assert len(heights) > 1
+    assert max(heights) > min(heights)
+
+
+def test_flight_mission_preview_dem_agl_falls_back_to_flat_when_terrain_sampling_fails(client, monkeypatch):
+    field = _create_field(client, name="Fallbackjordet")
+
+    def failing_samples(_points):
+        raise TerrainSamplingError("boom")
+
+    monkeypatch.setattr("app.services.flight_missions.sample_terrain_elevations", failing_samples)
+
+    preview_response = client.post(
+        "/api/v1/flight-missions/preview",
+        json={
+            "field_ids": [field["id"]],
+            "parameters": {
+                "terrain_mode": "dem_agl",
+                "altitude_m": 45,
+                "route_angle_deg": 0,
+            },
+        },
+    )
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    terrain = preview["export_manifest"]["terrain"]
+    assert terrain["terrain_mode"] == "flat"
+    assert terrain["requested_terrain_mode"] == "dem_agl"
+    assert any(warning["code"] == "terrain_data_unavailable_fallback_flat" for warning in preview["warnings"])
 
 
 def test_flight_mission_can_be_deleted(client):

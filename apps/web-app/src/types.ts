@@ -127,12 +127,14 @@ export type FlightMissionStatus = "ready";
 export type FlightMissionWarningSeverity = "info" | "warning";
 export type PlanningUnitStatus = "active" | "archived";
 export type FlightMissionDurationStatus = "ok" | "warning" | "over_limit";
+export type FlightMissionTerrainMode = "flat" | "dem_agl";
 
 export interface FlightMissionParameters {
   altitude_m: number;
   line_spacing_m: number;
   waypoint_spacing_m: number;
   route_angle_deg: number;
+  terrain_mode: FlightMissionTerrainMode;
   camera_preset_id: string | null;
   ground_offset_m: number;
   launch_point: GeoPoint | null;
