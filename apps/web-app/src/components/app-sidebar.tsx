@@ -1,6 +1,7 @@
 import { Images, Import, Map as MapIcon, Route, Settings2 } from "lucide-react";
 
 import { SettingsDialog } from "@/components/settings-dialog";
+import { PropertyHero3D } from "@/components/property-hero-3d";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
@@ -203,6 +204,7 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent className="gap-6 px-5 py-6">
+        <PropertyHero3D profile={profile} />
         <SidebarNavigation activeView={activeView} onChangeView={onChangeView} onStartMediaImport={onStartMediaImport} />
       </SidebarContent>
 

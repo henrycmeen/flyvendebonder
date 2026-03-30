@@ -1,0 +1,44 @@
+<svg width="320" height="220" viewBox="0 0 320 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="28" y1="18" x2="282" y2="196" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FCFF"/>
+      <stop offset="1" stop-color="#EEF6EA"/>
+    </linearGradient>
+    <linearGradient id="roofFront" x1="120" y1="72" x2="187" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4A261"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="roofSide" x1="187" y1="76" x2="246" y2="124" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C96E28"/>
+      <stop offset="1" stop-color="#9A4D15"/>
+    </linearGradient>
+    <linearGradient id="wallFront" x1="122" y1="112" x2="184" y2="184" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF6EB"/>
+      <stop offset="1" stop-color="#F5E6CF"/>
+    </linearGradient>
+    <linearGradient id="wallSide" x1="184" y1="114" x2="244" y2="181" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7D4B8"/>
+      <stop offset="1" stop-color="#D4BB96"/>
+    </linearGradient>
+    <linearGradient id="silo" x1="82" y1="78" x2="111" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C3D7E6"/>
+      <stop offset="1" stop-color="#89A6BC"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="12" width="280" height="196" rx="34" fill="url(#sky)"/>
+  <ellipse cx="162" cy="183" rx="84" ry="20" fill="#DCE9D4"/>
+  <path d="M72 170L160 139L250 168L161 199L72 170Z" fill="#C6D8A9"/>
+  <path d="M121 108L187 76L246 106L181 138L121 108Z" fill="url(#roofFront)"/>
+  <path d="M187 76L246 106V119L187 149V76Z" fill="url(#roofSide)"/>
+  <path d="M121 108L187 76V149L121 178V108Z" fill="url(#wallFront)"/>
+  <path d="M187 149V76L246 106V176L187 149Z" fill="url(#wallSide)"/>
+  <path d="M144 135L167 125V170L144 180V135Z" fill="#7C4A24"/>
+  <path d="M198 121L228 107V137L198 151V121Z" fill="#C88B52" fill-opacity="0.62"/>
+  <rect x="84" y="80" width="22" height="84" rx="11" fill="url(#silo)"/>
+  <path d="M95 62L109 80H81L95 62Z" fill="#7AA057"/>
+  <path d="M206 94L243 112" stroke="#7C4A24" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M130 120L186 149" stroke="#D9C6A8" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="106" cy="161" r="16" fill="#8ABF6A"/>
+  <circle cx="222" cy="174" r="18" fill="#7AA057"/>
+  <circle cx="88" cy="149" r="10" fill="#9AC97B"/>
+</svg>
