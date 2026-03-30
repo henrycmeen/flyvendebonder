@@ -500,7 +500,7 @@ export function PlanningMap({
       }
     });
 
-    if (displayedMission) {
+    if (displayedMission && selectedUnitId == null) {
       const missionBoundsPoints: L.LatLngExpression[] = [];
       displayedMission.fields.forEach((field) => {
         missionBoundsPoints.push(...toPolygonLatLngs(field.geometry.coordinates));

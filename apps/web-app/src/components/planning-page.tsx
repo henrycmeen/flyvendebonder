@@ -1567,12 +1567,12 @@ export function PlanningPage({
             ) : null}
             <PlanningMap
               units={units}
-              missions={selectedUnitMission ? [selectedUnitMission] : activeMission ? [activeMission] : []}
+              missions={selectedUnitMission ? [selectedUnitMission] : selectedUnit ? [] : activeMission ? [activeMission] : []}
               previewMission={preview}
               previewPending={previewPending}
               previewSuggestion={previewSuggestion}
               suggestionFocusToken={suggestionFocusToken}
-              activeMissionId={selectedUnitMission?.id ?? activeMissionId}
+              activeMissionId={selectedUnitMission?.id ?? (selectedUnit ? null : activeMissionId)}
               missionFocusToken={missionFocusToken}
               selectedUnitId={selectedUnitId}
               editMode={editMode}
