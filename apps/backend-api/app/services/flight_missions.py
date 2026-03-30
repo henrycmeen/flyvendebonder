@@ -1292,12 +1292,55 @@ def _build_field_route(
     if max_y - min_y < 0.5:
         return {"points": [], "buffer_count": applied_buffer_count}
 
+    route_candidates: list[list[list[float]]] = []
+    for scan_from_top in (False, True):
+        for initial_reverse in (False, True):
+            candidate_rotated = _build_rotated_route_candidate(
+                rotated_geometry=rotated_geometry,
+                rotated_no_go_geometries=rotated_no_go_geometries,
+                min_x=min_x,
+                max_x=max_x,
+                min_y=min_y,
+                max_y=max_y,
+                line_spacing_m=line_spacing_m,
+                waypoint_spacing_m=waypoint_spacing_m,
+                scan_from_top=scan_from_top,
+                initial_reverse=initial_reverse,
+            )
+            if not candidate_rotated:
+                continue
+            route_candidates.append(
+                _convert_local_route_to_geo(candidate_rotated, route_angle_deg=route_angle_deg, origin=origin, centroid=centroid)
+            )
+
+    route_points = _optimize_route_direction_for_launch_and_landing(
+        route_candidates,
+        preferred_start_point=preferred_start_point,
+        preferred_end_point=preferred_end_point,
+    )
+
+    return {"points": route_points, "buffer_count": applied_buffer_count}
+
+
+def _build_rotated_route_candidate(
+    *,
+    rotated_geometry: Polygon,
+    rotated_no_go_geometries: list[Polygon],
+    min_x: float,
+    max_x: float,
+    min_y: float,
+    max_y: float,
+    line_spacing_m: float,
+    waypoint_spacing_m: float,
+    scan_from_top: bool,
+    initial_reverse: bool,
+) -> list[list[float]]:
     route_points_rotated: list[list[float]] = []
-    scan_y = min_y + (line_spacing_m / 2.0)
-    reverse = False
+    scan_y = (max_y - (line_spacing_m / 2.0)) if scan_from_top else (min_y + (line_spacing_m / 2.0))
+    reverse = initial_reverse
     previous_rotated_point: list[float] | None = None
 
-    while scan_y <= max_y + 0.001:
+    while (scan_y >= min_y - 0.001) if scan_from_top else (scan_y <= max_y + 0.001):
         scanline = LineString([(min_x - 5.0, scan_y), (max_x + 5.0, scan_y)])
         intersections = rotated_geometry.intersection(scanline)
         segments = _extract_scanline_segments(intersections)
@@ -1328,48 +1371,57 @@ def _build_field_route(
                     route_points_rotated.append(point)
                 previous_rotated_point = segment[-1]
 
-        scan_y += line_spacing_m
+        scan_y += -line_spacing_m if scan_from_top else line_spacing_m
 
+    return route_points_rotated
+
+
+def _convert_local_route_to_geo(
+    route_points_rotated: list[list[float]],
+    *,
+    route_angle_deg: float,
+    origin: tuple[float, float],
+    centroid: tuple[float, float],
+) -> list[list[float]]:
     route_points: list[list[float]] = []
     for point in route_points_rotated:
         x_rot, y_rot = _rotate_point(point[0], point[1], route_angle_deg)
         lng, lat = _local_point_to_lng_lat(x_rot, y_rot, origin=origin, centroid=centroid)
-        if route_points and route_points[-1] == [round(lng, 8), round(lat, 8)]:
+        rounded_point = [round(lng, 8), round(lat, 8)]
+        if route_points and route_points[-1] == rounded_point:
             continue
-        route_points.append([round(lng, 8), round(lat, 8)])
-
-    route_points = _optimize_route_direction_for_launch_and_landing(
-        route_points,
-        preferred_start_point=preferred_start_point,
-        preferred_end_point=preferred_end_point,
-    )
-
-    return {"points": route_points, "buffer_count": applied_buffer_count}
+        route_points.append(rounded_point)
+    return route_points
 
 
 def _optimize_route_direction_for_launch_and_landing(
-    route_points: list[list[float]],
+    route_candidates: list[list[list[float]]],
     *,
     preferred_start_point: dict[str, float] | None,
     preferred_end_point: dict[str, float] | None,
 ) -> list[list[float]]:
-    if len(route_points) < 2:
-        return route_points
+    viable_candidates = [candidate for candidate in route_candidates if len(candidate) >= 2]
+    if not viable_candidates:
+        return route_candidates[0] if route_candidates else []
     if preferred_start_point is None and preferred_end_point is None:
-        return route_points
+        return viable_candidates[0]
 
-    reversed_points = list(reversed(route_points))
-    forward_score = _route_endpoint_score(
-        route_points,
+    best_candidate = viable_candidates[0]
+    best_score = _route_endpoint_score(
+        best_candidate,
         preferred_start_point=preferred_start_point,
         preferred_end_point=preferred_end_point,
     )
-    reversed_score = _route_endpoint_score(
-        reversed_points,
-        preferred_start_point=preferred_start_point,
-        preferred_end_point=preferred_end_point,
-    )
-    return reversed_points if reversed_score + 0.01 < forward_score else route_points
+    for candidate in viable_candidates[1:]:
+        candidate_score = _route_endpoint_score(
+            candidate,
+            preferred_start_point=preferred_start_point,
+            preferred_end_point=preferred_end_point,
+        )
+        if candidate_score + 0.01 < best_score:
+            best_candidate = candidate
+            best_score = candidate_score
+    return best_candidate
 
 
 def _route_endpoint_score(

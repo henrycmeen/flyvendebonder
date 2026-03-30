@@ -819,5 +819,35 @@ def test_launch_point_influences_route_direction(client):
     assert first_distance <= last_distance
 
 
+def test_launch_point_can_start_route_from_top_edge(client):
+    field = _create_field(client, name="Toppstart")
+
+    response = client.post(
+        "/api/v1/flight-missions",
+        json={
+            "name": "Toppstart",
+            "field_ids": [field["id"]],
+            "drone_profile_id": "dji-mini-4-pro",
+            "parameters": {
+                "altitude_m": 60,
+                "line_spacing_m": 18,
+                "waypoint_spacing_m": 18,
+                "route_angle_deg": 0,
+                "launch_point": {"lat": 59.00105, "lng": 9.99995},
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    route_line = next(
+        feature["geometry"]["coordinates"]
+        for feature in payload["route_geojson"]["features"]
+        if feature["properties"]["kind"] == "route"
+    )
+    first_point = route_line[0]
+    assert first_point[1] > 59.0005
+
+
 def _distance_to_point(point: dict[str, float], coordinate: list[float]) -> float:
     return abs(point["lat"] - coordinate[1]) + abs(point["lng"] - coordinate[0])

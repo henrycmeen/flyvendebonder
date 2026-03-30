@@ -858,6 +858,18 @@ export function PlanningPage({
     setToolMode("select");
   }, []);
 
+  const handleCopyLaunchPointToLanding = useCallback(() => {
+    setParameters((current) => {
+      if (!current.launch_point) return current;
+      return {
+        ...current,
+        landing_point: current.launch_point,
+      };
+    });
+    setPreviewStatus("Oppdaterer rute med samme start- og landingspunkt …");
+    setToolMode("select");
+  }, []);
+
   const handleAddNoGoBuffer = useCallback((point: GeoPoint) => {
     const nextBuffer = createNoGoBuffer(point);
     setSelectedNoGoBufferId(nextBuffer.id);
@@ -1821,13 +1833,31 @@ export function PlanningPage({
                       Legg til hinder
                     </button>
                     {parameters.launch_point ? (
+                      <button
+                        type="button"
+                        className="rounded-xl bg-fb-surface-ghost px-3 py-2 text-left text-xs font-medium text-fb-text-primary transition-colors hover:bg-white"
+                        onClick={handleCopyLaunchPointToLanding}
+                      >
+                        {parameters.landing_point &&
+                        parameters.landing_point.lat === parameters.launch_point.lat &&
+                        parameters.landing_point.lng === parameters.launch_point.lng
+                          ? "Landing følger startpunkt"
+                          : "Bruk startpunkt som landing"}
+                      </button>
+                    ) : null}
+                    {parameters.launch_point ? (
                       <p className="text-xs text-fb-text-secondary">
                         Startpunkt: {parameters.launch_point.lat.toFixed(5)}, {parameters.launch_point.lng.toFixed(5)}
                       </p>
                     ) : null}
                     {parameters.landing_point ? (
                       <p className="text-xs text-fb-text-secondary">
-                        Landingspunkt: {parameters.landing_point.lat.toFixed(5)}, {parameters.landing_point.lng.toFixed(5)}
+                        Landingspunkt:{" "}
+                        {parameters.launch_point &&
+                        parameters.landing_point.lat === parameters.launch_point.lat &&
+                        parameters.landing_point.lng === parameters.launch_point.lng
+                          ? "Samme som startpunkt"
+                          : `${parameters.landing_point.lat.toFixed(5)}, ${parameters.landing_point.lng.toFixed(5)}`}
                       </p>
                     ) : null}
                     {parameters.no_go_buffers.length > 0 ? (
