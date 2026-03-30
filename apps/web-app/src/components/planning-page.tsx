@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CircleOff, Download, MapPin, MousePointer2, PencilLine, Plane, Plus, RefreshCw, Scissors, Settings2, TimerReset, Trash2, Search } from "lucide-react";
+import { Camera, CircleOff, Download, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Settings2, TimerReset, Trash2, Search } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -74,6 +74,11 @@ type PreviewSuggestion = {
   name: string;
   propertyLabel: string;
   geometry: GeoJSONPolygon;
+};
+type MissionCapturePoint = {
+  sequence: number;
+  lat: number;
+  lng: number;
 };
 
 interface HoverActionButtonProps extends ComponentProps<typeof Button> {
@@ -327,6 +332,32 @@ function sortSuggestions(items: PlanningSuggestion[]): PlanningSuggestion[] {
   );
 }
 
+function extractCapturePoints(mission: FlightMission | FlightMissionPreview | null): MissionCapturePoint[] {
+  if (!mission?.route_geojson?.features) return [];
+  return mission.route_geojson.features
+    .flatMap((feature) => {
+      if (!feature || typeof feature !== "object") return [];
+      const geometry = (feature as { geometry?: unknown }).geometry;
+      const properties = (feature as { properties?: unknown }).properties;
+      if (!geometry || typeof geometry !== "object" || !properties || typeof properties !== "object") return [];
+      if ((geometry as { type?: unknown }).type !== "Point") return [];
+      if ((properties as { kind?: unknown }).kind !== "waypoint") return [];
+      const coordinates = (geometry as { coordinates?: unknown }).coordinates;
+      if (!Array.isArray(coordinates) || coordinates.length < 2) return [];
+      const lng = Number(coordinates[0]);
+      const lat = Number(coordinates[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+      return [
+        {
+          sequence: Number((properties as { sequence?: unknown }).sequence ?? 0),
+          lat,
+          lng,
+        },
+      ];
+    })
+    .sort((a, b) => a.sequence - b.sequence);
+}
+
 function geometryKey(coordinates: number[][][] | null | undefined): string {
   if (!Array.isArray(coordinates)) return "";
   return JSON.stringify(
@@ -394,6 +425,8 @@ export function PlanningPage({
   const [pinnedSuggestion, setPinnedSuggestion] = useState<PreviewSuggestion | null>(null);
   const [suggestionFocusToken, setSuggestionFocusToken] = useState(0);
   const [selectedNoGoBufferId, setSelectedNoGoBufferId] = useState<string | null>(null);
+  const [playbackActive, setPlaybackActive] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
 
   const selectedUnit = useMemo(
     () => units.find((item) => item.id === selectedUnitId) ?? null,
@@ -450,6 +483,18 @@ export function PlanningPage({
       body: "Eksporten blir en generell bundle med rute og felter.",
     };
   }, [selectedUnitMission]);
+  const displayedMission = useMemo(
+    () => preview ?? (previewPending ? null : selectedUnitMission ?? (selectedUnit ? null : activeMission)),
+    [activeMission, preview, previewPending, selectedUnit, selectedUnitMission],
+  );
+  const capturePoints = useMemo(() => extractCapturePoints(displayedMission), [displayedMission]);
+  const playbackFootprint = useMemo(() => {
+    if (!suggestedSpacing?.footprint_width_m || !suggestedSpacing?.footprint_height_m) return null;
+    return {
+      width_m: suggestedSpacing.footprint_width_m,
+      height_m: suggestedSpacing.footprint_height_m,
+    };
+  }, [suggestedSpacing]);
   const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
   const terrainSummary = useMemo(() => getTerrainSummary(preview), [preview]);
   const unitGeometryKeys = useMemo(
@@ -734,6 +779,23 @@ export function PlanningPage({
       cancelled = true;
     };
   }, [missionName, parameters, selectedDroneProfileId, selectedMissionUnitIds, selectedUnit]);
+
+  useEffect(() => {
+    setPlaybackIndex(0);
+    if (capturePoints.length === 0) {
+      setPlaybackActive(false);
+    }
+  }, [capturePoints.length, displayedMission?.name]);
+
+  useEffect(() => {
+    if (!playbackActive || capturePoints.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setPlaybackIndex((current) => (current + 1) % capturePoints.length);
+    }, 420);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [capturePoints.length, playbackActive]);
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -1075,6 +1137,17 @@ export function PlanningPage({
   const handleUpdateSelectedFieldGeometry = useCallback(
     async (geometry: PlanningUnit["geometry"]) => {
       if (!canEdit || !selectedUnit || selectedUnit.parent_unit_id != null) return;
+      setUnits((current) =>
+        current.map((unit) =>
+          unit.id === selectedUnit.id
+            ? {
+                ...unit,
+                geometry,
+              }
+            : unit,
+        ),
+      );
+      setPreviewStatus("Lagrer avgrensning …");
       setFieldGeometryBusy(true);
       try {
         await apiPatch(`/api/v1/fields/${selectedUnit.source_field_plot_id}`, {
@@ -1382,6 +1455,25 @@ export function PlanningPage({
                 <HoverActionButton
                   type="button"
                   size="sm"
+                  variant={playbackActive ? "default" : "ghost"}
+                  onClick={() => {
+                    if (playbackActive) {
+                      setPlaybackActive(false);
+                      setPlaybackIndex(0);
+                      return;
+                    }
+                    setPlaybackIndex(0);
+                    setPlaybackActive(true);
+                  }}
+                  disabled={capturePoints.length === 0 || !playbackFootprint}
+                  help="Spill av ruta og vis hva kamera dekker ved hvert bildepunkt."
+                >
+                  {playbackActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                  {playbackActive ? "Stop preview" : "Preview"}
+                </HoverActionButton>
+                <HoverActionButton
+                  type="button"
+                  size="sm"
                   variant={editMode ? "default" : "ghost"}
                   onClick={() => {
                     setToolMode(toolMode === "edit" ? "select" : "edit");
@@ -1570,6 +1662,9 @@ export function PlanningPage({
               missions={selectedUnitMission ? [selectedUnitMission] : selectedUnit ? [] : activeMission ? [activeMission] : []}
               previewMission={preview}
               previewPending={previewPending}
+              playbackActive={playbackActive}
+              playbackIndex={playbackIndex}
+              playbackFootprint={playbackFootprint}
               previewSuggestion={previewSuggestion}
               suggestionFocusToken={suggestionFocusToken}
               activeMissionId={selectedUnitMission?.id ?? (selectedUnit ? null : activeMissionId)}
@@ -1795,6 +1890,12 @@ export function PlanningPage({
                         {suggestedSpacing.recommended_ground_speed_mps
                           ? ` · ${suggestedSpacing.recommended_ground_speed_mps.toFixed(1)} m/s`
                           : ""}
+                      </p>
+                    ) : null}
+                    {capturePoints.length > 0 ? (
+                      <p className="text-xs text-fb-text-secondary">
+                        <Camera className="mr-1 inline h-3.5 w-3.5 align-[-0.12rem]" />
+                        Dottene er beregnede bildepunkt. Preview viser kameraflaten ved hvert opptak.
                       </p>
                     ) : null}
                   </div>

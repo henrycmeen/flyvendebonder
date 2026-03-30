@@ -5,6 +5,11 @@ import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import type { FlightMission, FlightMissionPreview, GeoJSONPolygon, GeoPoint, NoGoBuffer, PlanningUnit } from "@/types";
 
 type LatLngPair = [number, number];
+type CaptureFrame = {
+  sequence: number;
+  point: LatLngPair;
+  heading_deg: number;
+};
 type LeafletContainer = HTMLDivElement & {
   _leaflet_id?: number;
 };
@@ -14,6 +19,14 @@ interface PlanningMapProps {
   missions: FlightMission[];
   previewMission: FlightMissionPreview | null;
   previewPending: boolean;
+  playbackActive: boolean;
+  playbackIndex: number;
+  playbackFootprint:
+    | {
+        width_m: number;
+        height_m: number;
+      }
+    | null;
   previewSuggestion: {
     key: string;
     name: string;
@@ -137,11 +150,85 @@ function noGoCenterHandleIcon(): L.DivIcon {
   });
 }
 
+function routeFeatureKind(feature: Record<string, unknown>): string | null {
+  const properties = feature.properties;
+  if (!properties || typeof properties !== "object") return null;
+  const kind = (properties as { kind?: unknown }).kind;
+  return typeof kind === "string" ? kind : null;
+}
+
+function captureFramesFromMission(mission: FlightMission | FlightMissionPreview | null): CaptureFrame[] {
+  if (!mission?.route_geojson?.features) return [];
+  const rawFrames = mission.route_geojson.features
+    .flatMap((feature) => {
+      if (!feature || typeof feature !== "object") return [];
+      const record = feature as Record<string, unknown>;
+      const geometry = record.geometry;
+      if (!geometry || typeof geometry !== "object") return [];
+      if ((geometry as { type?: unknown }).type !== "Point") return [];
+      if (routeFeatureKind(record) !== "waypoint") return [];
+      const point = toLineLatLngs([((geometry as { coordinates?: unknown }).coordinates)]);
+      if (!point[0]) return [];
+      const properties = record.properties;
+      const sequence = Number((properties as { sequence?: unknown } | undefined)?.sequence ?? 0);
+      return [{ sequence, point: point[0] }];
+    })
+    .sort((a, b) => a.sequence - b.sequence);
+
+  return rawFrames.map((frame, index) => {
+    const current = frame.point;
+    const next = rawFrames[index + 1]?.point ?? rawFrames[index - 1]?.point ?? current;
+    const dxMeters = (next[1] - current[1]) * metersPerDegreeLng(current[0]);
+    const dyMeters = (next[0] - current[0]) * metersPerDegreeLat();
+    const headingDeg = Math.atan2(dxMeters, dyMeters) * (180 / Math.PI);
+    return {
+      sequence: frame.sequence,
+      point: frame.point,
+      heading_deg: Number.isFinite(headingDeg) ? headingDeg : 0,
+    };
+  });
+}
+
+function footprintCorners(point: LatLngPair, widthM: number, heightM: number, headingDeg: number): LatLngPair[] {
+  const halfAcross = widthM / 2;
+  const halfAlong = heightM / 2;
+  const headingRad = (headingDeg * Math.PI) / 180;
+  const alongEast = Math.sin(headingRad);
+  const alongNorth = Math.cos(headingRad);
+  const acrossEast = Math.cos(headingRad);
+  const acrossNorth = -Math.sin(headingRad);
+  const metersLat = metersPerDegreeLat();
+  const metersLng = metersPerDegreeLng(point[0]);
+
+  return ([
+    [-halfAcross, -halfAlong],
+    [halfAcross, -halfAlong],
+    [halfAcross, halfAlong],
+    [-halfAcross, halfAlong],
+  ] as const).map(([across, along]) => {
+    const east = across * acrossEast + along * alongEast;
+    const north = across * acrossNorth + along * alongNorth;
+    return [point[0] + north / metersLat, point[1] + east / metersLng] as LatLngPair;
+  });
+}
+
+function previewDroneIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "fb-playback-drone-shell",
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    html: '<span class="fb-playback-drone"></span>',
+  });
+}
+
 export function PlanningMap({
   units,
   missions,
   previewMission,
   previewPending,
+  playbackActive,
+  playbackIndex,
+  playbackFootprint,
   previewSuggestion,
   suggestionFocusToken,
   activeMissionId,
@@ -181,6 +268,7 @@ export function PlanningMap({
   const splitLayerRef = useRef<L.LayerGroup | null>(null);
   const handleLayerRef = useRef<L.LayerGroup | null>(null);
   const suggestionLayerRef = useRef<L.LayerGroup | null>(null);
+  const playbackLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFitRef = useRef(false);
   const activeMission = useMemo(
     () => missions.find((mission) => mission.id === activeMissionId) ?? null,
@@ -218,12 +306,15 @@ export function PlanningMap({
     map.getPane("planningSplitPane")!.style.zIndex = "620";
     map.createPane("planningHandlePane");
     map.getPane("planningHandlePane")!.style.zIndex = "640";
+    map.createPane("planningPlaybackPane");
+    map.getPane("planningPlaybackPane")!.style.zIndex = "630";
 
     unitLayerRef.current = L.layerGroup().addTo(map);
     missionLayerRef.current = L.layerGroup().addTo(map);
     splitLayerRef.current = L.layerGroup().addTo(map);
     handleLayerRef.current = L.layerGroup().addTo(map);
     suggestionLayerRef.current = L.layerGroup().addTo(map);
+    playbackLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
     return () => {
@@ -235,6 +326,7 @@ export function PlanningMap({
       splitLayerRef.current = null;
       handleLayerRef.current = null;
       suggestionLayerRef.current = null;
+      playbackLayerRef.current = null;
     };
   }, [showZoomControls]);
 
@@ -389,6 +481,60 @@ export function PlanningMap({
       }
     });
   }, [displayedMission]);
+
+  useEffect(() => {
+    const layer = playbackLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!playbackActive || !displayedMission || !playbackFootprint) return;
+
+    const frames = captureFramesFromMission(displayedMission);
+    if (frames.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(playbackIndex, frames.length - 1));
+
+    frames.forEach((frame, index) => {
+      const corners = footprintCorners(
+        frame.point,
+        playbackFootprint.width_m,
+        playbackFootprint.height_m,
+        frame.heading_deg,
+      );
+      const isActive = index === safeIndex;
+      layer.addLayer(
+        L.polygon(corners, {
+          color: isActive ? "rgba(16, 185, 129, 0.92)" : "rgba(37, 99, 235, 0.18)",
+          weight: isActive ? 1.8 : 1.2,
+          opacity: isActive ? 0.94 : 0.4,
+          fillColor: isActive ? "rgba(16, 185, 129, 0.22)" : "rgba(96, 165, 250, 0.04)",
+          fillOpacity: isActive ? 0.22 : 0.04,
+          dashArray: isActive ? "5 4" : "3 6",
+          pane: "planningPlaybackPane",
+          interactive: false,
+        }),
+      );
+    });
+
+    const activeFrame = frames[safeIndex];
+    layer.addLayer(
+      L.circleMarker(activeFrame.point, {
+        radius: 6,
+        color: "#f4f8ff",
+        weight: 2,
+        fillColor: "#10b981",
+        fillOpacity: 0.98,
+        pane: "planningPlaybackPane",
+        interactive: false,
+      }).bindTooltip(`Bildepunkt ${safeIndex + 1}/${frames.length}`, { sticky: true }),
+    );
+    layer.addLayer(
+      L.marker(activeFrame.point, {
+        icon: previewDroneIcon(),
+        pane: "planningPlaybackPane",
+        interactive: false,
+        keyboard: false,
+      }),
+    );
+  }, [displayedMission, playbackActive, playbackFootprint, playbackIndex]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -1662,7 +1662,25 @@ def patch_field_plot(
     if payload.status is not None:
         item.status = payload.status
     if payload.geometry is not None:
-        item.geometry_json, item.area_m2 = _field_geometry_payload(payload.geometry)
+        geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
+        item.geometry_json = geometry_json
+        item.area_m2 = area_m2
+        active_units = (
+            db.execute(
+                select(PlanningUnit).where(
+                    PlanningUnit.property_id == item.property_id,
+                    PlanningUnit.source_field_plot_id == item.id,
+                    PlanningUnit.status == "active",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for unit in active_units:
+            if unit.parent_unit_id is not None:
+                continue
+            unit.geometry_json = geometry_json
+            unit.area_m2 = area_m2
 
     db.commit()
     db.refresh(item)

@@ -104,6 +104,33 @@ def test_planning_sync_refreshes_root_unit_geometry_after_field_edit(client, mon
     assert unit_after["geometry"] == updated_field["geometry"]
 
 
+def test_patch_field_updates_active_root_planning_unit_geometry_without_resync(client, monkeypatch):
+    _disable_candidate_import(monkeypatch)
+    created = _create_field(client, name="Direkteoppdatert", status="confirmed")
+
+    sync_response = client.post("/api/v1/planning/properties/1/sync")
+    assert sync_response.status_code == 200
+    unit_before = sync_response.json()["units"][0]
+
+    updated_geometry = _sample_polygon(0.03)
+    patch_response = client.patch(
+        f"/api/v1/fields/{created['id']}",
+        json={
+            "geometry": updated_geometry,
+            "status": "confirmed",
+        },
+    )
+    assert patch_response.status_code == 200
+    updated_field = patch_response.json()
+
+    units_response = client.get("/api/v1/planning/properties/1/units")
+    assert units_response.status_code == 200
+    unit_after = units_response.json()["units"][0]
+
+    assert unit_after["id"] == unit_before["id"]
+    assert unit_after["geometry"] == updated_field["geometry"]
+
+
 def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client, monkeypatch):
     import app.api.v1 as v1
 
