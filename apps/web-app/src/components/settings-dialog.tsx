@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { TechnicalLogList } from "@/components/technical-log-list";
+import { PropertyHero3D } from "@/components/property-hero-3d";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Divider, Section, Stack } from "@/components/ui/layout-primitives";
@@ -452,10 +453,15 @@ export function SettingsDialog({
                   className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none"
                 >
                   <div className="space-y-3">
-                    <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
-                      <p className="mt-1 text-base font-semibold text-fb-text-primary">{activePropertyName}</p>
-                      <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
+                    <div className="flex items-center gap-8 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-5 py-4">
+                      <div className="min-w-0 w-[220px] shrink-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
+                        <p className="mt-1 text-base font-semibold text-fb-text-primary">{activePropertyName}</p>
+                        <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
+                      </div>
+                      <div className="shrink-0">
+                        <PropertyHero3D profile={profile} />
+                      </div>
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-2">

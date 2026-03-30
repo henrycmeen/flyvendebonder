@@ -259,7 +259,7 @@ function buildDronePinVisual(active: boolean, photo: PhotoFeature | null): strin
   const fovMarkup =
     heading == null
       ? ""
-      : `<span class="fb-media-pin-fov ${active ? "fb-media-pin-fov--active" : "fb-media-pin-fov--inactive"}" aria-hidden="true" style="--pin-heading:${heading.toFixed(1)}deg;--pin-length:${active ? 22 : 18}px;--pin-spread:${active ? 10 : 9}px;"><span class="fb-media-pin-fov-cone"></span><span class="fb-media-pin-fov-beam"></span><span class="fb-media-pin-fov-target"></span></span>`;
+      : `<span class="fb-media-pin-fov ${active ? "fb-media-pin-fov--active" : "fb-media-pin-fov--inactive"}" aria-hidden="true" style="--pin-heading:${heading.toFixed(1)}deg;--pin-length:${active ? 20 : 16}px;--pin-spread:${active ? 10 : 9}px;"><span class="fb-media-pin-fov-cone"></span><span class="fb-media-pin-fov-beam"></span></span>`;
 
   return `${fovMarkup}<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>`;
 }

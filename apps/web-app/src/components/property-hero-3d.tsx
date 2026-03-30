@@ -1,31 +1,43 @@
+import "@google/model-viewer";
+
 import type { ProfileResponse } from "@/types";
 
 interface PropertyHero3DProps {
   profile: ProfileResponse | null;
+  variant?: "profile" | "sidebar";
 }
 
-export function PropertyHero3D({ profile }: PropertyHero3DProps) {
+export function PropertyHero3D({ profile, variant = "profile" }: PropertyHero3DProps) {
   const activeProperty = profile?.property ?? null;
   const propertyName = activeProperty?.label?.trim() || "Meen gård";
-  const propertyReference = activeProperty
-    ? `${activeProperty.gnr}/${activeProperty.bnr}${activeProperty.fnr ? `/${activeProperty.fnr}` : ""}`
-    : "Hovedgård";
-  const municipality = profile?.user?.municipality_name?.trim() || "Skien";
-  const heroUrl = `${import.meta.env.BASE_URL}farmstead-placeholder-3d.svg`;
+  const heroUrl = `${import.meta.env.BASE_URL}meen-gard-profile.glb`;
+  const isSidebar = variant === "sidebar";
 
   return (
-    <section className="fb-property-hero" aria-label={`Gårdsmodell for ${propertyName}`}>
-      <div className="fb-property-hero__visual">
-        <img src={heroUrl} alt="" className="fb-property-hero__image" />
-      </div>
-      <div className="fb-property-hero__copy">
-        <p className="fb-property-hero__eyebrow">Gårdsmodell</p>
-        <h2 className="fb-property-hero__title">{propertyName}</h2>
-        <p className="fb-property-hero__meta">
-          {propertyReference} · {municipality}
-        </p>
-        <p className="fb-property-hero__note">Midlertidig 3D-objekt til ekte gårdsmodell er klar.</p>
-      </div>
-    </section>
+    <div
+      className={isSidebar ? "fb-property-hero fb-property-hero--sidebar" : "fb-property-hero"}
+      aria-label={`Gårdsobjekt for ${propertyName}`}
+    >
+      <model-viewer
+        src={heroUrl}
+        alt={`3D-modell av ${propertyName}`}
+        className="fb-property-hero__viewer"
+        camera-orbit={isSidebar ? "36deg 68deg 48%" : "32deg 68deg 95%"}
+        field-of-view={isSidebar ? "19deg" : "24deg"}
+        min-camera-orbit={isSidebar ? "36deg 68deg auto" : "auto 45deg 70%"}
+        max-camera-orbit={isSidebar ? "36deg 68deg auto" : "auto 88deg 165%"}
+        min-field-of-view={isSidebar ? "19deg" : "16deg"}
+        max-field-of-view={isSidebar ? "19deg" : "34deg"}
+        camera-target={isSidebar ? "0m 0m 0m" : undefined}
+        interpolation-decay="120"
+        shadow-intensity="1"
+        shadow-softness="0.8"
+        exposure="1.02"
+        environment-image="neutral"
+        interaction-prompt="none"
+        {...(isSidebar ? { "auto-rotate": "", "rotation-per-second": "0.8deg", "auto-rotate-delay": "0" } : {})}
+        {...(isSidebar ? {} : { "camera-controls": "", "touch-action": "pan-y" })}
+      />
+    </div>
   );
 }

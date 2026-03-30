@@ -1,9 +1,5 @@
 <svg width="320" height="220" viewBox="0 0 320 220" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="sky" x1="28" y1="18" x2="282" y2="196" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F8FCFF"/>
-      <stop offset="1" stop-color="#EEF6EA"/>
-    </linearGradient>
     <linearGradient id="roofFront" x1="120" y1="72" x2="187" y2="120" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F4A261"/>
       <stop offset="1" stop-color="#D97706"/>
@@ -25,7 +21,6 @@
       <stop offset="1" stop-color="#89A6BC"/>
     </linearGradient>
   </defs>
-  <rect x="20" y="12" width="280" height="196" rx="34" fill="url(#sky)"/>
   <ellipse cx="162" cy="183" rx="84" ry="20" fill="#DCE9D4"/>
   <path d="M72 170L160 139L250 168L161 199L72 170Z" fill="#C6D8A9"/>
   <path d="M121 108L187 76L246 106L181 138L121 108Z" fill="url(#roofFront)"/>

@@ -1,7 +1,7 @@
 import { Images, Import, Map as MapIcon, Route, Settings2 } from "lucide-react";
 
-import { SettingsDialog } from "@/components/settings-dialog";
 import { PropertyHero3D } from "@/components/property-hero-3d";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
@@ -204,7 +204,6 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent className="gap-6 px-5 py-6">
-        <PropertyHero3D profile={profile} />
         <SidebarNavigation activeView={activeView} onChangeView={onChangeView} onStartMediaImport={onStartMediaImport} />
       </SidebarContent>
 
@@ -242,11 +241,22 @@ export function AppSidebar({
           onAdminLogin={onAdminLogin}
           onAdminLogout={onAdminLogout}
           trigger={
-            <Button type="button" variant="ghost" className="fb-sidebar-settings-trigger h-12 w-full justify-start rounded-2xl px-3.5 text-[14px] font-medium text-fb-text-primary">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-                <Settings2 className="h-4 w-4 shrink-0" />
-              </span>
-              <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              className="fb-sidebar-settings-trigger h-auto w-full overflow-visible rounded-2xl px-3.5 py-3 text-[14px] font-medium text-fb-text-primary [&>span]:w-full [&>span]:justify-center"
+            >
+              <div className="flex w-full flex-col justify-end gap-2">
+                <div className="fb-sidebar-profile-hero" aria-hidden="true">
+                  <PropertyHero3D profile={profile} variant="sidebar" />
+                </div>
+                <div className="fb-sidebar-settings-row flex w-full items-center justify-start gap-3">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+                    <Settings2 className="h-4 w-4 shrink-0" />
+                  </span>
+                  <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
+                </div>
+              </div>
             </Button>
           }
         />
