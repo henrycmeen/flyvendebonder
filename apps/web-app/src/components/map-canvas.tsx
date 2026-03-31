@@ -15,6 +15,8 @@ interface MapCanvasProps {
   resetViewToken: number;
   selectedYear: string;
   selectedSeason: SeasonOrMixed | "all";
+  focusedOrthophotoId: string | null;
+  orthophotoFocusToken: number;
   properties: Property[];
   jobs: GardskartJob[];
   videoMapArtifacts: VideoMapArtifact[];
@@ -486,6 +488,8 @@ export function MapCanvas({
   resetViewToken,
   selectedYear,
   selectedSeason,
+  focusedOrthophotoId,
+  orthophotoFocusToken,
   properties,
   jobs,
   videoMapArtifacts,
@@ -795,6 +799,18 @@ export function MapCanvas({
       orthophotoLayer.addLayer(imageLayer);
     });
   }, [properties, selectedSeason, selectedYear]);
+
+  useEffect(() => {
+    if (!mapRef.current || !focusedOrthophotoId) return;
+    const overlay = DEV_ORTHOPHOTO_OVERLAYS.find((item) => item.id === focusedOrthophotoId);
+    if (!overlay) return;
+    const bounds = L.latLngBounds(
+      [overlay.bounds.south, overlay.bounds.west],
+      [overlay.bounds.north, overlay.bounds.east],
+    );
+    if (!bounds.isValid()) return;
+    mapRef.current.fitBounds(bounds.pad(0.12), { animate: true });
+  }, [focusedOrthophotoId, orthophotoFocusToken]);
 
   useEffect(() => {
     if (!mapRef.current) return;

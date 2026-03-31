@@ -31,6 +31,7 @@ import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
+import { OrthophotoPage } from "@/components/orthophoto-page";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterPanel } from "@/components/filter-panel";
 import { MapLayerPanel } from "@/components/map-layer-panel";
@@ -85,7 +86,7 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "planning" | "album" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "orthophotos" | "import" | "video";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
@@ -378,6 +379,8 @@ export default function App() {
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
   const [mapFocusToken, setMapFocusToken] = useState(0);
+  const [focusedOrthophotoId, setFocusedOrthophotoId] = useState<string | null>(null);
+  const [orthophotoFocusToken, setOrthophotoFocusToken] = useState(0);
   const [soilRefreshToken, setSoilRefreshToken] = useState(0);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
@@ -450,6 +453,7 @@ export default function App() {
   const backendLogLoadSeqRef = useRef(0);
   const gardskartJobLoadSeqRef = useRef(0);
   const bootstrapLoadSeqRef = useRef(0);
+  const autoAppliedLatestFiltersRef = useRef(false);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const activeProperties = useMemo<Property[]>(() => {
@@ -584,6 +588,11 @@ export default function App() {
     );
   }, [activeProperties]);
 
+  const activeOrthophotoOverlays = useMemo(() => {
+    const propertyReferences = new Set(activeProperties.map((property) => buildPropertyReference(property)));
+    return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference));
+  }, [activeProperties]);
+
   const availableYears = useMemo(
     () =>
       Array.from(
@@ -594,6 +603,12 @@ export default function App() {
       ).sort((a, b) => Number(b) - Number(a)),
     [orthophotoDates, timelineIndexed],
   );
+
+  const latestAvailableCapturedDate = useMemo(() => {
+    const candidates = [...timelineIndexed.map((entry) => entry.date), ...orthophotoDates].filter(Boolean);
+    if (candidates.length === 0) return null;
+    return [...candidates].sort().at(-1) ?? null;
+  }, [orthophotoDates, timelineIndexed]);
 
   const seasonCounts = useMemo(() => {
     const source = selectedYear === "all" ? timelineIndexed : timelineIndexed.filter((entry) => entry.year === selectedYear);
@@ -1466,12 +1481,33 @@ export default function App() {
   }, [availableYears, selectedYear]);
 
   useEffect(() => {
+    if (autoAppliedLatestFiltersRef.current) return;
+    if (selectedYear !== "all" || selectedSeason !== "all") {
+      autoAppliedLatestFiltersRef.current = true;
+      return;
+    }
+    if (!latestAvailableCapturedDate) return;
+
+    setSelectedYear(latestAvailableCapturedDate.slice(0, 4));
+    setSelectedSeason(monthToSeason(latestAvailableCapturedDate.slice(5, 7)));
+    autoAppliedLatestFiltersRef.current = true;
+  }, [latestAvailableCapturedDate, selectedSeason, selectedYear]);
+
+  useEffect(() => {
     if (selectedSeason === "all") return;
     const source = selectedYear === "all" ? timelineIndexed : timelineIndexed.filter((entry) => entry.year === selectedYear);
-    if (!source.some((entry) => entry.season === selectedSeason)) {
+    const orthophotoSource =
+      selectedYear === "all"
+        ? orthophotoDates
+        : orthophotoDates.filter((date) => date.startsWith(`${selectedYear}-`));
+    const hasMatchingTimelineSeason = source.some((entry) => entry.season === selectedSeason);
+    const hasMatchingOrthophotoSeason = orthophotoSource.some(
+      (date) => monthToSeason(date.slice(5, 7)) === selectedSeason,
+    );
+    if (!hasMatchingTimelineSeason && !hasMatchingOrthophotoSeason) {
       setSelectedSeason("all");
     }
-  }, [selectedSeason, selectedYear, timelineIndexed]);
+  }, [orthophotoDates, selectedSeason, selectedYear, timelineIndexed]);
 
   useEffect(() => {
     if (activeView !== "map") return;
@@ -3278,6 +3314,8 @@ export default function App() {
                 "info",
                 view === "album"
                   ? "Album åpnet"
+                  : view === "orthophotos"
+                    ? "Ortofotoene åpnet"
                   : view === "planning"
                     ? "Planlegging åpnet"
                   : view === "import"
@@ -3363,6 +3401,8 @@ export default function App() {
                   resetViewToken={mapResetToken}
                   selectedYear={selectedYear}
                   selectedSeason={selectedSeason}
+                  focusedOrthophotoId={focusedOrthophotoId}
+                  orthophotoFocusToken={orthophotoFocusToken}
                   properties={activeProperties}
                   jobs={propertyJobs}
                   videoMapArtifacts={activeVideoMapArtifacts}
@@ -3421,6 +3461,21 @@ export default function App() {
                   onLoadMore={handleLoadMoreAlbum}
                   onOpenPhoto={handleOpenPhotoViewer}
                   onScrollActivity={handleAlbumScrollActivity}
+                />
+              ) : activeView === "orthophotos" ? (
+                <OrthophotoPage
+                  overlays={activeOrthophotoOverlays}
+                  onOpenInMap={(overlayId) => {
+                    const overlay = DEV_ORTHOPHOTO_OVERLAYS.find((item) => item.id === overlayId);
+                    if (!overlay) return;
+                    setSyncSelectionToUrl(true);
+                    setSelectedYear(overlay.capturedDate.slice(0, 4));
+                    setSelectedSeason(monthToSeason(overlay.capturedDate.slice(5, 7)));
+                    setFocusedOrthophotoId(overlayId);
+                    setOrthophotoFocusToken((value) => value + 1);
+                    setActiveView("map");
+                    addLog("info", "Ortofoto åpnet i kart", null, { overlayId });
+                  }}
                 />
               ) : activeView === "import" ? (
                 <MediaImportPage
