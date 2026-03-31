@@ -8,6 +8,7 @@ node_modules/
 dist/
 build/
 .staging/
+.processing/
 apps/shared-assets/dronevideo.mp4
 apps/backend-api/data/*.db
 apps/backend-api/storage/

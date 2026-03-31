@@ -4,6 +4,7 @@ import "leaflet.markercluster";
 
 import type { FieldPlot, FieldPlotDraft, FlightMission, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
+import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
 interface MapCanvasProps {
@@ -12,6 +13,8 @@ interface MapCanvasProps {
   hoveredPhotoId: string | null;
   focusToken: number;
   resetViewToken: number;
+  selectedYear: string;
+  selectedSeason: SeasonOrMixed | "all";
   properties: Property[];
   jobs: GardskartJob[];
   videoMapArtifacts: VideoMapArtifact[];
@@ -481,6 +484,8 @@ export function MapCanvas({
   hoveredPhotoId,
   focusToken,
   resetViewToken,
+  selectedYear,
+  selectedSeason,
   properties,
   jobs,
   videoMapArtifacts,
@@ -518,6 +523,7 @@ export function MapCanvas({
   const activeMarkerIdsRef = useRef<Set<string>>(new Set());
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
+  const orthophotoLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldHandleLayerRef = useRef<L.LayerGroup | null>(null);
@@ -575,6 +581,13 @@ export function MapCanvas({
       soilPane.style.mixBlendMode = "multiply";
     }
 
+    map.createPane("orthophotoPane");
+    const orthophotoPane = map.getPane("orthophotoPane");
+    if (orthophotoPane) {
+      orthophotoPane.style.zIndex = "330";
+      orthophotoPane.style.pointerEvents = "none";
+    }
+
     map.createPane("laserPane");
     const laserPane = map.getPane("laserPane");
     if (laserPane) {
@@ -628,6 +641,9 @@ export function MapCanvas({
     const missionLayer = L.layerGroup();
     missionLayer.addTo(map);
     missionLayerRef.current = missionLayer;
+    const orthophotoLayer = L.layerGroup();
+    orthophotoLayer.addTo(map);
+    orthophotoLayerRef.current = orthophotoLayer;
     const videoLayer = L.layerGroup();
     videoLayer.addTo(map);
     videoLayerRef.current = videoLayer;
@@ -656,6 +672,10 @@ export function MapCanvas({
       markersRef.current = null;
       baseLayerRef.current = null;
       soilLayerRef.current = null;
+      if (orthophotoLayerRef.current) {
+        orthophotoLayerRef.current.remove();
+        orthophotoLayerRef.current = null;
+      }
       propertyLayerRef.current = null;
       if (fieldLayerRef.current) {
         fieldLayerRef.current.remove();
@@ -744,6 +764,37 @@ export function MapCanvas({
       }
     };
   }, [baseMapStyle, onBaseMapTileError]);
+
+  useEffect(() => {
+    if (!mapRef.current || !orthophotoLayerRef.current) return;
+
+    const orthophotoLayer = orthophotoLayerRef.current;
+    orthophotoLayer.clearLayers();
+
+    const propertyReferences = new Set(properties.map((property) => formatPropertyReference(property)));
+    const matchingOverlays = DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => {
+      if (!propertyReferences.has(overlay.propertyReference)) return false;
+      const [year] = overlay.capturedDate.split("-");
+      if (selectedYear !== "all" && year !== selectedYear) return false;
+      if (selectedSeason !== "all" && seasonFromCapturedDate(overlay.capturedDate) !== selectedSeason) return false;
+      return true;
+    });
+    if (matchingOverlays.length === 0) return;
+
+    matchingOverlays.forEach((overlay) => {
+      const bounds = L.latLngBounds(
+        [overlay.bounds.south, overlay.bounds.west],
+        [overlay.bounds.north, overlay.bounds.east],
+      );
+      const imageLayer = L.imageOverlay(overlay.imageUrl, bounds, {
+        pane: "orthophotoPane",
+        opacity: overlay.opacity ?? 0.8,
+        interactive: false,
+        crossOrigin: false,
+      });
+      orthophotoLayer.addLayer(imageLayer);
+    });
+  }, [properties, selectedSeason, selectedYear]);
 
   useEffect(() => {
     if (!mapRef.current) return;

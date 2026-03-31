@@ -1,0 +1,43 @@
+{
+  "width_px": 5671,
+  "height_px": 7116,
+  "utm_bounds": {
+    "westing": 537781.585095364,
+    "southing": 6558738.966731269,
+    "easting": 537964.4986474388,
+    "northing": 6558968.48030092
+  },
+  "latlng_bounds": {
+    "south": 59.16612230454828,
+    "west": 9.660849230521281,
+    "north": 59.168199600256415,
+    "east": 9.664008431253135
+  },
+  "crs": "WGS84 UTM zone 32N",
+  "label": "Jorde 1 ortofoto",
+  "source_file": "/Users/henmee/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/03. Prosjekter/I drift/Mac mini/Flyvendeb\u00f8nder/main-merge-20260327/.processing/odm/jorde-1/odm_orthophoto/odm_orthophoto.tif",
+  "preview_file": "/Users/henmee/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/03. Prosjekter/I drift/Mac mini/Flyvendeb\u00f8nder/main-merge-20260327/apps/web-app/public/dev-overlays/jorde-1-orthophoto.webp",
+  "preview_width_px": 2400,
+  "preview_height_px": 3011,
+  "capturedDate": "2026-03-31",
+  "year": "2026",
+  "season": "spring",
+  "overlay": {
+    "id": "jorde-1-orthophoto",
+    "label": "Jorde 1 ortofoto",
+    "propertyReference": "4003-70/17/0",
+    "assetFile": "jorde-1-orthophoto.webp",
+    "capturedDate": "2026-03-31",
+    "year": "2026",
+    "season": "spring",
+    "bounds": {
+      "south": 59.16612230454828,
+      "west": 9.660849230521281,
+      "north": 59.168199600256415,
+      "east": 9.664008431253135
+    },
+    "opacity": 0.82
+  },
+  "source_dir": "/Users/henmee/Downloads/flyvendeb\u00f8nder v\u00e5r-test/jorde 1",
+  "project_name": "jorde-1"
+}

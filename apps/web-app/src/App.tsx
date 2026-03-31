@@ -27,6 +27,7 @@ import {
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { makePhotoFilter } from "@/lib/photo-filters";
 import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKey } from "@/lib/photo-ordering";
+import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
@@ -268,6 +269,10 @@ function sortFlightMissions(items: FlightMission[]): FlightMission[] {
     if (updatedDiff !== 0) return updatedDiff;
     return right.id - left.id;
   });
+}
+
+function buildPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
+  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
 }
 
 export default function App() {
@@ -572,28 +577,60 @@ export default function App() {
     [timeline],
   );
 
+  const orthophotoDates = useMemo(() => {
+    const propertyReferences = new Set(activeProperties.map((property) => buildPropertyReference(property)));
+    return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference)).map(
+      (overlay) => overlay.capturedDate,
+    );
+  }, [activeProperties]);
+
   const availableYears = useMemo(
-    () => Array.from(new Set(timelineIndexed.map((entry) => entry.year))).sort((a, b) => Number(b) - Number(a)),
-    [timelineIndexed],
+    () =>
+      Array.from(
+        new Set([
+          ...timelineIndexed.map((entry) => entry.year),
+          ...orthophotoDates.map((date) => date.slice(0, 4)),
+        ]),
+      ).sort((a, b) => Number(b) - Number(a)),
+    [orthophotoDates, timelineIndexed],
   );
 
   const seasonCounts = useMemo(() => {
     const source = selectedYear === "all" ? timelineIndexed : timelineIndexed.filter((entry) => entry.year === selectedYear);
+    const orthophotoSource =
+      selectedYear === "all"
+        ? orthophotoDates
+        : orthophotoDates.filter((date) => date.startsWith(`${selectedYear}-`));
     return {
-      spring: source.filter((entry) => entry.season === "spring").length,
-      summer: source.filter((entry) => entry.season === "summer").length,
-      autumn: source.filter((entry) => entry.season === "autumn").length,
-      winter: source.filter((entry) => entry.season === "winter").length,
+      spring:
+        source.filter((entry) => entry.season === "spring").length +
+        orthophotoSource.filter((date) => monthToSeason(date.slice(5, 7)) === "spring").length,
+      summer:
+        source.filter((entry) => entry.season === "summer").length +
+        orthophotoSource.filter((date) => monthToSeason(date.slice(5, 7)) === "summer").length,
+      autumn:
+        source.filter((entry) => entry.season === "autumn").length +
+        orthophotoSource.filter((date) => monthToSeason(date.slice(5, 7)) === "autumn").length,
+      winter:
+        source.filter((entry) => entry.season === "winter").length +
+        orthophotoSource.filter((date) => monthToSeason(date.slice(5, 7)) === "winter").length,
     };
-  }, [selectedYear, timelineIndexed]);
+  }, [orthophotoDates, selectedYear, timelineIndexed]);
 
   const resolveSeasonForYearChange = useCallback(
     (nextYear: string): SeasonFilter => {
       if (selectedSeason === "all") return "all";
       const source = nextYear === "all" ? timelineIndexed : timelineIndexed.filter((entry) => entry.year === nextYear);
-      return source.some((entry) => entry.season === selectedSeason) ? selectedSeason : "all";
+      const orthophotoSource =
+        nextYear === "all"
+          ? orthophotoDates
+          : orthophotoDates.filter((date) => date.startsWith(`${nextYear}-`));
+      return source.some((entry) => entry.season === selectedSeason) ||
+        orthophotoSource.some((date) => monthToSeason(date.slice(5, 7)) === selectedSeason)
+        ? selectedSeason
+        : "all";
     },
-    [selectedSeason, timelineIndexed],
+    [orthophotoDates, selectedSeason, timelineIndexed],
   );
 
   const filteredTimeline = useMemo(
@@ -3324,6 +3361,8 @@ export default function App() {
                   hoveredPhotoId={hoverPreviewPhotoId}
                   focusToken={mapFocusToken}
                   resetViewToken={mapResetToken}
+                  selectedYear={selectedYear}
+                  selectedSeason={selectedSeason}
                   properties={activeProperties}
                   jobs={propertyJobs}
                   videoMapArtifacts={activeVideoMapArtifacts}

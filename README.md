@@ -157,6 +157,32 @@ API ligger under `/api/v1/*` og seed-er `Roar Meen (4003-70/17/0)` automatisk ve
   curl -X POST "http://127.0.0.1:8787/api/v1/analysis/refresh?force=true"
   ```
 
+## Manuell jordeflyging -> ortofoto/DSM
+- For manuelle Mini 4 Pro-flyginger kan vi nå kjøre en enkel ODM-løype per jordemappe:
+  ```bash
+  ./scripts/run-odm-jorde.sh "/Users/henmee/Downloads/flyvendebønder vår-test/jorde 3"
+  ```
+- For å kjøre alle jordemapper unntatt allerede-testede `jorde 3` og `jorde 6 (M48)` i én løype:
+  ```bash
+  ODM_FAST_ORTHO=0 \
+  ODM_PC_QUALITY=medium \
+  ODM_FEATURE_QUALITY=high \
+  ODM_MATCHER_NEIGHBORS=10 \
+  ODM_ORTHO_RESOLUTION_CM=1 \
+  ODM_EXTRA_ARGS="--min-num-features 10000" \
+  ./scripts/run-odm-jorder-batch.sh "/Users/henmee/Downloads/flyvendebønder vår-test"
+  ```
+- Når ett eller flere ODM-prosjekter er ferdige, bygg web-optimaliserte overlay-filer og oppdater manifestet til kartet:
+  ```bash
+  ./scripts/sync-orthophoto-overlays.py
+  ```
+- Eller bare for ett prosjekt:
+  ```bash
+  ./scripts/sync-orthophoto-overlays.py --project jorde-3
+  ```
+- Dette lager et lokalt prosesseringsprosjekt under `.processing/odm/`
+- Se også: `docs/drift/odm-jordeloype-v1.md`
+
 ## Processing-pipeline
 Backenden har nå et første generelt processing-spor som binder sammen bilder, oppdrag og fremtidige tunge motorer som ODM/WebODM.
 
