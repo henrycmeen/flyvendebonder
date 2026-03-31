@@ -48,23 +48,33 @@ def _base_metadata(**overrides) -> ExtractedMetadata:
     return ExtractedMetadata(**base)
 
 
-def test_heading_prefers_flight_yaw_and_marks_conflict_when_other_sources_disagree():
+def test_heading_prefers_gimbal_yaw_over_flight_yaw_for_camera_targeting():
     metadata = _base_metadata(flight_yaw_degree=12.0, gimbal_yaw_degree=210.0, compass=15.0)
     selection = select_heading_from_metadata(metadata)
 
-    assert selection.value == 12.0
+    assert selection.value == 210.0
     assert selection.source == "imu"
-    assert selection.source_detail == "flight_yaw"
+    assert selection.source_detail == "gimbal_yaw"
     assert "qc:heading_source_conflict" in selection.qc_tags
 
 
-def test_heading_switches_to_camera_when_imu_heading_mangler():
+def test_heading_switches_to_camera_when_gimbal_heading_mangler():
     metadata = _base_metadata(camera_yaw_degree=45.0, compass=44.0)
     selection = select_heading_from_metadata(metadata)
 
     assert selection.value == 45.0
     assert selection.source == "imu"
     assert selection.source_detail == "camera_yaw"
+    assert "qc:heading_source_switch" in selection.qc_tags
+
+
+def test_heading_falls_back_to_flight_yaw_when_gimbal_and_camera_heading_mangler():
+    metadata = _base_metadata(flight_yaw_degree=12.0, compass=15.0)
+    selection = select_heading_from_metadata(metadata)
+
+    assert selection.value == 12.0
+    assert selection.source == "imu"
+    assert selection.source_detail == "flight_yaw"
     assert "qc:heading_source_switch" in selection.qc_tags
 
 

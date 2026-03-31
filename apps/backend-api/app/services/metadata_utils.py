@@ -248,9 +248,9 @@ def resolve_photo_altitude(photo_altitude_m: float | None, metadata: ExtractedMe
 
 def select_heading_from_metadata(metadata: ExtractedMetadata) -> OrientationSelection:
     candidate_specs = [
-        ("flight_yaw", "flight_yaw_degree", "imu"),
         ("gimbal_yaw", "gimbal_yaw_degree", "imu"),
         ("camera_yaw", "camera_yaw_degree", "imu"),
+        ("flight_yaw", "flight_yaw_degree", "imu"),
         ("compass", "compass", "gps_course"),
         ("inferred_heading", "heading_deg", "inferred_from_sequence"),
     ]
@@ -272,14 +272,14 @@ def select_heading_from_metadata(metadata: ExtractedMetadata) -> OrientationSele
 
     source_detail, value = ordered_candidates[0]
     source = {
-        "flight_yaw": "imu",
         "gimbal_yaw": "imu",
         "camera_yaw": "imu",
+        "flight_yaw": "imu",
         "compass": "gps_course",
         "inferred_heading": "inferred_from_sequence",
     }[source_detail]
 
-    if source_detail != "flight_yaw":
+    if source_detail != "gimbal_yaw":
         qc_tags.append("qc:heading_source_switch")
 
     if len(ordered_candidates) > 1 and value is not None:
