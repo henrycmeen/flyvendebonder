@@ -85,4 +85,18 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
     },
     opacity: 0.82,
   },
+  {
+    id: "jorde-8-en-storing-orthophoto",
+    label: "Jorde 8 (en storing) ortofoto",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/jorde-8-en-storing-orthophoto.webp`,
+    capturedDate: "2026-03-31",
+    bounds: {
+      south: 59.16788058275153,
+      west: 9.660761277453936,
+      north: 59.176503235641036,
+      east: 9.67681022394976,
+    },
+    opacity: 0.82,
+  },
 ];
