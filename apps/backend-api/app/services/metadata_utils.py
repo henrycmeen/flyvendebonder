@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import math
 import shutil
@@ -493,15 +494,21 @@ def _dms_to_decimal(values: tuple[Any, ...] | list[Any], ref: str | None) -> flo
 
 
 def _run_exiftool(path: Path) -> dict[str, Any]:
+    env_candidate = os.getenv("EXIFTOOL_PATH")
     candidates = [
         "exiftool",
+        env_candidate,
         "/opt/homebrew/bin/exiftool",
         "/usr/local/bin/exiftool",
         "/usr/bin/exiftool",
+        str(Path.home() / "tools/exiftool/exiftool"),
+        str(Path.home() / "tools/exiftool/exiftool-wrapper"),
     ]
 
     executable: str | None = None
     for candidate in candidates:
+        if not candidate:
+            continue
         if "/" in candidate:
             if Path(candidate).exists():
                 executable = candidate
