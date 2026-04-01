@@ -99,4 +99,18 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
     },
     opacity: 0.82,
   },
+  {
+    id: "jorde-9-orthophoto",
+    label: "Jorde 9 ortofoto",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/jorde-9-orthophoto.webp`,
+    capturedDate: "2026-04-01",
+    bounds: {
+      south: 59.133772177086534,
+      west: 9.675808011017034,
+      north: 59.14028207061983,
+      east: 9.682511298918834,
+    },
+    opacity: 0.82,
+  },
 ];

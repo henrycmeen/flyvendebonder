@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from pathlib import Path
 
 from app.services.metadata_utils import (
     ExtractedMetadata,
+    extract_metadata,
     resolve_photo_altitude,
     select_altitude_from_metadata,
     select_heading_from_metadata,
@@ -131,3 +134,54 @@ def test_resolve_photo_altitude_keeps_manual_override():
     )
 
     assert resolve_photo_altitude(84.0, metadata) == 84.0
+
+
+def test_extract_metadata_pillow_reads_gps_ifd_when_exif_object_is_not_dict(monkeypatch):
+    from app.services import metadata_utils
+
+    class FakeExif:
+        def __bool__(self) -> bool:
+            return True
+
+        def get(self, key, default=None):
+            if key == 36867:
+                return "2026:04:01 12:27:45"
+            if key == 34853:
+                return 746
+            return default
+
+        def get_ifd(self, key):
+            if key != 34853:
+                return {}
+            return {
+                1: "N",
+                2: (59.0, 8.0, 18.6873),
+                3: "E",
+                4: (9.0, 40.0, 58.1145),
+                5: b"\x00",
+                6: 88.403,
+            }
+
+    class FakeImage:
+        width = 4032
+        height = 2268
+
+        def getexif(self):
+            return FakeExif()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(metadata_utils, "_run_exiftool", lambda path: {})
+    monkeypatch.setattr(metadata_utils.Image, "open", lambda path: FakeImage())
+
+    extracted = extract_metadata(Path("/tmp/fake.jpg"))
+
+    assert extracted.captured_at == datetime(2026, 4, 1, 12, 27, 45)
+    assert extracted.gps_latitude is not None
+    assert extracted.gps_longitude is not None
+    assert math.isclose(extracted.gps_latitude, 59.13852425, rel_tol=0.0, abs_tol=1e-9)
+    assert math.isclose(extracted.gps_longitude, 9.682809583333334, rel_tol=0.0, abs_tol=1e-9)

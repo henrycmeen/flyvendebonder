@@ -570,11 +570,24 @@ def _extract_with_pillow(path: Path) -> dict[str, Any]:
                 "ImageHeight": fallback_height,
             }
 
-        gps_data = exif.get(EXIF_GPS_INFO_TAGS[0]) if isinstance(exif, dict) else None
-        if isinstance(gps_data, int):
-            gps_data = image.getexif().get_ifd(EXIF_GPS_INFO_TAGS[0])  # type: ignore[call-arg]
-        if not isinstance(gps_data, dict):
-            gps_data = {}
+        gps_data: dict[Any, Any] = {}
+        if hasattr(exif, "get_ifd"):
+            try:
+                gps_ifd = exif.get_ifd(EXIF_GPS_INFO_TAGS[0])  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                gps_ifd = None
+            if isinstance(gps_ifd, dict):
+                gps_data = gps_ifd
+
+        if not gps_data:
+            raw_gps_data = exif.get(EXIF_GPS_INFO_TAGS[0])
+            if isinstance(raw_gps_data, int) and hasattr(exif, "get_ifd"):
+                try:
+                    raw_gps_data = exif.get_ifd(EXIF_GPS_INFO_TAGS[0])  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    raw_gps_data = None
+            if isinstance(raw_gps_data, dict):
+                gps_data = raw_gps_data
 
         lat_ref = gps_data.get(EXIF_GPS_LAT_REF_TAG)
         lng_ref = gps_data.get(EXIF_GPS_LNG_REF_TAG)
