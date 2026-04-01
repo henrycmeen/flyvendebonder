@@ -3338,7 +3338,7 @@ export default function App() {
             <div className="relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
               <div className="pointer-events-none absolute left-3 top-3 z-[860] sm:left-4 sm:top-4">
                 <SidebarTrigger
-                  className="fb-map-overlay-trigger pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
+                  className="fb-map-overlay-trigger pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
                   aria-label="Åpne meny"
                 >
                   <Menu className="h-4 w-4" />

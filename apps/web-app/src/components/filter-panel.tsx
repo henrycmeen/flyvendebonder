@@ -88,11 +88,14 @@ export function FilterPanel({
   }, [expanded, onExpandedChange]);
 
   return (
-    <div ref={rootRef} className="pointer-events-none absolute bottom-3 left-3 z-[860] max-w-[calc(100vw-1.5rem)] sm:bottom-4 sm:left-4">
+    <div
+      ref={rootRef}
+      className="pointer-events-none absolute bottom-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))] left-1/2 z-[860] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 sm:bottom-4 sm:left-4 sm:w-auto sm:max-w-[calc(100vw-1.5rem)] sm:translate-x-0"
+    >
       <Card
         className={cn(
           "fb-liquid-filter pointer-events-auto overflow-hidden rounded-[24px] transition-[width,border-radius,box-shadow,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
-          expanded ? "w-[min(640px,calc(100vw-1.5rem))]" : "w-[236px] sm:w-[256px]",
+          expanded ? "w-full sm:w-[min(640px,calc(100vw-1.5rem))]" : "w-[min(15.75rem,calc(100vw-1rem))] sm:w-[256px]",
         )}
       >
         <CardContent className="p-0">

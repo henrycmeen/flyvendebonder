@@ -125,12 +125,12 @@ export function MapLayerPanel({
   return (
     <div
       ref={containerRef}
-      className="pointer-events-none absolute right-3 top-3 z-[870] flex max-w-[calc(100vw-1.5rem)] items-start gap-2 sm:right-4 sm:top-4"
+      className="pointer-events-none absolute right-3 top-3 z-[870] flex max-w-[calc(100vw-1.5rem)] items-start gap-1.5 sm:right-4 sm:top-4 sm:gap-2"
     >
       <button
         type="button"
         onClick={handleCycleQuickMap}
-        className="fb-map-overlay-trigger pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-fb-surface-page px-3 text-sm font-medium text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid"
+        className="fb-map-overlay-trigger pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-fb-surface-page px-2.5 text-sm font-medium text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid sm:px-3"
         aria-label={`Bytt kartstil fra ${activeQuickMap.label.toLowerCase()}`}
         title={`Kartstil: ${activeQuickMap.label}. Klikk for å bytte.`}
       >
@@ -141,7 +141,7 @@ export function MapLayerPanel({
           )}
         >
           <ActiveQuickMapIcon className="h-4 w-4" />
-          <span>{activeQuickMap.label}</span>
+          <span className="hidden sm:inline">{activeQuickMap.label}</span>
         </span>
       </button>
 
@@ -161,7 +161,7 @@ export function MapLayerPanel({
         </button>
 
         {open ? (
-          <div className="absolute right-0 top-12 w-72 rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating">
+          <div className="absolute right-0 top-12 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Kartfiltre</p>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 
@@ -261,12 +261,12 @@ function resolvePhotoHeading(photo: PhotoFeature | null): number | null {
 
 function buildDronePinVisual(active: boolean, photo: PhotoFeature | null): string {
   const heading = resolvePhotoHeading(photo);
-  const fovMarkup =
+  const headingMarkup =
     heading == null
       ? ""
-      : `<span class="fb-media-pin-fov ${active ? "fb-media-pin-fov--active" : "fb-media-pin-fov--inactive"}" aria-hidden="true" style="--pin-heading:${heading.toFixed(1)}deg;--pin-length:${active ? 20 : 16}px;--pin-spread:${active ? 10 : 9}px;"><span class="fb-media-pin-fov-cone"></span><span class="fb-media-pin-fov-beam"></span></span>`;
+      : `<span class="fb-media-pin-heading ${active ? "fb-media-pin-heading--active" : "fb-media-pin-heading--inactive"}" aria-hidden="true" style="--pin-heading:${heading.toFixed(1)}deg;"><span class="fb-media-pin-heading-arrow"></span></span>`;
 
-  return `${fovMarkup}<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>`;
+  return `${headingMarkup}<span class="fb-media-pin-core" aria-hidden="true"><span class="fb-media-pin-core-dot"></span></span>`;
 }
 
 function mapMediaPinIcon(
@@ -519,6 +519,10 @@ export function MapCanvas({
   onBaseMapTileError,
   onDropMissingVideoArtifact,
 }: MapCanvasProps) {
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 767px)").matches;
+  });
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.MarkerClusterGroup | null>(null);
@@ -537,6 +541,16 @@ export function MapCanvas({
   const hasFitRef = useRef(false);
   const hasVideoFitRef = useRef(false);
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
+  const shouldShowZoomControls = showZoomControls && !isMobileViewport;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const query = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobileViewport(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   const setMarkerActiveState = useCallback((photoId: string, active: boolean) => {
     const marker = markersByIdRef.current.get(photoId);
@@ -559,7 +573,7 @@ export function MapCanvas({
     let map: L.Map;
     try {
       map = L.map(mapElementRef.current, {
-        zoomControl: showZoomControls,
+        zoomControl: shouldShowZoomControls,
         attributionControl: true,
         maxZoom: FALLBACK_MAX_ZOOM,
       }).setView(fallbackCenter, 13);
@@ -702,17 +716,17 @@ export function MapCanvas({
         videoLayerRef.current = null;
       }
     };
-  }, [showZoomControls]);
+  }, [shouldShowZoomControls]);
 
   useEffect(() => {
     const map = mapRef.current as (L.Map & { zoomControl?: L.Control.Zoom }) | null;
     if (!map?.zoomControl) return;
-    if (showZoomControls) {
+    if (shouldShowZoomControls) {
       map.zoomControl.addTo(map);
     } else {
       map.zoomControl.remove();
     }
-  }, [showZoomControls]);
+  }, [shouldShowZoomControls]);
 
   useEffect(() => {
     const container = mapElementRef.current;
@@ -782,6 +796,10 @@ export function MapCanvas({
       if (selectedYear !== "all" && year !== selectedYear) return false;
       if (selectedSeason !== "all" && seasonFromCapturedDate(overlay.capturedDate) !== selectedSeason) return false;
       return true;
+    }).sort((a, b) => {
+      const byDate = a.capturedDate.localeCompare(b.capturedDate);
+      if (byDate !== 0) return byDate;
+      return a.id.localeCompare(b.id);
     });
     if (matchingOverlays.length === 0) return;
 
@@ -1057,7 +1075,7 @@ export function MapCanvas({
     viewLayerRef.current.clearLayers();
 
     const hoverCapable = supportsHoverPointer();
-    const activeDirectionPhotoId = hoverCapable ? hoveredPhotoId : selectedPhotoId;
+    const activeDirectionPhotoId = hoverCapable ? hoveredPhotoId ?? selectedPhotoId : selectedPhotoId;
     if (!activeDirectionPhotoId) return;
 
     const selectedPhoto = photos.find((photo) => photo.id === activeDirectionPhotoId) ?? null;

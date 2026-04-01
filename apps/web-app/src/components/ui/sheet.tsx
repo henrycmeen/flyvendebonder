@@ -30,9 +30,9 @@ interface SheetContentProps extends React.ComponentPropsWithoutRef<typeof Dialog
 
 const sideVariants: Record<NonNullable<SheetContentProps["side"]>, string> = {
   left:
-    "inset-y-0 left-0 h-full w-[min(20rem,calc(100vw-1.5rem))] border-r data-[state=open]:translate-x-0 data-[state=closed]:-translate-x-full",
+    "inset-y-2 left-2 h-auto max-h-[calc(100dvh-1rem)] w-[min(21rem,calc(100vw-1rem))] rounded-[28px] border data-[state=open]:translate-x-0 data-[state=closed]:-translate-x-full",
   right:
-    "inset-y-0 right-0 h-full w-[min(20rem,calc(100vw-1.5rem))] border-l data-[state=open]:translate-x-0 data-[state=closed]:translate-x-full",
+    "inset-y-2 right-2 h-auto max-h-[calc(100dvh-1rem)] w-[min(21rem,calc(100vw-1rem))] rounded-[28px] border data-[state=open]:translate-x-0 data-[state=closed]:translate-x-full",
 };
 
 const SheetContent = React.forwardRef<
