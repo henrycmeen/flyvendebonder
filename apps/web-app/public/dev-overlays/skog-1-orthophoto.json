@@ -1,0 +1,49 @@
+{
+  "width_px": 11389,
+  "height_px": 9596,
+  "utm_bounds": {
+    "westing": 540730.114484418,
+    "southing": 6560999.949482571,
+    "easting": 541413.4154219825,
+    "northing": 6561575.70798699
+  },
+  "latlng_bounds": {
+    "south": 59.186112922757985,
+    "west": 9.712905678850092,
+    "north": 59.191339250943315,
+    "east": 9.724716385440372
+  },
+  "crs": "WGS84 UTM zone 32N",
+  "crop_box_px": {
+    "left": 0,
+    "top": 0,
+    "right": 11352,
+    "bottom": 9578
+  },
+  "label": "Skog 1 ortofoto",
+  "source_file": "/Users/henmee/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/03. Prosjekter/I drift/Mac mini/Flyvendeb\u00f8nder/main-merge-20260327/.processing/odm/skog-1-web-3200/odm_orthophoto/odm_orthophoto.tif",
+  "preview_file": "/Users/henmee/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/03. Prosjekter/I drift/Mac mini/Flyvendeb\u00f8nder/main-merge-20260327/apps/web-app/public/dev-overlays/skog-1-orthophoto.webp",
+  "preview_width_px": 2400,
+  "preview_height_px": 2024,
+  "capturedDate": "2026-04-03",
+  "year": "2026",
+  "season": "spring",
+  "overlay": {
+    "id": "skog-1-orthophoto",
+    "label": "Skog 1 ortofoto",
+    "propertyReference": "4003-70/17/0",
+    "assetFile": "skog-1-orthophoto.webp",
+    "capturedDate": "2026-04-03",
+    "year": "2026",
+    "season": "spring",
+    "bounds": {
+      "south": 59.186112922757985,
+      "west": 9.712905678850092,
+      "north": 59.191339250943315,
+      "east": 9.724716385440372
+    },
+    "opacity": 0.82
+  },
+  "source_dir": "/Users/henmee/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault/03. Prosjekter/I drift/Mac mini/Flyvendeb\u00f8nder/main-merge-20260327/.processing/source-resized/skog-1-web-3200",
+  "project_name": "skog-1-web-3200"
+}

@@ -113,4 +113,32 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
     },
     opacity: 0.82,
   },
+  {
+    id: "skog-1-orthophoto",
+    label: "Skog 1 ortofoto",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/skog-1-orthophoto.webp`,
+    capturedDate: "2026-04-03",
+    bounds: {
+      south: 59.186112922757985,
+      west: 9.712905678850092,
+      north: 59.191339250943315,
+      east: 9.724716385440372,
+    },
+    opacity: 0.82,
+  },
+  {
+    id: "skog-2-orthophoto",
+    label: "Skog 2 ortofoto",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/skog-2-orthophoto.webp`,
+    capturedDate: "2026-04-03",
+    bounds: {
+      south: 59.18254412555932,
+      west: 9.702034636784974,
+      north: 59.18973808317092,
+      east: 9.710431825749264,
+    },
+    opacity: 0.82,
+  },
 ];
