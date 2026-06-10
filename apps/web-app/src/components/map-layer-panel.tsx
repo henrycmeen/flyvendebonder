@@ -10,18 +10,22 @@ interface LayerToggleProps {
   status: string;
   accentClassName: string;
   onToggle: (next: boolean) => void;
+  disabled?: boolean;
 }
 
-function LayerToggle({ active, label, status, accentClassName, onToggle }: LayerToggleProps) {
+function LayerToggle({ active, label, status, accentClassName, onToggle, disabled = false }: LayerToggleProps) {
   return (
     <button
       type="button"
       onClick={() => onToggle(!active)}
+      disabled={disabled}
+      aria-pressed={active}
       className={cn(
         "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors",
         active
           ? "bg-fb-surface-ghost text-fb-text-primary"
           : "bg-transparent text-fb-text-secondary hover:bg-fb-surface-ghost/80",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
       )}
       title={status}
     >
@@ -41,7 +45,7 @@ function LayerToggle({ active, label, status, accentClassName, onToggle }: Layer
           active ? "bg-fb-surface-page text-fb-text-primary" : "bg-fb-surface-ghost text-fb-text-secondary",
         )}
       >
-        {active ? "På" : "Av"}
+        {disabled ? "Ikke klar" : active ? "På" : "Av"}
       </span>
     </button>
   );
@@ -106,6 +110,7 @@ export function MapLayerPanel({
   ];
   const activeQuickMap = quickMapOptions.find((option) => option.id === baseMapStyle) ?? quickMapOptions[0];
   const ActiveQuickMapIcon = activeQuickMap.icon;
+  const hasProperties = propertyCount > 0;
 
   const handleCycleQuickMap = () => {
     const currentIndex = quickMapOptions.findIndex((option) => option.id === activeQuickMap.id);
@@ -173,11 +178,12 @@ export function MapLayerPanel({
 
             <div className="space-y-1.5">
               <LayerToggle
-                active={showPropertyLayer}
+                active={showPropertyLayer && hasProperties}
                 label="Eiendomsgrenser"
-                status={propertyStatus}
+                status={hasProperties ? propertyStatus : "Ingen aktive eiendommer tilgjengelig."}
                 accentClassName="bg-[color:var(--fb-season-solid)]"
                 onToggle={onTogglePropertyLayer}
+                disabled={!hasProperties}
               />
               <LayerToggle
                 active={showSoilLayer}
