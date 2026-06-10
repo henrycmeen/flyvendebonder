@@ -1,3 +1,18 @@
+export interface OrthophotoTileLayerDefinition {
+  urlTemplate: string;
+  minZoom: number;
+  maxZoom: number;
+  maxNativeZoom: number;
+  tileSize: number;
+  sourceKind: "canonical" | "preview" | "unknown";
+  sourceWidthPx: number;
+  sourceHeightPx: number;
+  canonicalWidthPx: number;
+  canonicalHeightPx: number;
+  tileCount: number;
+  qualityScale?: number | null;
+}
+
 export interface OrthophotoOverlayDefinition {
   id: string;
   label: string;
@@ -11,6 +26,7 @@ export interface OrthophotoOverlayDefinition {
     east: number;
   };
   opacity?: number;
+  tileLayer?: OrthophotoTileLayerDefinition;
 }
 
 // Generert av scripts/sync-orthophoto-overlays.py
@@ -112,6 +128,20 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
       east: 9.682511298918834,
     },
     opacity: 0.82,
+    tileLayer: {
+      urlTemplate: `${import.meta.env.BASE_URL}dev-overlays/jorde-9-orthophoto-tiles/{z}/{x}/{y}.webp`,
+      minZoom: 14,
+      maxZoom: 19,
+      maxNativeZoom: 19,
+      tileSize: 256,
+      sourceKind: "preview",
+      sourceWidthPx: 2400,
+      sourceHeightPx: 4426,
+      canonicalWidthPx: 14324,
+      canonicalHeightPx: 26416,
+      tileCount: 300,
+      qualityScale: 5.97,
+    },
   },
   {
     id: "skog-1-orthophoto",

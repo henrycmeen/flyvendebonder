@@ -111,8 +111,62 @@ def build_overlay(preview_builder: Path, input_tif: Path, output_image: Path, ou
     return json.loads(result.stdout)
 
 
+def load_tile_manifest(output_dir: Path, asset_basename: str) -> dict[str, Any] | None:
+    manifest_path = output_dir / f"{asset_basename}-tiles" / "manifest.json"
+    if not manifest_path.exists():
+        return None
+
+    parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{manifest_path} inneholder ikke et JSON-objekt.")
+
+    required = {"format", "minZoom", "maxZoom", "maxNativeZoom", "tileSize"}
+    missing = [key for key in required if key not in parsed]
+    if missing:
+        raise ValueError(f"{manifest_path} mangler påkrevde felt: {', '.join(missing)}")
+    return parsed
+
+
+def tile_layer_from_manifest(tile_manifest: dict[str, Any], asset_basename: str) -> dict[str, Any]:
+    tile_format = str(tile_manifest["format"]).lstrip(".")
+    source_kind = str(tile_manifest.get("sourceKind") or "unknown")
+    if source_kind not in {"canonical", "preview"}:
+        source_kind = "unknown"
+    quality_scale_raw = tile_manifest.get("qualityScale")
+    quality_scale = quality_scale_raw if isinstance(quality_scale_raw, (int, float)) else None
+    return {
+        "urlTemplate": f"dev-overlays/{asset_basename}-tiles/{{z}}/{{x}}/{{y}}.{tile_format}",
+        "minZoom": int(tile_manifest["minZoom"]),
+        "maxZoom": int(tile_manifest["maxZoom"]),
+        "maxNativeZoom": int(tile_manifest["maxNativeZoom"]),
+        "tileSize": int(tile_manifest["tileSize"]),
+        "sourceKind": source_kind,
+        "sourceWidthPx": int(tile_manifest.get("sourceWidthPx") or 0),
+        "sourceHeightPx": int(tile_manifest.get("sourceHeightPx") or 0),
+        "canonicalWidthPx": int(tile_manifest.get("canonicalWidthPx") or 0),
+        "canonicalHeightPx": int(tile_manifest.get("canonicalHeightPx") or 0),
+        "tileCount": int(tile_manifest.get("tileCount") or 0),
+        "qualityScale": quality_scale,
+    }
+
+
 def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None:
     lines = [
+        "export interface OrthophotoTileLayerDefinition {",
+        "  urlTemplate: string;",
+        "  minZoom: number;",
+        "  maxZoom: number;",
+        "  maxNativeZoom: number;",
+        "  tileSize: number;",
+        '  sourceKind: "canonical" | "preview" | "unknown";',
+        "  sourceWidthPx: number;",
+        "  sourceHeightPx: number;",
+        "  canonicalWidthPx: number;",
+        "  canonicalHeightPx: number;",
+        "  tileCount: number;",
+        "  qualityScale?: number | null;",
+        "}",
+        "",
         "export interface OrthophotoOverlayDefinition {",
         "  id: string;",
         "  label: string;",
@@ -126,6 +180,7 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
         "    east: number;",
         "  };",
         "  opacity?: number;",
+        "  tileLayer?: OrthophotoTileLayerDefinition;",
         "}",
         "",
         "// Generert av scripts/sync-orthophoto-overlays.py",
@@ -149,9 +204,31 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
                 f'      east: {bounds["east"]},',
                 "    },",
                 f'    opacity: {overlay["opacity"]},',
-                "  },",
             ]
         )
+        tile_layer = overlay.get("tileLayer")
+        if isinstance(tile_layer, dict):
+            quality_scale = tile_layer.get("qualityScale")
+            quality_scale_literal = "null" if quality_scale is None else str(quality_scale)
+            lines.extend(
+                [
+                    "    tileLayer: {",
+                    f'      urlTemplate: `${{import.meta.env.BASE_URL}}{tile_layer["urlTemplate"]}`,',
+                    f'      minZoom: {tile_layer["minZoom"]},',
+                    f'      maxZoom: {tile_layer["maxZoom"]},',
+                    f'      maxNativeZoom: {tile_layer["maxNativeZoom"]},',
+                    f'      tileSize: {tile_layer["tileSize"]},',
+                    f'      sourceKind: "{tile_layer["sourceKind"]}",',
+                    f'      sourceWidthPx: {tile_layer["sourceWidthPx"]},',
+                    f'      sourceHeightPx: {tile_layer["sourceHeightPx"]},',
+                    f'      canonicalWidthPx: {tile_layer["canonicalWidthPx"]},',
+                    f'      canonicalHeightPx: {tile_layer["canonicalHeightPx"]},',
+                    f'      tileCount: {tile_layer["tileCount"]},',
+                    f"      qualityScale: {quality_scale_literal},",
+                    "    },",
+                ]
+            )
+        lines.append("  },")
 
     lines.append("];")
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -207,6 +284,9 @@ def main() -> int:
             },
             "opacity": args.opacity,
         }
+        tile_manifest = load_tile_manifest(output_dir, asset_basename)
+        if tile_manifest is not None:
+            overlay["tileLayer"] = tile_layer_from_manifest(tile_manifest, asset_basename)
         full_metadata = {
             **preview_metadata,
             "capturedDate": captured_date,

@@ -814,6 +814,21 @@ export function MapCanvas({
         [overlay.bounds.south, overlay.bounds.west],
         [overlay.bounds.north, overlay.bounds.east],
       );
+      if (overlay.tileLayer) {
+        const tileLayer = L.tileLayer(overlay.tileLayer.urlTemplate, {
+          pane: "orthophotoPane",
+          opacity: overlay.opacity ?? 0.8,
+          minZoom: overlay.tileLayer.minZoom,
+          maxZoom: overlay.tileLayer.maxZoom,
+          maxNativeZoom: overlay.tileLayer.maxNativeZoom,
+          tileSize: overlay.tileLayer.tileSize,
+          bounds,
+          noWrap: true,
+        });
+        orthophotoLayer.addLayer(tileLayer);
+        return;
+      }
+
       const imageLayer = L.imageOverlay(overlay.imageUrl, bounds, {
         pane: "orthophotoPane",
         opacity: overlay.opacity ?? 0.8,

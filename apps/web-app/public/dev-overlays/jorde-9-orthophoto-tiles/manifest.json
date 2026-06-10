@@ -1,0 +1,25 @@
+{
+  "id": "jorde-9-orthophoto-tiles",
+  "overlayId": "jorde-9-orthophoto",
+  "sourceKind": "preview",
+  "sourceImage": "jorde-9-orthophoto.webp",
+  "sourceWidthPx": 2400,
+  "sourceHeightPx": 4426,
+  "canonicalWidthPx": 14324,
+  "canonicalHeightPx": 26416,
+  "previewWidthPx": 2400,
+  "previewHeightPx": 4426,
+  "bounds": {
+    "south": 59.133772177086534,
+    "west": 9.675808011017034,
+    "north": 59.14028207061983,
+    "east": 9.682511298918834
+  },
+  "tileSize": 256,
+  "format": "webp",
+  "minZoom": 14,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "tileCount": 300,
+  "qualityScale": 5.97
+}
