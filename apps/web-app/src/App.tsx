@@ -49,6 +49,9 @@ import type {
   FlightMission,
   FlightMissionListResponse,
   GardskartJob,
+  MediaFinalizeResult,
+  MediaStagingEnvelope,
+  MediaFinalizeEnvelope,
   VideoMapArtifact,
   PhotoAnalysis,
   PhotoAnalysisActionResponse,
@@ -58,7 +61,6 @@ import type {
   PhotosResponse,
   Property,
   ProfileResponse,
-  ImportRun,
   TimelineDate,
   TimelineResponse,
   VideoMapReviewPayload,
@@ -96,12 +98,12 @@ const MAP_PHOTO_MAX_PAGES = 80;
 const VIDEO_JOB_QUEUE_STORAGE_KEY = "fb-video-job-queue";
 const VIDEO_JOB_ARCHIVE_STORAGE_KEY = "fb-video-job-archive";
 const VIDEO_JOB_ARTIFACTS_STORAGE_KEY = "fb-video-job-artifacts";
-const BROWSER_MEDIA_IMPORT_ENABLED = false;
+const BROWSER_MEDIA_IMPORT_ENABLED = true;
 const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
-  "Browserimport er midlertidig slått av. Denne backend-versjonen støtter bare server-side ingest via /api/v1/imports/photos, ikke filopplasting fra nettleseren.";
+  "Bildeimport er midlertidig utilgjengelig.";
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
-  "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
+  "Videoflyten er midlertidig slått av. Video og ortofoto trenger egen prosesseringsløype før de kan importeres her.";
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
@@ -221,6 +223,22 @@ function responseErrorText(payload: unknown, response: Response): string {
   }
 
   return `Request feilet med status ${response.status}`;
+}
+
+function formatCount(value: number, singular: string, plural: string): string | null {
+  if (value <= 0) return null;
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function summarizeMediaFinalizeResult(result: MediaFinalizeResult): string {
+  const failedCount = result.items.filter((item) => item.status === "failed" || item.status === "rejected").length;
+  const parts = [
+    formatCount(result.image_imported_count, "bilde importert", "bilder importert"),
+    formatCount(result.image_skipped_count, "duplikat hoppet over", "duplikater hoppet over"),
+    formatCount(failedCount, "fil feilet", "filer feilet"),
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(" · ") : "Ingen nye bilder ble importert.";
 }
 
 function filenameFromDisposition(headerValue: string | null, fallback: string): string {
@@ -347,8 +365,9 @@ export default function App() {
   const [metadataPitchDraft, setMetadataPitchDraft] = useState("");
   const [metadataManualViewTargetDraft, setMetadataManualViewTargetDraft] = useState<ManualViewTarget | null>(null);
   const [mediaImportError, setMediaImportError] = useState("");
+  const [mediaImportSummary, setMediaImportSummary] = useState("");
   const [isMediaImportSubmitting, setIsMediaImportSubmitting] = useState(false);
-  const [initialVideoJobIds, setInitialVideoJobIds] = useState<string[]>(() => {
+  const [initialVideoJobIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem(VIDEO_JOB_QUEUE_STORAGE_KEY);
@@ -1465,7 +1484,7 @@ export default function App() {
       return;
     }
     setMetadataEditMode(false);
-    if ((activeView === "import" || activeView === "video") && adminSession !== null) {
+    if (activeView === "video" && adminSession !== null) {
       setActiveView("map");
       setStatusText("Admin-tilgang kreves for denne visningen.");
       addLog("warn", "Beskyttet visning lukket uten admin-tilgang", null, { view: activeView });
@@ -2229,7 +2248,6 @@ export default function App() {
   }, [addLog, trackRequest]);
 
   const handleStartMediaImport = useCallback(() => {
-    if (!ensureAdminAccess("import")) return;
     if (!BROWSER_MEDIA_IMPORT_ENABLED) {
       setMediaImportError(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
       setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
@@ -2238,9 +2256,15 @@ export default function App() {
     }
     handleClosePhotoViewer();
     setMediaImportError("");
+    setMediaImportSummary("");
     setActiveView("import");
-    addLog("info", "Import åpnet");
-  }, [addLog, ensureAdminAccess, handleClosePhotoViewer]);
+    if (isAdminAuthenticated) {
+      addLog("info", "Import åpnet");
+    } else {
+      setStatusText("Admin-tilgang kreves for import.");
+      addLog("warn", "Import åpnet uten aktiv admin-tilgang");
+    }
+  }, [addLog, handleClosePhotoViewer, isAdminAuthenticated]);
 
   const handleSubmitMediaImport = useCallback(
     async ({ images, videos }: MediaImportSelection): Promise<boolean> => {
@@ -2256,122 +2280,97 @@ export default function App() {
         return false;
       }
 
-      if (images.length === 0 && videos.length === 0) {
-        setMediaImportError("Velg minst én bildefil eller videofil.");
+      if (images.length === 0) {
+        setMediaImportError(videos.length > 0 ? VIDEO_WORKFLOW_DISABLED_REASON : "Velg minst én bildefil.");
         return false;
       }
 
-      if (videos.length > 0 && !VIDEO_WORKFLOW_ENABLED) {
+      if (videos.length > 0) {
         setMediaImportError(VIDEO_WORKFLOW_DISABLED_REASON);
         setStatusText(VIDEO_WORKFLOW_DISABLED_REASON);
-        addLog("warn", "Blokkerte videoimport mot manglende backend-kontrakt", null, { issue: 54 });
+        addLog("warn", "Blokkerte videoimport fra bildeimport", null, { issue: 139 });
         return false;
       }
 
       setIsMediaImportSubmitting(true);
       setMediaImportError("");
+      setMediaImportSummary("");
 
       try {
-        const statusParts: string[] = [];
+        const formData = new FormData();
+        images.forEach(({ file }) => {
+          formData.append("files", file, file.name);
+        });
 
-        if (images.length > 0) {
-          const formData = new FormData();
-          images.forEach(({ file, relativePath }) => {
-            formData.append("files", file, file.name);
-            formData.append("relative_paths", relativePath ?? file.name);
-          });
-
-          const response = await trackRequest(() =>
-            fetch("/api/v1/imports/photos/upload", {
-              method: "POST",
-              headers: {
-                Accept: "application/json",
-              },
-              body: formData,
-            }),
-          );
-          const payload = await readResponsePayload(response);
-          if (!response.ok) {
-            throw new Error(responseErrorText(payload, response));
-          }
-
-          const run = (payload as { import_run?: ImportRun } | null)?.import_run;
-          if (!run) {
-            throw new Error("Backend returnerte ikke import-run for bilder.");
-          }
-
-          addLog("info", `Bildeimport ferdig (run ${run.id})`, response.headers.get("X-Request-ID"), {
-            filesSeen: run.files_seen,
-            filesImported: run.files_imported,
-            filesSkipped: run.files_skipped,
-          });
-          statusParts.push(`${run.files_imported} bilder importert`);
-
-          const timelineData = await loadTimeline();
-          if (timelineData.dates.length > 0) {
-            const latestIndex = timelineData.dates.length - 1;
-            const latestDate = timelineData.dates[latestIndex]?.date ?? null;
-            setSelectedIndex(latestIndex);
-            if (latestDate) {
-              setSelectedYear(latestDate.slice(0, 4));
-            }
-            setSelectedSeason("all");
-          }
-          setPhotoLoadRetryToken((current) => current + 1);
+        const stagingResponse = await trackRequest(() =>
+          fetch("/api/v1/media-staging-jobs", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              Accept: "application/json",
+            },
+            body: formData,
+          }),
+        );
+        const stagingPayload = await readResponsePayload(stagingResponse);
+        if (!stagingResponse.ok) {
+          throw new Error(responseErrorText(stagingPayload, stagingResponse));
         }
 
-        if (videos.length > 0) {
-          const startedJobIds: string[] = [];
-
-          for (const { file } of videos) {
-            const formData = new FormData();
-            formData.append("file", file, file.name);
-            formData.append("mode", "frames");
-            formData.append(
-              "config",
-              JSON.stringify({
-                process: "frames",
-                interval_seconds: 4.0,
-                map_display_mode: "overlay_existing",
-              }),
-            );
-
-            const response = await trackRequest(() =>
-              fetch("/api/v1/video-jobs", {
-                method: "POST",
-                headers: {
-                  Accept: "application/json",
-                },
-                body: formData,
-              }),
-            );
-            const payload = await readResponsePayload(response);
-            if (!response.ok) {
-              throw new Error(responseErrorText(payload, response));
-            }
-
-            const jobId = (payload as { job?: { job_id?: string } } | null)?.job?.job_id ?? null;
-            if (!jobId) {
-              throw new Error("Backend returnerte ikke jobb-id for video.");
-            }
-
-            startedJobIds.push(jobId);
-            addLog("info", "Videosteg startet", response.headers.get("X-Request-ID"), {
-              jobId,
-              filename: file.name,
-            });
-          }
-
-          setInitialVideoJobIds((current) => mergeUniqueJobIds(startedJobIds, current));
-          setActiveView("video");
-          statusParts.push(
-            videos.length === 1
-              ? `videojobben ${startedJobIds[0]?.slice(0, 8)} startet`
-              : `${startedJobIds.length} videojobber startet`,
-          );
+        const stagingJob = (stagingPayload as MediaStagingEnvelope | null)?.job;
+        if (!stagingJob?.job_id) {
+          throw new Error("Backend returnerte ikke stagingjobb for bildeimport.");
         }
 
-        setStatusText(statusParts.join(" · "));
+        addLog("info", "Bildeimport staged", stagingResponse.headers.get("X-Request-ID"), {
+          jobId: stagingJob.job_id,
+          files: stagingJob.counts.total,
+          images: stagingJob.counts.image_count,
+          rejected: stagingJob.counts.rejected_count,
+        });
+
+        const finalizeResponse = await trackRequest(() =>
+          fetch(`/api/v1/media-staging-jobs/${encodeURIComponent(stagingJob.job_id)}/finalize`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              Accept: "application/json",
+            },
+          }),
+        );
+        const finalizePayload = await readResponsePayload(finalizeResponse);
+        if (!finalizeResponse.ok) {
+          throw new Error(responseErrorText(finalizePayload, finalizeResponse));
+        }
+
+        const result = (finalizePayload as MediaFinalizeEnvelope | null)?.result;
+        if (!result) {
+          throw new Error("Backend returnerte ikke importresultat.");
+        }
+
+        const summary = summarizeMediaFinalizeResult(result);
+        addLog("info", "Bildeimport finalisert", finalizeResponse.headers.get("X-Request-ID"), {
+          jobId: result.job_id,
+          importRunId: result.import_run_id,
+          imported: result.image_imported_count,
+          skipped: result.image_skipped_count,
+          rejected: result.rejected_count,
+        });
+
+        setMediaImportSummary(summary);
+        setStatusText(summary);
+
+        const timelineData = await loadTimeline();
+        if (timelineData.dates.length > 0) {
+          const latestIndex = timelineData.dates.length - 1;
+          const latestDate = timelineData.dates[latestIndex]?.date ?? null;
+          setSelectedIndex(latestIndex);
+          if (latestDate) {
+            setSelectedYear(latestDate.slice(0, 4));
+          }
+          setSelectedSeason("all");
+        }
+        setPhotoLoadRetryToken((current) => current + 1);
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Ukjent feil ved mediaimport.";
@@ -3350,7 +3349,7 @@ export default function App() {
             onSaveProfile={handleSaveProfile}
             onAdminLogin={handleAdminLogin}
             onAdminLogout={handleAdminLogout}
-            onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED && isAdminAuthenticated ? handleStartMediaImport : undefined}
+            onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED ? handleStartMediaImport : undefined}
             onToggleManualQcFilter={handleToggleManualQcFilter}
             onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           />
@@ -3502,7 +3501,14 @@ export default function App() {
                 <MediaImportPage
                   busy={isMediaImportSubmitting}
                   errorMessage={mediaImportError}
-                  disabledMessage={BROWSER_MEDIA_IMPORT_ENABLED ? null : BROWSER_MEDIA_IMPORT_DISABLED_REASON}
+                  successMessage={mediaImportSummary}
+                  disabledMessage={
+                    BROWSER_MEDIA_IMPORT_ENABLED
+                      ? isAdminAuthenticated
+                        ? null
+                        : "Admin-tilgang kreves for import."
+                      : BROWSER_MEDIA_IMPORT_DISABLED_REASON
+                  }
                   onImport={handleSubmitMediaImport}
                 />
               ) : (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { FolderOpen, ImagePlus, Loader2, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,16 +18,14 @@ export interface MediaImportSelection {
 interface MediaImportPageProps {
   busy?: boolean;
   errorMessage?: string | null;
+  successMessage?: string | null;
   disabledMessage?: string | null;
   onImport: (selection: MediaImportSelection) => Promise<boolean>;
 }
 
-type MediaKind = "image" | "video";
-
 interface StagedMediaItem {
   id: string;
   file: File;
-  kind: MediaKind;
   relativePath: string | null;
 }
 
@@ -43,12 +41,8 @@ type FileSystemEntryLike = {
   };
 };
 
-function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/") || /\.(jpe?g|tiff?)$/i.test(file.name);
-}
-
-function isVideoFile(file: File): boolean {
-  return file.type.startsWith("video/") || /\.(mp4|mov|m4v|avi|mkv|webm|mpeg|mpg)$/i.test(file.name);
+function isSupportedImageFile(file: File): boolean {
+  return /^(image\/jpeg|image\/tiff)$/i.test(file.type) || /\.(jpe?g|tiff?)$/i.test(file.name);
 }
 
 function buildFileKey(file: File): string {
@@ -114,14 +108,12 @@ async function extractDroppedFiles(event: DragEvent<HTMLDivElement>): Promise<Fi
 
 function toStagedItems(files: File[]): StagedMediaItem[] {
   return files
-    .filter((file) => isImageFile(file) || isVideoFile(file))
+    .filter((file) => isSupportedImageFile(file))
     .map((file) => {
-      const kind: MediaKind = isImageFile(file) ? "image" : "video";
       const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? null;
       return {
         id: buildFileKey(file),
         file,
-        kind,
         relativePath,
       };
     });
@@ -130,11 +122,13 @@ function toStagedItems(files: File[]): StagedMediaItem[] {
 export function MediaImportPage({
   busy = false,
   errorMessage,
+  successMessage,
   disabledMessage,
   onImport,
 }: MediaImportPageProps) {
   const [items, setItems] = useState<StagedMediaItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [localNotice, setLocalNotice] = useState("");
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -146,8 +140,6 @@ export function MediaImportPage({
     }
   }, []);
 
-  const imageItems = useMemo(() => items.filter((item) => item.kind === "image"), [items]);
-  const videoItems = useMemo(() => items.filter((item) => item.kind === "video"), [items]);
   const canStageMedia = !busy && !disabledMessage;
 
   const ingestFiles = (incomingFiles: File[]) => {
@@ -155,7 +147,17 @@ export function MediaImportPage({
     if (incomingFiles.length === 0) return;
 
     const nextItems = toStagedItems(incomingFiles);
-    if (nextItems.length === 0) return;
+    const skippedCount = incomingFiles.length - nextItems.length;
+    if (nextItems.length === 0) {
+      setLocalNotice("Fant ingen støttede bildefiler. Bruk JPG, JPEG, TIF eller TIFF.");
+      return;
+    }
+
+    setLocalNotice(
+      skippedCount > 0
+        ? `${skippedCount} filer ble hoppet over. Import v1 tar bare JPG, JPEG, TIF og TIFF.`
+        : "",
+    );
 
     setItems((current) => {
       const existingIds = new Set(current.map((item) => item.id));
@@ -166,19 +168,17 @@ export function MediaImportPage({
 
   const clearItems = () => {
     setItems([]);
+    setLocalNotice("");
   };
 
   const handleConfirmImport = async () => {
     if (disabledMessage || items.length === 0 || busy) return;
     const completed = await onImport({
-      images: imageItems.map((item) => ({
+      images: items.map((item) => ({
         file: item.file,
         relativePath: item.relativePath,
       })),
-      videos: videoItems.map((item) => ({
-        file: item.file,
-        relativePath: item.relativePath,
-      })),
+      videos: [],
     });
     if (completed) {
       clearItems();
@@ -241,7 +241,7 @@ export function MediaImportPage({
 
               {items.length > 0 ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3">
-                  <p className="text-sm text-fb-text-secondary">{items.length} filer valgt</p>
+                  <p className="text-sm text-fb-text-secondary">{items.length} bildefiler valgt</p>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="ghost" onClick={clearItems} disabled={busy}>
                       Tøm
@@ -252,6 +252,18 @@ export function MediaImportPage({
                     </Button>
                   </div>
                 </div>
+              ) : null}
+
+              {localNotice ? (
+                <p className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3 text-sm text-fb-text-secondary">
+                  {localNotice}
+                </p>
+              ) : null}
+
+              {successMessage ? (
+                <p className="rounded-2xl border border-[color:var(--fb-accent-emerald)]/45 bg-[color:var(--fb-accent-emerald)]/8 px-4 py-3 text-sm text-fb-text-primary">
+                  {successMessage}
+                </p>
               ) : null}
 
               {errorMessage ? (
@@ -277,7 +289,7 @@ export function MediaImportPage({
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept="image/*,video/*,.jpg,.jpeg,.tif,.tiff,.mp4,.mov,.m4v,.avi,.mkv,.webm"
+            accept="image/jpeg,image/tiff,.jpg,.jpeg,.tif,.tiff"
             multiple
             disabled={busy || Boolean(disabledMessage)}
             onChange={(event) => {
