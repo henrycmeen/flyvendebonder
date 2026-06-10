@@ -28,6 +28,7 @@ interface AlbumGroup {
 }
 
 const ALBUM_GRID_PRESET = { cols: 2, smCols: 3, lgCols: 3, xlCols: 4 } as const;
+const UNKNOWN_DATE_GROUP_KEY = "unknown-date";
 const SUGGESTED_SEASON_TOKENS = [
   { token: "#vår", label: "Vår" },
   { token: "#sommer", label: "Sommer" },
@@ -56,7 +57,13 @@ function toTimestamp(value: string): number {
 }
 
 function formatMonthLabel(value: string): string {
+  if (value === UNKNOWN_DATE_GROUP_KEY) {
+    return "Ukjent dato";
+  }
   const asDate = new Date(`${value}-01T00:00:00`);
+  if (Number.isNaN(asDate.getTime())) {
+    return "Ukjent dato";
+  }
   return asDate.toLocaleDateString("nb-NO", {
     month: "long",
     year: "numeric",
@@ -65,6 +72,9 @@ function formatMonthLabel(value: string): string {
 
 function formatDayLabel(value: string): string {
   const asDate = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(asDate.getTime())) {
+    return "Ukjent dato";
+  }
   return asDate.toLocaleDateString("nb-NO", {
     day: "2-digit",
     month: "2-digit",
@@ -74,6 +84,9 @@ function formatDayLabel(value: string): string {
 
 function formatTimeLabel(value: string): string {
   const asDate = new Date(value);
+  if (Number.isNaN(asDate.getTime())) {
+    return "Ukjent tid";
+  }
   return asDate.toLocaleTimeString("nb-NO", {
     hour: "2-digit",
     minute: "2-digit",
@@ -133,6 +146,12 @@ function parseAlbumQuery(value: string): {
   return { textTokens, yearTokens, seasonTokens };
 }
 
+function albumGroupKey(photo: PhotoFeature): string {
+  const dateParts = splitCapturedDate(photo.captured_date);
+  if (!dateParts) return UNKNOWN_DATE_GROUP_KEY;
+  return `${dateParts.year}-${dateParts.month}`;
+}
+
 export function AlbumPage({
   availableYears,
   photos,
@@ -162,9 +181,8 @@ export function AlbumPage({
   const filteredPhotos = useMemo(() => {
     return sortedPhotos.filter((photo) => {
       const dateParts = splitCapturedDate(photo.captured_date);
-      if (!dateParts) return false;
-      if (parsedQuery.yearTokens.size > 0 && !parsedQuery.yearTokens.has(dateParts.year)) return false;
-      if (parsedQuery.seasonTokens.size > 0 && !parsedQuery.seasonTokens.has(monthToSeason(dateParts.month))) return false;
+      if (parsedQuery.yearTokens.size > 0 && (!dateParts || !parsedQuery.yearTokens.has(dateParts.year))) return false;
+      if (parsedQuery.seasonTokens.size > 0 && (!dateParts || !parsedQuery.seasonTokens.has(monthToSeason(dateParts.month)))) return false;
       if (parsedQuery.textTokens.length === 0) return true;
 
       const haystack = normalizeSearchText(
@@ -178,7 +196,7 @@ export function AlbumPage({
     const groups = new Map<string, PhotoFeature[]>();
 
     filteredPhotos.forEach((photo) => {
-      const key = photo.captured_date.slice(0, 7);
+      const key = albumGroupKey(photo);
       const existing = groups.get(key);
       if (existing) {
         existing.push(photo);
@@ -329,7 +347,7 @@ export function AlbumPage({
               <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-fb-text-primary">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p>Kunne ikke laste albumdata akkurat nå.</p>
-                  <Button type="button" size="sm" variant="outline" onClick={onLoadMore}>
+                  <Button type="button" size="sm" variant="outline" onClick={onLoadMore} disabled={isLoading || isLoadingMore}>
                     Prøv igjen
                   </Button>
                 </div>

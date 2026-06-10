@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, Menu, Pencil, RefreshCw } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Menu, Pencil, RefreshCw } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
@@ -269,6 +269,10 @@ function sortFlightMissions(items: FlightMission[]): FlightMission[] {
   });
 }
 
+function getPhotoImageUrl(photo: Pick<PhotoFeature, "image_url" | "thumbnail_url"> | null | undefined): string | null {
+  return photo?.image_url?.trim() || photo?.thumbnail_url?.trim() || null;
+}
+
 export default function App() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
@@ -485,6 +489,7 @@ export default function App() {
       null
     );
   }, [albumPhotos, photos, selectedPhotoId]);
+  const selectedPhotoImageUrl = useMemo(() => getPhotoImageUrl(selectedPhoto), [selectedPhoto]);
   const selectedPhotoExistsInMap = useMemo(() => {
     if (!selectedPhotoId) return false;
     return photos.some((photo) => photoIdKey(photo.id) === photoIdKey(selectedPhotoId));
@@ -497,6 +502,7 @@ export default function App() {
     if (!hoverPreviewPhotoId) return null;
     return photos.find((photo) => photoIdKey(photo.id) === photoIdKey(hoverPreviewPhotoId)) ?? null;
   }, [hoverPreviewPhotoId, photos]);
+  const hoverPreviewImageUrl = useMemo(() => getPhotoImageUrl(hoverPreviewPhoto), [hoverPreviewPhoto]);
   const resolvedMapAnchorId = useMemo(() => {
     if (!selectedPhotoId) return null;
     if (mapNavigationAnchorId && photos.some((photo) => photoIdKey(photo.id) === photoIdKey(mapNavigationAnchorId))) {
@@ -2590,6 +2596,14 @@ export default function App() {
   }, [addLog]);
 
   const handleTogglePropertyLayer = useCallback((next: boolean) => {
+    if (next && activeProperties.length === 0) {
+      setShowPropertyLayer(false);
+      setPropertyJobs([]);
+      setPropertyStatus("Ingen aktive eiendommer tilgjengelig.");
+      addLog("warn", "Eiendomslag kan ikke skrus på uten aktiv eiendom");
+      return;
+    }
+
     setShowPropertyLayer(next);
     if (!next) {
       setPropertyJobs([]);
@@ -2601,7 +2615,7 @@ export default function App() {
     tileRetryJobRef.current = null;
     setPropertyStatus("Eiendomslag lastes ...");
     addLog("info", "Eiendomslag skrudd på av bruker");
-  }, [addLog]);
+  }, [activeProperties.length, addLog]);
 
   useEffect(() => {
     if (activeView === "album") return;
@@ -2632,22 +2646,36 @@ export default function App() {
                 {selectedPhoto ? (
                   <>
                     <div className="photo-viewer-image-pane relative">
-                      <img
-                        src={selectedPhoto.image_url || selectedPhoto.thumbnail_url || ""}
-                        alt=""
-                        aria-hidden="true"
-                        className="photo-viewer-backdrop pointer-events-none absolute inset-0 h-full w-full object-cover"
-                      />
+                      {selectedPhotoImageUrl ? (
+                        <>
+                          <img
+                            src={selectedPhotoImageUrl}
+                            alt=""
+                            aria-hidden="true"
+                            className="photo-viewer-backdrop pointer-events-none absolute inset-0 h-full w-full object-cover"
+                          />
 
-                      <div className="photo-viewer-image-wrap relative h-full w-full">
-                        <img
-                          src={selectedPhoto.image_url || selectedPhoto.thumbnail_url || ""}
-                          alt={selectedPhoto.title || "Foto"}
-                          className="photo-viewer-image h-full w-full cursor-zoom-out object-contain"
-                          onClick={handleClosePhotoViewer}
-                          title="Trykk for å lukke fullskjerm"
-                        />
-                      </div>
+                          <div className="photo-viewer-image-wrap relative h-full w-full">
+                            <img
+                              src={selectedPhotoImageUrl}
+                              alt={selectedPhoto.title || "Foto"}
+                              className="photo-viewer-image h-full w-full cursor-zoom-out object-contain"
+                              onClick={handleClosePhotoViewer}
+                              title="Trykk for å lukke fullskjerm"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="photo-viewer-image-wrap relative flex h-full w-full items-center justify-center bg-fb-surface-ghost text-center text-fb-text-secondary">
+                          <div className="max-w-xs px-6">
+                            <ImageOff className="mx-auto mb-3 h-9 w-9 text-fb-text-muted" />
+                            <p className="text-sm font-medium text-fb-text-primary">Bildefilen mangler</p>
+                            <p className="mt-1 text-xs leading-5">
+                              Metadata finnes, men hverken originalbilde eller miniatyr er tilgjengelig i API-svaret.
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="photo-viewer-strip-wrap">
                         <div className="photo-viewer-strip">
@@ -3505,11 +3533,11 @@ export default function App() {
                 </div>
               ) : null}
 
-              {activeView === "map" && hoverPreviewPhoto && !isPhotoViewerOpen && !isFilterExpanded && !photosLoadFailed ? (
+              {activeView === "map" && hoverPreviewPhoto && hoverPreviewImageUrl && !isPhotoViewerOpen && !isFilterExpanded && !photosLoadFailed ? (
                 <div className="fb-map-hover-preview-anchor pointer-events-none absolute z-[760] hidden md:block">
                   <div className="fb-map-overlay-preview overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2">
                     <img
-                      src={hoverPreviewPhoto.image_url || hoverPreviewPhoto.thumbnail_url || ""}
+                      src={hoverPreviewImageUrl}
                       alt={hoverPreviewPhoto.title || "Forhåndsvisning"}
                       className="block h-[min(32vw,320px)] w-[min(32vw,320px)] min-h-[220px] min-w-[220px] rounded-xl object-cover"
                       loading="lazy"
