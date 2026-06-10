@@ -4,13 +4,31 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request, Response
 
 from ..config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# In-memory brute-force throttle for admin login. The app is effectively
+# single-admin, so a small per-client window is sufficient and avoids an extra
+# dependency. State is reset on process restart.
+_LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
+_LOGIN_MAX_ATTEMPTS = 7
+_login_attempts: dict[str, list[float]] = {}
+
+# Per-process signing key used only when no explicit admin_session_secret is
+# configured. Generated once so cookies stay valid for the lifetime of the
+# process; sessions are invalidated on restart, which is acceptable for the
+# single admin user. Avoids signing cookies with the admin access code itself.
+_EPHEMERAL_SESSION_SECRET = secrets.token_bytes(32)
+_warned_about_ephemeral_secret = False
 
 
 @dataclass(frozen=True)
@@ -20,6 +38,46 @@ class AdminSession:
 
 def admin_access_is_configured() -> bool:
     return bool(get_settings().admin_access_code.strip())
+
+
+def _login_client_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
+def _recent_login_attempts(key: str, now: float) -> list[float]:
+    attempts = [ts for ts in _login_attempts.get(key, []) if now - ts < _LOGIN_ATTEMPT_WINDOW_SECONDS]
+    if attempts:
+        _login_attempts[key] = attempts
+    else:
+        _login_attempts.pop(key, None)
+    return attempts
+
+
+def enforce_login_rate_limit(request: Request) -> None:
+    key = _login_client_key(request)
+    attempts = _recent_login_attempts(key, time.monotonic())
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="For mange påloggingsforsøk. Vent noen minutter og prøv igjen.",
+        )
+
+
+def register_failed_login(request: Request) -> None:
+    key = _login_client_key(request)
+    now = time.monotonic()
+    attempts = _recent_login_attempts(key, now)
+    attempts.append(now)
+    _login_attempts[key] = attempts
+
+
+def reset_login_attempts(request: Request) -> None:
+    _login_attempts.pop(_login_client_key(request), None)
 
 
 def verify_admin_access_code(code: str) -> bool:
@@ -127,9 +185,22 @@ def _encode_admin_session_cookie(expires_at: datetime) -> str:
 
 
 def _sign_payload(payload_bytes: bytes) -> bytes:
-    settings = get_settings()
-    secret = (settings.admin_session_secret or settings.admin_access_code).encode("utf-8")
+    secret = _session_signing_secret()
     return hmac.new(secret, payload_bytes, hashlib.sha256).digest()
+
+
+def _session_signing_secret() -> bytes:
+    global _warned_about_ephemeral_secret
+    configured = get_settings().admin_session_secret.strip()
+    if configured:
+        return configured.encode("utf-8")
+    if not _warned_about_ephemeral_secret:
+        logger.warning(
+            "admin_session_secret er ikke satt – bruker en flyktig nøkkel per prosess. "
+            "Sett ADMIN_SESSION_SECRET for stabile admin-sesjoner."
+        )
+        _warned_about_ephemeral_secret = True
+    return _EPHEMERAL_SESSION_SECRET
 
 
 def _urlsafe_encode(value: bytes) -> str:

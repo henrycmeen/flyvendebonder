@@ -109,9 +109,12 @@ from ..schemas import (
 from ..services.admin_access import (
     admin_access_is_configured,
     clear_admin_session,
+    enforce_login_rate_limit,
     get_admin_session,
     issue_admin_session,
+    register_failed_login,
     require_admin_session,
+    reset_login_attempts,
     verify_admin_access_code,
 )
 from ..services.gardskart import get_job_id
@@ -1454,9 +1457,13 @@ def login_admin(
 ) -> AdminSessionStatusResponse:
     if not admin_access_is_configured():
         raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
+
+    enforce_login_rate_limit(request)
     if not verify_admin_access_code(payload.code):
+        register_failed_login(request)
         raise HTTPException(status_code=401, detail="Ugyldig admin-kode")
 
+    reset_login_attempts(request)
     session = issue_admin_session(response, request)
     return AdminSessionStatusResponse(configured=True, authenticated=True, expires_at=session.expires_at)
 

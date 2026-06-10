@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     host: str = "127.0.0.1"
     port: int = 8787
+
+    # Browsers serialize IDN hosts to punycode in the Origin header, so both the
+    # ASCII domain and the punycode form of flyvendebønder.no are listed.
+    cors_allow_origins: list[str] = [
+        "https://flyvendebonder.no",
+        "https://www.flyvendebonder.no",
+        "https://xn--flyvendebnder-jnb.no",
+        "https://www.xn--flyvendebnder-jnb.no",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
     log_level: str = "INFO"
     log_to_console: bool = True
     log_to_file: bool = True

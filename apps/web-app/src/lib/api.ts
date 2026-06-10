@@ -435,6 +435,7 @@ export function apiPost<T>(
   options: Omit<ApiRequestOptions, "method" | "body"> = {},
 ): Promise<ApiResponse<T>> {
   return requestJson<T>(path, {
+    retries: 0,
     ...options,
     method: "POST",
     body,
@@ -449,6 +450,7 @@ export function apiPatch<T>(
   options: Omit<ApiRequestOptions, "method" | "body"> = {},
 ): Promise<ApiResponse<T>> {
   return requestJson<T>(path, {
+    retries: 0,
     ...options,
     method: "PATCH",
     body,
@@ -462,6 +464,7 @@ export function apiDelete<T>(
   options: Omit<ApiRequestOptions, "method" | "body"> = {},
 ): Promise<ApiResponse<T>> {
   return requestJson<T>(path, {
+    retries: 0,
     ...options,
     method: "DELETE",
     dedupe: false,

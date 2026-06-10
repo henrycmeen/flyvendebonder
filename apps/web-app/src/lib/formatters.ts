@@ -1,5 +1,13 @@
+import type { Property } from "@/types";
+
 export type SeasonLike = "all" | "spring" | "summer" | "autumn" | "winter";
 export type DayScopeLike = "all" | "selected";
+
+export function formatPropertyReference(
+  property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">,
+): string {
+  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
+}
 
 export interface ManualViewTarget {
   lat: number;

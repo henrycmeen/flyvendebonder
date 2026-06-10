@@ -34,6 +34,30 @@ def test_admin_login_rejects_invalid_code(client):
     assert invalid.json()["detail"] == "Ugyldig admin-kode"
 
 
+def test_admin_login_throttles_repeated_failures(client):
+    client.post("/api/v1/admin/logout")
+
+    for _ in range(7):
+        rejected = client.post("/api/v1/admin/login", json={"code": "feil-kode"})
+        assert rejected.status_code == 401
+
+    # Further attempts are throttled, even with the correct code.
+    throttled = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
+    assert throttled.status_code == 429
+
+
+def test_admin_login_success_clears_throttle(client):
+    client.post("/api/v1/admin/logout")
+
+    for _ in range(3):
+        rejected = client.post("/api/v1/admin/login", json={"code": "feil-kode"})
+        assert rejected.status_code == 401
+
+    accepted = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
+    assert accepted.status_code == 200
+    assert accepted.json()["authenticated"] is True
+
+
 def test_admin_write_requires_login(client):
     logout = client.post("/api/v1/admin/logout")
     assert logout.status_code == 200
