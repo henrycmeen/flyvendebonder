@@ -148,8 +148,10 @@ export function MediaImportPage({
 
   const imageItems = useMemo(() => items.filter((item) => item.kind === "image"), [items]);
   const videoItems = useMemo(() => items.filter((item) => item.kind === "video"), [items]);
+  const canStageMedia = !busy && !disabledMessage;
 
   const ingestFiles = (incomingFiles: File[]) => {
+    if (!canStageMedia) return;
     if (incomingFiles.length === 0) return;
 
     const nextItems = toStagedItems(incomingFiles);
@@ -192,14 +194,16 @@ export function MediaImportPage({
               <div
                 className={cn(
                   "rounded-[32px] border border-fb-border-subtle bg-fb-surface-ghost p-4 shadow-fb-raised sm:p-6",
-                  dragActive && "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)]/6",
+                  dragActive && canStageMedia && "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)]/6",
                 )}
                 onDragEnter={(event) => {
                   event.preventDefault();
+                  if (!canStageMedia) return;
                   setDragActive(true);
                 }}
                 onDragOver={(event) => {
                   event.preventDefault();
+                  if (!canStageMedia) return;
                   setDragActive(true);
                 }}
                 onDragLeave={(event) => {
@@ -209,6 +213,7 @@ export function MediaImportPage({
                 onDrop={(event) => {
                   event.preventDefault();
                   setDragActive(false);
+                  if (!canStageMedia) return;
                   void extractDroppedFiles(event).then((files) => {
                     ingestFiles(files);
                   });

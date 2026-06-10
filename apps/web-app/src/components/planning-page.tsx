@@ -497,6 +497,19 @@ export function PlanningPage({
   }, [suggestedSpacing]);
   const previewWarnings = Array.isArray(preview?.warnings) ? preview.warnings : [];
   const terrainSummary = useMemo(() => getTerrainSummary(preview), [preview]);
+  const canSaveMission =
+    canEdit &&
+    selectedUnit != null &&
+    selectedMissionUnitIds.length > 0 &&
+    selectedDroneProfileId.trim().length > 0 &&
+    !previewPending;
+  const saveMissionHelp = !selectedDroneProfileId.trim()
+    ? "Vent til droneprofilene er lastet før planen kan lagres."
+    : previewPending
+      ? "Vent til rutegrunnlaget er ferdig beregnet før planen lagres."
+      : selectedUnitMission
+        ? "Oppdater planen som allerede er lagret for dette området."
+        : "Lagre en ny plan for dette området.";
   const unitGeometryKeys = useMemo(
     () => new Set(units.map((unit) => geometryKey(unit.geometry?.coordinates))),
     [units],
@@ -903,24 +916,27 @@ export function PlanningPage({
   );
 
   const handleSetLaunchPoint = useCallback((point: GeoPoint) => {
+    if (!canEdit) return;
     setParameters((current) => ({
       ...current,
       launch_point: point,
     }));
     setPreviewStatus("Oppdaterer rute med nytt startpunkt …");
     setToolMode("select");
-  }, []);
+  }, [canEdit]);
 
   const handleSetLandingPoint = useCallback((point: GeoPoint) => {
+    if (!canEdit) return;
     setParameters((current) => ({
       ...current,
       landing_point: point,
     }));
     setPreviewStatus("Oppdaterer rute med nytt landingspunkt …");
     setToolMode("select");
-  }, []);
+  }, [canEdit]);
 
   const handleCopyLaunchPointToLanding = useCallback(() => {
+    if (!canEdit) return;
     setParameters((current) => {
       if (!current.launch_point) return current;
       return {
@@ -930,9 +946,10 @@ export function PlanningPage({
     });
     setPreviewStatus("Oppdaterer rute med samme start- og landingspunkt …");
     setToolMode("select");
-  }, []);
+  }, [canEdit]);
 
   const handleAddNoGoBuffer = useCallback((point: GeoPoint) => {
+    if (!canEdit) return;
     const nextBuffer = createNoGoBuffer(point);
     setSelectedNoGoBufferId(nextBuffer.id);
     setParameters((current) => ({
@@ -940,29 +957,33 @@ export function PlanningPage({
       no_go_buffers: [...current.no_go_buffers, nextBuffer],
     }));
     setPreviewStatus("Oppdaterer rute med nytt hinder …");
-  }, []);
+  }, [canEdit]);
 
   const handleUpdateNoGoBufferSize = useCallback(
     (bufferId: string | null, nextSize: Partial<Pick<NoGoBuffer, "width_m" | "height_m" | "center">>) => {
-    if (!bufferId) return;
-    setParameters((current) => ({
-      ...current,
-      no_go_buffers: current.no_go_buffers.map((buffer) =>
-        buffer.id === bufferId
-          ? {
-              ...buffer,
-              ...nextSize,
-              width_m: Math.max(6, Number(nextSize.width_m ?? buffer.width_m)),
-              height_m: Math.max(6, Number(nextSize.height_m ?? buffer.height_m)),
-              center: nextSize.center ?? buffer.center,
-            }
-          : buffer,
-      ),
-    }));
-    setPreviewStatus("Oppdaterer rute etter hinderendring …");
-  }, []);
+      if (!canEdit) return;
+      if (!bufferId) return;
+      setParameters((current) => ({
+        ...current,
+        no_go_buffers: current.no_go_buffers.map((buffer) =>
+          buffer.id === bufferId
+            ? {
+                ...buffer,
+                ...nextSize,
+                width_m: Math.max(6, Number(nextSize.width_m ?? buffer.width_m)),
+                height_m: Math.max(6, Number(nextSize.height_m ?? buffer.height_m)),
+                center: nextSize.center ?? buffer.center,
+              }
+            : buffer,
+        ),
+      }));
+      setPreviewStatus("Oppdaterer rute etter hinderendring …");
+    },
+    [canEdit],
+  );
 
   const handleRemoveNoGoBuffer = useCallback((bufferId: string | null) => {
+    if (!canEdit) return;
     if (!bufferId) return;
     setSelectedNoGoBufferId((current) => (current === bufferId ? null : current));
     setParameters((current) => ({
@@ -970,7 +991,7 @@ export function PlanningPage({
       no_go_buffers: current.no_go_buffers.filter((buffer) => buffer.id !== bufferId),
     }));
     setPreviewStatus("Oppdaterer rute uten hinderet …");
-  }, []);
+  }, [canEdit]);
 
   const handleResolvePoint = useCallback(
     async (point: GeoPoint) => {
@@ -1091,7 +1112,7 @@ export function PlanningPage({
   );
 
   const handleCreateMission = useCallback(async () => {
-    if (!canEdit || selectedMissionUnitIds.length === 0) return;
+    if (!canSaveMission) return;
     setCreateBusy(true);
     try {
       const payload = {
@@ -1122,7 +1143,7 @@ export function PlanningPage({
     }
   }, [
     activeMissionId,
-    canEdit,
+    canSaveMission,
     loadUnits,
     missionName,
     onReloadMissions,
@@ -1157,6 +1178,18 @@ export function PlanningPage({
         setUnitsStatus(`Oppdaterte avgrensningen for ${selectedUnit.source_field_name}.`);
       } catch (error) {
         const apiError = error as ApiError;
+        setUnits((current) =>
+          current.map((unit) =>
+            unit.id === selectedUnit.id
+              ? {
+                  ...unit,
+                  geometry: selectedUnit.geometry,
+                }
+              : unit,
+          ),
+        );
+        setPreview(null);
+        setPreviewStatus("");
         setUnitsStatus(`Kunne ikke oppdatere området: ${apiError.message}`);
       } finally {
         setFieldGeometryBusy(false);
@@ -1724,6 +1757,7 @@ export function PlanningPage({
                       type="text"
                       value={missionName}
                       onChange={(event) => setMissionName(event.target.value)}
+                      disabled={!canEdit}
                       placeholder={selectedUnit.name}
                       className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                     />
@@ -1742,6 +1776,7 @@ export function PlanningPage({
                           ),
                         );
                       }}
+                      disabled={!canEdit}
                       className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                     >
                       {profiles.map((profile) => (
@@ -1769,6 +1804,7 @@ export function PlanningPage({
                             ),
                           );
                         }}
+                        disabled={!canEdit}
                         className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                       >
                         {selectedDroneProfile.camera_presets.map((preset) => (
@@ -1810,6 +1846,7 @@ export function PlanningPage({
                                   }),
                             }));
                           }}
+                          disabled={!canEdit}
                           className="w-full rounded-xl bg-fb-surface-ghost px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                         />
                       </label>
@@ -1839,6 +1876,7 @@ export function PlanningPage({
                                 terrain_mode: mode,
                               }))
                             }
+                            disabled={!canEdit}
                           >
                             {label}
                           </button>
@@ -1909,6 +1947,7 @@ export function PlanningPage({
                           launchMode ? "bg-fb-accent-primary text-white" : "bg-fb-surface-ghost text-fb-text-primary hover:bg-white",
                         )}
                         onClick={() => setToolMode((current) => (current === "launch" ? "select" : "launch"))}
+                        disabled={!canEdit}
                       >
                         {parameters.launch_point ? "Flytt startpunkt" : "Sett startpunkt"}
                       </button>
@@ -1919,6 +1958,7 @@ export function PlanningPage({
                           landingMode ? "bg-fb-accent-primary text-white" : "bg-fb-surface-ghost text-fb-text-primary hover:bg-white",
                         )}
                         onClick={() => setToolMode((current) => (current === "landing" ? "select" : "landing"))}
+                        disabled={!canEdit}
                       >
                         {parameters.landing_point ? "Flytt landingspunkt" : "Sett landingspunkt"}
                       </button>
@@ -1930,6 +1970,7 @@ export function PlanningPage({
                         noGoMode ? "bg-fb-accent-primary text-white" : "bg-fb-surface-ghost text-fb-text-primary hover:bg-white",
                       )}
                       onClick={() => setToolMode((current) => (current === "no_go" ? "select" : "no_go"))}
+                      disabled={!canEdit}
                     >
                       Legg til hinder
                     </button>
@@ -1938,6 +1979,7 @@ export function PlanningPage({
                         type="button"
                         className="rounded-xl bg-fb-surface-ghost px-3 py-2 text-left text-xs font-medium text-fb-text-primary transition-colors hover:bg-white"
                         onClick={handleCopyLaunchPointToLanding}
+                        disabled={!canEdit}
                       >
                         {parameters.landing_point &&
                         parameters.landing_point.lat === parameters.launch_point.lat &&
@@ -1998,6 +2040,7 @@ export function PlanningPage({
                                   width_m: Number(event.target.value) || buffer.width_m,
                                 })
                               }
+                              disabled={!canEdit}
                               className="w-full rounded-xl bg-fb-surface-ghost px-2 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                             />
                             <input
@@ -2012,6 +2055,7 @@ export function PlanningPage({
                                   height_m: Number(event.target.value) || buffer.height_m,
                                 })
                               }
+                              disabled={!canEdit}
                               className="w-full rounded-xl bg-fb-surface-ghost px-2 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                             />
                             <button
@@ -2021,6 +2065,7 @@ export function PlanningPage({
                                 event.stopPropagation();
                                 handleRemoveNoGoBuffer(buffer.id);
                               }}
+                              disabled={!canEdit}
                             >
                               Fjern
                             </button>
@@ -2057,10 +2102,10 @@ export function PlanningPage({
                     type="button"
                     className="w-full"
                     onClick={() => void handleCreateMission()}
-                    disabled={!canEdit || selectedMissionUnitIds.length === 0}
+                    disabled={!canSaveMission}
                     loading={createBusy}
                     loadingLabel={selectedUnitMission ? "Oppdaterer plan" : "Lagrer plan"}
-                    help={selectedUnitMission ? "Oppdater planen som allerede er lagret for dette området." : "Lagre en ny plan for dette området."}
+                    help={saveMissionHelp}
                   >
                     <Plane className="h-4 w-4" />
                     {selectedUnitMission ? "Oppdater plan" : "Lagre plan"}
