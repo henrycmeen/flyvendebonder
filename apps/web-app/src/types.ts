@@ -490,3 +490,67 @@ export interface ImportRun {
   files_skipped: number;
   errors_json: string;
 }
+
+export type MediaStagingJobStatus = "staged" | "finalized" | "failed";
+export type MediaStagingItemStatus = "staged" | "rejected";
+export type MediaStagingKind = "image" | "video" | "unknown";
+export type MediaFinalizeItemStatus = "imported" | "skipped" | "created" | "reused" | "rejected" | "failed";
+
+export interface MediaStagingItem {
+  id: number;
+  filename: string;
+  mime: string | null;
+  bytes: number;
+  checksum: string | null;
+  media_kind: MediaStagingKind;
+  status: MediaStagingItemStatus;
+  error_detail: string | null;
+}
+
+export interface MediaStagingCounts {
+  total: number;
+  image_count: number;
+  video_count: number;
+  unknown_count: number;
+  rejected_count: number;
+}
+
+export interface MediaStagingJob {
+  job_id: string;
+  source: string;
+  status: MediaStagingJobStatus;
+  counts: MediaStagingCounts;
+  items: MediaStagingItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MediaStagingEnvelope {
+  job: MediaStagingJob;
+}
+
+export interface MediaFinalizeItem {
+  staging_item_id: number;
+  filename: string;
+  media_kind: MediaStagingKind;
+  status: MediaFinalizeItemStatus;
+  photo_id: string | null;
+  video_job_id: string | null;
+  detail: string | null;
+}
+
+export interface MediaFinalizeResult {
+  job_id: string;
+  status: MediaStagingJobStatus;
+  import_run_id: number | null;
+  image_imported_count: number;
+  image_skipped_count: number;
+  video_jobs_created: number;
+  video_jobs_reused: number;
+  rejected_count: number;
+  items: MediaFinalizeItem[];
+}
+
+export interface MediaFinalizeEnvelope {
+  result: MediaFinalizeResult;
+}

@@ -40,6 +40,28 @@ def _classify_media(*, filename: str, mime: str | None) -> tuple[str, str, str |
     return "unknown", "rejected", "Ukjent eller ikke-støttet filtype"
 
 
+def _import_errors_by_staged_filename(import_run) -> dict[str, str]:
+    if import_run is None:
+        return {}
+    try:
+        raw_errors = json.loads(import_run.errors_json or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_errors, list):
+        return {}
+
+    errors: dict[str, str] = {}
+    for entry in raw_errors:
+        if not isinstance(entry, dict):
+            continue
+        raw_file = entry.get("file")
+        if not raw_file:
+            continue
+        detail = str(entry.get("error") or "Importløypa kunne ikke lese bildet.").strip()
+        errors[Path(str(raw_file)).name] = detail or "Importløypa kunne ikke lese bildet."
+    return errors
+
+
 def staging_job_dir(app_data_root: Path, job_id: str) -> Path:
     return app_data_root / "media-staging" / job_id
 
@@ -182,6 +204,7 @@ def finalize_media_staging_job(
             user_id=job.user_id,
             property_id=job.property_id,
         )
+    import_errors_by_filename = _import_errors_by_staged_filename(import_run)
 
     imported_photos = (
         db.execute(
@@ -211,7 +234,26 @@ def finalize_media_staging_job(
             )
             continue
         photo = imported_photo_by_checksum.get(item.checksum or "")
-        was_existing = item.checksum in existing_photo_by_checksum
+        was_existing = bool(item.checksum and item.checksum in existing_photo_by_checksum)
+        if photo is None:
+            staged_filename = Path(item.staged_path or item.filename).name
+            detail = (
+                import_errors_by_filename.get(staged_filename)
+                or import_errors_by_filename.get(item.filename)
+                or "Bildet ble ikke opprettet av importløypa."
+            )
+            item_results.append(
+                {
+                    "staging_item_id": item.id,
+                    "filename": item.filename,
+                    "media_kind": item.media_kind,
+                    "status": "failed",
+                    "photo_id": None,
+                    "video_job_id": None,
+                    "detail": detail,
+                }
+            )
+            continue
         item_results.append(
             {
                 "staging_item_id": item.id,
