@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet.markercluster";
 
 import type { FieldPlot, FieldPlotDraft, FlightMission, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
+import { formatPropertyReference } from "@/lib/formatters";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
@@ -96,6 +97,15 @@ function inferMediaKind(photo: PhotoFeature): MediaKind {
   return "camera";
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildPinClassName(active: boolean, photo: PhotoFeature | null): string {
   const base = `fb-media-pin${active ? " fb-media-pin--active" : ""}`;
   if (!photo || !photo.analysis) {
@@ -152,10 +162,6 @@ function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefine
 function toPhotoLatLng(photo: PhotoFeature): LatLngPair | null {
   if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lng)) return null;
   return [photo.lat, photo.lng];
-}
-
-function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
-  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
 }
 
 function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
@@ -284,7 +290,7 @@ function mapMediaPinIcon(
     className: "fb-media-pin-shell",
     iconSize: [34, 34],
     iconAnchor: [17, 17],
-    html: `<span class="${className}" data-kind="${kind}" data-season="${season}" data-title="${buildPinTitle(photo)}">${pinVisual}</span>`,
+    html: `<span class="${className}" data-kind="${escapeHtmlAttribute(kind)}" data-season="${escapeHtmlAttribute(season)}" data-title="${escapeHtmlAttribute(buildPinTitle(photo))}">${pinVisual}</span>`,
   });
 }
 

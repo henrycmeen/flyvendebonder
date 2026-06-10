@@ -124,7 +124,7 @@ if [[ -z "$PHOTOS_PAYLOAD" ]]; then
 fi
 
 echo "[4/5] Assets og logger"
-THUMB_URL="$(python - "$PHOTOS_PAYLOAD" <<'PY'
+THUMB_URL="$(python3 - "$PHOTOS_PAYLOAD" <<'PY'
 import json
 import sys
 

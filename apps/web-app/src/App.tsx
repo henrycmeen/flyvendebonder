@@ -11,6 +11,7 @@ import {
   formatGeometryMethod,
   formatGsd,
   formatMeters,
+  formatPropertyReference,
   formatPercent,
   formatQCRating,
   getAnalysisToneText,
@@ -101,10 +102,6 @@ const BROWSER_MEDIA_IMPORT_DISABLED_REASON =
 const VIDEO_WORKFLOW_ENABLED = false;
 const VIDEO_WORKFLOW_DISABLED_REASON =
   "Videoflyten er midlertidig slått av. Repo-backenden har ikke /api/v1/video-jobs-kontrakten i denne versjonen.";
-function formatPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
-  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
-}
-
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
@@ -270,10 +267,6 @@ function sortFlightMissions(items: FlightMission[]): FlightMission[] {
     if (updatedDiff !== 0) return updatedDiff;
     return right.id - left.id;
   });
-}
-
-function buildPropertyReference(property: Pick<Property, "komm" | "gnr" | "bnr" | "fnr">): string {
-  return `${property.komm}-${property.gnr}/${property.bnr}/${property.fnr}`;
 }
 
 export default function App() {
@@ -582,14 +575,14 @@ export default function App() {
   );
 
   const orthophotoDates = useMemo(() => {
-    const propertyReferences = new Set(activeProperties.map((property) => buildPropertyReference(property)));
+    const propertyReferences = new Set(activeProperties.map((property) => formatPropertyReference(property)));
     return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference)).map(
       (overlay) => overlay.capturedDate,
     );
   }, [activeProperties]);
 
   const activeOrthophotoOverlays = useMemo(() => {
-    const propertyReferences = new Set(activeProperties.map((property) => buildPropertyReference(property)));
+    const propertyReferences = new Set(activeProperties.map((property) => formatPropertyReference(property)));
     return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference));
   }, [activeProperties]);
 

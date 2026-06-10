@@ -17,3 +17,5 @@ apps/web-app/node_modules/
 apps/web-app/dist/
 __pycache__/
 *.pyc
+.venv/
+.env
