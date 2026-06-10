@@ -204,6 +204,30 @@ def test_media_staging_job_finalize_materializes_images_and_videos(client, monke
     assert staging_get.json()["job"]["status"] == "finalized"
 
 
+def test_media_staging_finalize_reports_failed_image_when_ingest_cannot_materialize(client):
+    staging_response = client.post(
+        "/api/v1/media-staging-jobs",
+        files=[
+            ("files", ("corrupt.jpg", b"not-a-real-image", "image/jpeg")),
+        ],
+    )
+    assert staging_response.status_code == 201
+    job_id = staging_response.json()["job"]["job_id"]
+
+    finalize_response = client.post(f"/api/v1/media-staging-jobs/{job_id}/finalize")
+
+    assert finalize_response.status_code == 200
+    result = finalize_response.json()["result"]
+    assert result["import_run_id"] is not None
+    assert result["image_imported_count"] == 0
+    assert result["image_skipped_count"] == 0
+    assert len(result["items"]) == 1
+    image_result = result["items"][0]
+    assert image_result["status"] == "failed"
+    assert image_result["photo_id"] is None
+    assert image_result["detail"]
+
+
 def test_media_staging_job_finalize_is_idempotent_for_simple_retry(client, monkeypatch):
     _install_fake_image_metadata(monkeypatch)
 
