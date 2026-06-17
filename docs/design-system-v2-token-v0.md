@@ -7,6 +7,12 @@ Dette er en praktisk startversjon for appen (`apps/web-app`) basert på dagens U
 - Gjør dagens fargebruk forutsigbar ved å konvertere direkte verdier til semantiske token-navn.
 - Hold det lite i starten: 8–12 primitive/funksjonelle farger, 2 radius-nivåer, 3 spacing-lag i praksis.
 
+## Skjermkontrakter
+- Skjermmening og arbeidsdeling mellom `Kart`, `Album`, `Import` og `Fotoinspektør`
+  er dokumentert i `docs/skjermkontrakter-v1.md`.
+- Nye DS-v2-endringer bør kunne si hvilken skjermkontrakt de forbedrer, slik at
+  token-, layout- og komponentarbeid ikke løsriver seg fra brukerjobben.
+
 ## Kjernefarger (primitive)
 - `--fb-canvas-0: #f3ddbe`
 - `--fb-canvas-1: #dfbe96`
