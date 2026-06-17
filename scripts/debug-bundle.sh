@@ -14,6 +14,7 @@ TARGET="${OUTPUT_DIR}/${BUNDLE_NAME}.tgz"
 
 BACKEND_DIR="$ROOT_DIR/apps/backend-api"
 WEB_DIR="$ROOT_DIR/apps/web-app"
+INCIDENTS_DIR="$ROOT_DIR/docs/debug/incidents"
 BACKEND_LOG_FILE="${BACKEND_DIR}/logs/backend.log"
 BACKEND_LOG_FALLBACK="${HOME}/Library/Logs/flyvendebonder/backend.log"
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
@@ -153,6 +154,60 @@ PY
   echo
   echo "Frontend node_modules present: $([[ -d \"$WEB_DIR/node_modules\" ]] && echo yes || echo no)"
 } >"${WORK_DIR}/frontend-debug.txt"
+
+{
+  echo "# Incident summary"
+  echo "Source: docs/debug/incidents"
+  echo
+  if [[ -d "$INCIDENTS_DIR" ]]; then
+    python3 - "$INCIDENTS_DIR" <<'PY'
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+import sys
+
+incidents_dir = Path(sys.argv[1])
+incident_files = sorted(path for path in incidents_dir.glob("*.md") if path.name != "TEMPLATE.md")
+
+if not incident_files:
+    print("No incident files found.")
+    raise SystemExit
+
+for incident_file in incident_files:
+    text = incident_file.read_text(encoding="utf-8")
+    metadata: dict[str, str] = {}
+
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            for line in parts[1].splitlines():
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                metadata[key.strip()] = value.strip().strip('"')
+
+    title = incident_file.stem
+    for line in text.splitlines():
+        if line.startswith("# Incident:"):
+            title = line.removeprefix("# Incident:").strip()
+            break
+
+    updated_at = datetime.fromtimestamp(incident_file.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    print(f"- {title}")
+    print(f"  file: docs/debug/incidents/{incident_file.name}")
+    print(f"  slug: {metadata.get('slug', 'unknown')}")
+    print(f"  reported_by: {metadata.get('reported_by', 'unknown')}")
+    print(f"  status: {metadata.get('status', 'unknown')}")
+    print(f"  issue: {metadata.get('issue', 'unknown')}")
+    print(f"  updated: {updated_at}")
+PY
+  else
+    echo "No incident directory found."
+    echo "Checked: $INCIDENTS_DIR"
+  fi
+} >"${WORK_DIR}/incident-summary.txt"
 
 {
   echo "# API smoke (if backend is running)"

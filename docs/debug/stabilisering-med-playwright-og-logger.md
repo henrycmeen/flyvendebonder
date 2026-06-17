@@ -39,7 +39,7 @@ ADMIN_ACCESS_CODE='<admin-kode>' \
 ./scripts/debug-bundle.sh
 ```
 
-Bundlen samler health, admin-session, logg-endepunkt, runtime-info og lokale backendlogger der de finnes.
+Bundlen samler health, admin-session, logg-endepunkt, runtime-info, lokal backendlogg og `incident-summary.txt` fra `docs/debug/incidents/`.
 
 ## 3) Les frontendlogger mens Playwright kjører
 Frontend eksponerer nå et debug-API i nettleseren:
