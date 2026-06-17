@@ -5,19 +5,16 @@ Dette dokumentet beskriver standardoppsettet for `Cline Kanban` i Flyvendebonder
 ## Status
 - `cline` er installert globalt med `npm install -g cline`
 - Standard provider i Cline er satt til `openai-codex`
-- `Linear` MCP-server er lagt inn i Cline
 - Repoet har eget oppstartsskript for Kanban
+- GitHub Issues og GitHub Milestones er standard arbeidsflate for nye oppgaver
 
 ## Verifiser lokalt
 Kjor disse kommandoene for a bekrefte oppsettet:
 
 ```bash
 cline --version
-cline mcp add --type http linear https://mcp.linear.app/mcp
 ./scripts/run-cline-kanban.sh
 ```
-
-`cline mcp add` er trygg a kjore flere ganger; den oppdaterer samme servernavn i Cline-konfigen.
 
 ## Auth
 Forste gangs oppsett eller reauth:
@@ -33,8 +30,10 @@ Velg:
 
 Flyvendebonder er satt opp med `openai-codex` som standard lokalt.
 
-## Linear MCP
-Serveren ligger i Cline sin konfig som:
+## Historisk Linear MCP
+Linear MCP kan finnes i lokal Cline-konfig fra tidligere oppsett, men skal ikke brukes som standard arbeidsflate for Flyvendebonder. Behold eller bruk den bare dersom Henry eksplisitt ber om historisk oppslag eller migrering.
+
+Eksempel på tidligere konfig:
 
 ```json
 {
@@ -47,7 +46,7 @@ Serveren ligger i Cline sin konfig som:
 }
 ```
 
-Ved forste bruk i Cline kan `Linear` be om egen auth.
+Ved forste bruk i Cline kan `Linear` be om egen auth, men dette er ikke nødvendig for dagens GitHub-first flyt.
 
 ## Start Kanban i repoet
 Fra repo-roten:
@@ -65,16 +64,17 @@ cline --kanban
 Kanban skal alltid startes fra repo-roten, slik at worktrees opprettes mot riktig git-arbeidstre.
 
 ## Praktisk bruk i Flyvendebonder
-1. Triager saken i `Linear`
+1. Triager saken i `GitHub Issues`
 2. Start Kanban
 3. Opprett eller generer kort
 4. Kjor agent per kort i egen worktree
 5. Review diff i Kanban
 6. Kjor validering
 7. Commit eller aapne PR
-8. Oppdater `Linear` med status og PR-lenke
+8. Oppdater GitHub issue med status, PR-lenke, validering og neste steg
 
 ## Grenser
 - `Kanban` erstatter ikke GitHub PR-review
 - `Kanban` erstatter ikke deploy-flyten
-- `Linear` er backlog og statusflate, ikke eneste sannhetskilde for kode
+- `GitHub Issues` og `GitHub Milestones` er backlog, statusflate og prioriteringsrekkefølge
+- `Linear` skal ikke brukes som standard arbeidsflate for nye Flyvendebønder-oppgaver

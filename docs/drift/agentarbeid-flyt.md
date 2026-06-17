@@ -1,9 +1,10 @@
-# Cline Kanban, GitHub og Linear i Flyvendebønder
+# Cline Kanban og GitHub i Flyvendebønder
 
-Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `Linear` som planflate og `Cline Kanban` som lokal agentflate.
+Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `GitHub Issues` og `GitHub Milestones` som planflate og `Cline Kanban` som lokal agentflate.
 
 ## Mål
-- Holde `Linear` som backlog, prioritering og prosjektstatus.
+- Holde `GitHub Issues` som backlog og statusflate.
+- Holde `GitHub Milestones` som prioriteringsrekkefølge.
 - Holde `Cline Kanban` som arbeidsflate for worktrees, agentkort og diff-review.
 - Holde `GitHub` som kode- og PR-system.
 - La alle PR-er få samme validering lokalt og i GitHub.
@@ -11,7 +12,6 @@ Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `
 ## Det som er satt opp
 - `cline` er installert globalt på maskinen.
 - `Cline` er satt til `openai-codex` som standard provider lokalt.
-- `Linear` MCP-server er lagt inn i Cline som remote server på `https://mcp.linear.app/mcp`.
 - Oppstartsskript finnes i `scripts/run-cline-kanban.sh`.
 - Repoet har `.clineignore` for å skjerme store eller irrelevante mapper fra agentkontekst.
 - PR-validering i `.github/workflows/pull-request-validate.yml`
@@ -22,18 +22,19 @@ Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `
 - Enkel listevisning for agentklare issues i `scripts/list-agent-ready-issues.sh`
 
 ## Operativ hovedflyt
-1. Triager saken i `Linear`.
+1. Triager saken i `GitHub Issues`.
 2. Del saken i konkrete arbeidsbiter hvis den er for stor.
-3. Start Kanban fra repo-roten:
+3. Bruk GitHub milestone som prioriteringsrekkefølge, ikke egne prioritet-labels.
+4. Start Kanban fra repo-roten:
    - `./scripts/run-cline-kanban.sh`
-4. Opprett ett Kanban-kort per konkret kodeoppgave.
-5. La agenten jobbe i egen worktree fra Kanban.
-6. Review diff i Kanban før commit eller PR.
-7. Kjor lokal validering ved behov eller som egen agentoppgave:
+5. Opprett ett Kanban-kort per konkret kodeoppgave.
+6. La agenten jobbe i egen worktree fra Kanban.
+7. Review diff i Kanban før commit eller PR.
+8. Kjor lokal validering ved behov eller som egen agentoppgave:
    - `./scripts/validate-agent-worktree.sh`
    - `./scripts/run-stack-smoke.sh`
-8. Aapne eller oppdater PR i GitHub.
-9. Oppdater `Linear` manuelt med status og lenke til PR.
+9. Aapne eller oppdater PR i GitHub.
+10. Oppdater GitHub issue med status, PR-lenke, validering og neste steg.
 
 ## Standard valideringsløype
 1. Installer avhengigheter:
@@ -52,21 +53,21 @@ Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `
 3. Hold auto-merge av til flyten er stabil.
 
 ## Praktisk rollefordeling
-- `Linear`: prioritering, scope, status og prosjektoversikt.
+- `GitHub Issues`: backlog, scope, status og prosjektoversikt.
+- `GitHub Milestones`: prioriteringsrekkefølge.
 - `Cline Kanban`: kjore agentoppgaver i worktrees, følge progresjon og reviewe diff.
 - `GitHub`: endelig PR, checks og merge.
-- Ikke prøv å speile alt perfekt mellom `Linear`, Kanban og GitHub. `Linear` kan gjerne eie epics og intern oppdeling, mens GitHub bare fanger det som faktisk blir kodeendringer og PR-er.
+- Ikke prøv å speile alt mellom gamle Linear-saker, Kanban og GitHub. GitHub er sannhetskilden for nye oppgaver i dette repoet.
 
-## Linear i Cline
-- `Linear`-serveren er lagt inn i Cline via MCP.
-- Auth mot `Linear` skjer i Cline ved forste faktiske bruk av serveren.
-- Bruk `Linear` som kontekst og oppslag for saker, ikke som rigid state-maskin for agentkort.
-- Kanban-kort kan opprettes manuelt ut fra `Linear`, eller du kan be sidebaren i Kanban om a bryte ned en sak til flere kort.
+## Historisk Linear-oppsett
+- Linear kan finnes i eldre dokumentasjon eller lokal MCP-konfig, men skal ikke brukes som standard arbeidsflate for Flyvendebønder.
+- Nye oppgaver, prioritering og status skal ligge i GitHub Issues og GitHub Milestones.
+- Bruk bare Linear dersom Henry eksplisitt ber om det for historisk oppslag eller migrering.
 
 ## Kanban-regler for dette repoet
 - Ett kort per konkret kodeendring eller reviewbar valideringsjobb.
 - Hold kortene sma nok til at diffen er lett a reviewe.
-- Bruk manuell commit/PR som standard inntil flyten er stabil over tid.
+- Bruk GitHub issue og milestone som referanse for hvert agentkort.
 - Ikke la Kanban drive deploy direkte; deploy gar fortsatt via vanlig PR til `main` og eksisterende GitHub Actions-flyt.
 
 ## Labels

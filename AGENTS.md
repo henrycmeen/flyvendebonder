@@ -11,17 +11,17 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `scripts/` – deploy-steg, import og vedlikehold
 - `docs/` – dokumentasjon, drift og planlegging
 - `docs/status/` – prosjektstatus og ukentlige notater
-- `Linear` – primær arbeidsflate for backlog, prioritering og status (`https://linear.app/henrymeen/project/flyvendebonder-caba5c6a47de`)
-- `GitHub Issues` – repo-nære issues og speiling av utvalgte oppgaver (`https://github.com/henrycmeen/flyvendebonder/issues`)
+- `GitHub Issues` – primær arbeidsflate for backlog, prioritering og status (`https://github.com/henrycmeen/flyvendebonder/issues`)
 
 ## Standard arbeidsflyt
-1. Triager og prioriter arbeid i Linear først når saken trenger prosjektkontekst eller splitting.
-2. Kjor repo-naert agentarbeid i Cline Kanban naer oppgaven passer for worktree-basert flyt.
-3. Knytt arbeid til GitHub-issue eller PR når endringen er repo-nær og reviewbar.
-4. Løs med små, målbare steg.
-5. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
-6. Merge til `main` når endringen er klar for live.
-7. Oppdater status i `docs/status/` ved større leveranser.
+1. Triager og prioriter arbeid i GitHub Issues først.
+2. Bruk GitHub milestones som prioriteringsrekkefølge; ikke bruk egne prioritet-labels.
+3. Kjor repo-naert agentarbeid i Cline Kanban naer oppgaven passer for worktree-basert flyt.
+4. Knytt arbeid til GitHub-issue og PR når endringen er repo-nær og reviewbar.
+5. Løs med små, målbare steg.
+6. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
+7. Merge til `main` når endringen er klar for live.
+8. Oppdater status i `docs/status/` ved større leveranser.
 
 ## Lokale kommandoer
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
@@ -56,8 +56,11 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 
 ## Agentflate
 - `Cline Kanban` er standard lokal agentflate for parallelle worktrees og diff-review.
-- `Linear` er fortsatt backlog og prioriteringsflate.
-- `GitHub` er fortsatt endelig PR- og mergeflate.
+- `GitHub Issues` er backlog, prioriteringsflate og statusflate.
+- `GitHub Pull Requests` er review-, merge- og leveranseflate.
+- `GitHub Milestones` styrer rekkefølge og prioritet.
+- Labels skal beskrive type, område eller avklaring, ikke prioritet.
+- `Linear` skal ikke brukes som standard arbeidsflate for nye oppgaver i dette repoet.
 
 ## Konvensjoner
 - Behold norsk språk i brukergrensesnittet.
