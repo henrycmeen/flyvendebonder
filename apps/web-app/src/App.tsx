@@ -2591,6 +2591,7 @@ export default function App() {
     }
 
     setSoilStatus("Jordsmonnlag lastes ...");
+    setSoilRefreshToken((value) => value + 1);
     addLog("info", "Jordsmonnlag skrudd på av bruker");
   }, [addLog]);
 
