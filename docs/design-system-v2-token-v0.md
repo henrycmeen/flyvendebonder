@@ -223,3 +223,16 @@ Målet er å bevise at primitives fungerer i innholdsflow (album), kontrollflow 
 - Fjernet kontinuerlig `timeline-chip` sommer-sway-loop og flyttet til subtil hover/focus-respons uten loop.
 - Strammet `prefers-reduced-motion` med global fallback for transition/animation + transform-fjerning på chips/dots/logo-hover.
 - La til typekontrakt for motion i `apps/web-app/src/lib/motion-tokens.ts` for videre utvidelse.
+
+## DS-17 Web-app: core UI primitive completion
+- Lagt til manglende DS-04-primitives i `apps/web-app/src/components/ui/`:
+  - `Textarea`
+  - `Alert`
+  - `Skeleton`
+  - `EmptyState`
+- Alle fire bruker eksisterende `fb-*` semantiske tokens for surface, tekst, border, focus/state og motion.
+- `Textarea` speiler `Input`-kontrakten for `aria-invalid`, `feedbackState`, disabled og focus-ring.
+- `Alert` har `default`, `success`, `warning` og `error`-varianter uten egne hardkodede komponentfarger.
+- `Skeleton` respekterer `prefers-reduced-motion` via `motion-reduce:animate-none`.
+- `EmptyState` gir en felles standard for tomme kart-, album-, import- og inspeksjonsflater.
+- Se `docs/ui-audit.md` for oppdatert M2-status og resterende lukking av #31.
