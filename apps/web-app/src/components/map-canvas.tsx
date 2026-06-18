@@ -818,8 +818,9 @@ export function MapCanvas({
         const tileLayer = L.tileLayer(overlay.tileLayer.urlTemplate, {
           pane: "orthophotoPane",
           opacity: overlay.opacity ?? 0.8,
-          minZoom: overlay.tileLayer.minZoom,
-          maxZoom: overlay.tileLayer.maxZoom,
+          minZoom: 0,
+          maxZoom: FALLBACK_MAX_ZOOM,
+          minNativeZoom: overlay.tileLayer.minZoom,
           maxNativeZoom: overlay.tileLayer.maxNativeZoom,
           tileSize: overlay.tileLayer.tileSize,
           bounds,
