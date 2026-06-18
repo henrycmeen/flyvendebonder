@@ -44,6 +44,6 @@ Dette er en repo-naer status for M2-epic #31: `Designsystem v2 - shadcn-first + 
 
 ## Neste lukking av M2
 
-- Lag en liten oppfolging for a migrere kart-/album-/import-tomtilstander til `EmptyState`.
-- Lag en liten oppfolging for a erstatte spesialstylet `CloseButton` med tokenisert variant eller dokumentert unntak.
+- `CloseButton` er tokenisert uten lokale farge-/gradientliterals.
+- Album og import bruker felles `EmptyState` for reelle tomtilstander, med desktop- og mobilskjermbilder i `docs/ui-audit/screens/`.
 - Kommenter #31 med denne auditstatusen og lukk epicen forst nar de siste praktiske governancepunktene er enten levert eller flyttet til konkrete issues.
