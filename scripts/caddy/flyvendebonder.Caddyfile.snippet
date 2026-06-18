@@ -6,6 +6,9 @@ handle @flyvendebonder {
   root * /Users/henrymeen/srv/www/flyvendebonder
   encode zstd gzip
 
+  @site_root path /
+  redir @site_root /app/?{query} 302
+
   @demo_root path /demo
   redir @demo_root /app/?{query} 301
 
@@ -14,6 +17,9 @@ handle @flyvendebonder {
 
   @app_no_slash path /app
   redir @app_no_slash /app/ 301
+
+  @info_no_slash path /info
+  redir @info_no_slash /info/ 301
 
   # Asset cache policy (same policy as backend for clear ops documentation).
   @asset_immutable path /api/v1/assets/photos/thumb/* /api/v1/assets/photos/web/*
