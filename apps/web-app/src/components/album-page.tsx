@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Clock3, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Divider, Grid, PageShell } from "@/components/ui/layout-primitives";
 import { splitCapturedDate } from "@/lib/formatters";
@@ -371,19 +372,26 @@ export function AlbumPage({
             ) : null}
 
             {!isLoading && sortedPhotos.length === 0 && !loadFailed ? (
-              <section className="py-6 text-center text-fb-text-secondary">Ingen bilder å vise i album enda.</section>
+              <EmptyState
+                className="min-h-[220px]"
+                icon={<CalendarDays className="h-5 w-5" />}
+                title="Ingen bilder i albumet enda"
+                description="Albumet viser importerte bilder sortert etter tidspunkt, år og sesong. Gå til Import når første bildefangst skal inn."
+              />
             ) : null}
 
             {!isLoading && sortedPhotos.length > 0 && filteredPhotos.length === 0 && !loadFailed ? (
-              <section className="rounded-2xl border border-dashed border-fb-border-subtle bg-fb-surface-ghost px-4 py-6 text-center">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-fb-text-primary">Ingen bilder matcher filtrene akkurat nå.</p>
-                  <p className="text-sm text-fb-text-secondary">
-                    {hasMore
-                      ? "Det kan fortsatt ligge treff i eldre sider som ikke er lastet inn ennå."
-                      : "Prøv et annet søk, eller fjern år- og sesongord som 2025 og høst."}
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <EmptyState
+                className="min-h-[220px]"
+                icon={<Search className="h-5 w-5" />}
+                title="Ingen bilder matcher filtrene"
+                description={
+                  hasMore
+                    ? "Det kan fortsatt ligge treff i eldre albumsider som ikke er lastet inn ennå."
+                    : "Prøv et annet søk, eller fjern år- og sesongord som 2025 og høst."
+                }
+                actions={
+                  <>
                     {hasActiveFilters ? (
                       <Button type="button" size="sm" variant="outline" onClick={() => setSearchQuery("")}>
                         Nullstill filter
@@ -394,9 +402,9 @@ export function AlbumPage({
                         Last eldre bilder
                       </Button>
                     ) : null}
-                  </div>
-                </div>
-              </section>
+                  </>
+                }
+              />
             ) : null}
 
             {groupedPhotos.map((group, index) => (

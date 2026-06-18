@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { FolderOpen, ImagePlus, Loader2, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageShell } from "@/components/ui/layout-primitives";
 import { cn } from "@/lib/utils";
 
@@ -219,24 +220,28 @@ export function MediaImportPage({
                   });
                 }}
               >
-                <div className="flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-[26px] border-2 border-dashed border-fb-border-subtle bg-fb-surface-base px-6 py-10 text-center sm:min-h-[360px] sm:px-10">
-                  <UploadCloud className="h-10 w-10 text-fb-text-secondary" />
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <Button type="button" size="lg" onClick={() => folderInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
-                      <FolderOpen className="mr-2 h-4 w-4" />
-                      Velg mappe
-                    </Button>
-                    <Button type="button" size="lg" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
-                      <ImagePlus className="mr-2 h-4 w-4" />
-                      Velg filer
-                    </Button>
-                  </div>
-                  {disabledMessage ? (
-                    <p className="max-w-xl rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3 text-sm text-fb-text-secondary">
-                      {disabledMessage}
-                    </p>
-                  ) : null}
-                </div>
+                <EmptyState
+                  className="min-h-[320px] rounded-[26px] border-2 bg-fb-surface-base px-6 py-10 sm:min-h-[360px] sm:px-10"
+                  icon={<UploadCloud className="h-5 w-5" />}
+                  title="Ingen filer valgt ennå"
+                  description={
+                    disabledMessage
+                      ? `${disabledMessage} Når admin er aktiv, velg mappe eller bildefiler fra dronefangsten for kvalitetssikring.`
+                      : "Velg en mappe eller enkeltfiler fra dronefangsten. Importen tar bildefiler videre til kvalitetssikring."
+                  }
+                  actions={
+                    <>
+                      <Button type="button" size="lg" onClick={() => folderInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        Velg mappe
+                      </Button>
+                      <Button type="button" size="lg" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy || Boolean(disabledMessage)}>
+                        <ImagePlus className="mr-2 h-4 w-4" />
+                        Velg filer
+                      </Button>
+                    </>
+                  }
+                />
               </div>
 
               {items.length > 0 ? (
