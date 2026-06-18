@@ -122,6 +122,8 @@ Bare for ett prosjekt:
 ./scripts/sync-orthophoto-overlays.py --project jorde-3
 ```
 
+For tile-basert visning fra samme ortofoto, se `docs/drift/orthophoto-tiles-v1.md`.
+
 ## Kjent ODM-problem akkurat nå
 `opendronemap/odm:latest` på denne maskinen fullfører selve prosesseringen, men kan krasje helt til slutt i `odm_report` på en `NumPy/GDAL`-konflikt når preview-rapporten lages.
 
