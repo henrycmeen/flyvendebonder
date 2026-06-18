@@ -1,8 +1,9 @@
 # Flyvendebønder monorepo
 
 ## Struktur
-- `apps/info-site/`: produksjonskilde for infosiden (`/`)
-- `apps/web-app/`: React + TypeScript + shadcn/ui kartapp (`/app/`)
+- `apps/root-redirect/`: statisk redirect fra hovedsiden (`/`) til appen (`/app/`)
+- `apps/info-site/`: produksjonskilde for infosiden (`/info/`)
+- `apps/web-app/`: React + TypeScript + shadcn/ui kartapp (`/app/`, med `/` som inngang)
 - `apps/demo-fotokart/`: legacy demo (beholdt som referanse)
 - `apps/backend-api/`: FastAPI + SQLAlchemy + Alembic + SQLite
 - `apps/shared-assets/`: felles assets (logo/video)
@@ -88,7 +89,8 @@ Kjør full stack-smoke når endringen påvirker frontend, routing eller API-over
    python3 -m http.server 8000
    ```
 3. Åpne:
-   - `http://localhost:8000/`
+   - `http://localhost:8000/` (redirect til `/app/`)
+   - `http://localhost:8000/info/`
    - `http://localhost:8000/app/`
 
 ## Deploy til Mac mini

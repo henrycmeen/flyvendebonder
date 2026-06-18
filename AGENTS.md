@@ -4,7 +4,8 @@
 Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på kort sikt: hva som er bygget nå, hvordan vi dokumenterer status, og hvordan vi holder utviklingen ryddig.
 
 ## Struktur
-- `apps/info-site/` – nåværende hovedinfoside (`/`)
+- `apps/root-redirect/` – enkel redirect fra hovedsiden (`/`) til appen (`/app/`)
+- `apps/info-site/` – infosiden (`/info/`)
 - `apps/web-app/` – kartsystemet med kart, profil og tidslinje (`/app/`)
 - `apps/backend-api/` – FastAPI-backend + database + import og eiendomslags-logikk
 - `apps/shared-assets/` – felles logo/ikoner/bilder

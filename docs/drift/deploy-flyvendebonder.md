@@ -7,7 +7,8 @@
 
 ## Staging
 Bygg en lokal staging-kopi med riktig URL-struktur:
-- infoside på `/`
+- hovedside `/` redirecter til appen
+- infoside på `/info/`
 - React web-app på `/app/`
 
 ```bash
@@ -15,13 +16,16 @@ Bygg en lokal staging-kopi med riktig URL-struktur:
 ```
 
 Resultat i:
-- `.staging/webroot/index.html`
+- `.staging/webroot/index.html` (redirect til `/app/`)
+- `.staging/webroot/info/index.html`
 - `.staging/webroot/app/index.html`
 
 `prepare-webroot.sh` gjør nå også:
 1. `npm install` i `apps/web-app` ved behov.
 2. `npm run build` i `apps/web-app`.
-3. Kopierer `apps/web-app/dist/*` til staging `/app/`.
+3. Kopierer `apps/root-redirect/*` til staging `/`.
+4. Kopierer `apps/info-site/*` til staging `/info/`.
+5. Kopierer `apps/web-app/dist/*` til staging `/app/`.
 
 ## Deploy
 ### Dry-run
@@ -87,7 +91,9 @@ Se:
 - `scripts/caddy/flyvendebonder.Caddyfile.snippet` (Caddy route for `/api/*`)
 
 ## URL-kompatibilitet
+- Hovedside: `/` redirecter til `/app/`.
 - Primær app-url: `/app/`
+- Infoside: `/info/`
 - Legacy URL: `/demo` og `/demo/*` redirectes med `301` til `/app/` (samme path/query)
 
 ## Bilde-optimalisering og backfill
@@ -126,7 +132,9 @@ python rebuild_derivatives.py --workers 1
 ./scripts/deploy-flyvendebonder.sh
 ```
 4. Valider:
+- `/` redirecter til `/app/`.
 - `/app/` åpner uten 404 på assets.
+- `/info/` åpner infosiden uten 404 på CSS/video.
 - `/api/v1/health` svarer `ok`.
 - `GET /api/v1/photos/page?...` returnerer `next_cursor`.
 - Asset-respons har forventet `Cache-Control` for `thumb/web` og `original`.
