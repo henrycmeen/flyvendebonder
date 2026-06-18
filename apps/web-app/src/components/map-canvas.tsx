@@ -50,7 +50,7 @@ interface MapCanvasProps {
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
 const EARTH_RADIUS_M = 6_371_000;
-const SOIL_WMS_URL = "https://wms.nibio.no/cgi-bin/jordkvalitet";
+const SOIL_WMS_URL = "https://wms.nibio.no/cgi-bin/jordsmonn";
 const SOIL_WMS_LAYER = "Jordkvalitet";
 const SOIL_LAYER_OPACITY = 0.34;
 
