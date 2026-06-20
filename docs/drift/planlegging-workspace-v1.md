@@ -17,6 +17,8 @@
 - `POST /api/v1/flight-missions`
 
 ## Viktige regler i v1
+- Geonorge/Kartverket sine teigdata er primær kilde for felt- og planleggingsgeometri, i tråd med `docs/drift/kildepolicy-v1.md`.
+- NIBIO jordsmonn, AR50, Gårdskart og AR5 skal behandles som kontekst-/overlay-kilder, ikke som eneste kilde til feltvalg.
 - bare `confirmed` `FieldPlot` auto-seedes til `PlanningUnit`
 - splitting er manuell og lager alltid to nye aktive barn
 - original planenhet arkiveres ved vellykket split

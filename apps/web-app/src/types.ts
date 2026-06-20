@@ -409,12 +409,12 @@ export interface PhotosPageResponse {
 
 export interface GardskartJob {
   property_id: number;
-  job_id: string;
+  job_id: string | null;
   status_code: number | null;
   status_desc: string | null;
-  fetched_at: string;
-  expires_at: string;
-  source: "cache" | "fresh" | "stale-cache";
+  fetched_at: string | null;
+  expires_at: string | null;
+  source: "cache" | "fresh" | "stale-cache" | "disabled";
   is_expired: boolean;
 }
 

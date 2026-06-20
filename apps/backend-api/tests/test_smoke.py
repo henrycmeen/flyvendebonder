@@ -178,8 +178,20 @@ def test_flight_missions_endpoint_smoke(client):
     assert payload["route_geojson"]["type"] == "FeatureCollection"
 
 
+def test_current_gardskart_job_endpoint_is_disabled_by_default(client):
+    response = client.get("/api/v1/properties/current/gardskart-job")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "disabled"
+    assert payload["job_id"] is None
+    assert payload["is_expired"] is False
+
+
 def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
     import app.api.v1 as v1
+
+    monkeypatch.setattr(v1.settings, "nibio_gardskart_enabled", True)
 
     created = client.patch(
         "/api/v1/profile/current",

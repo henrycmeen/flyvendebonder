@@ -1432,7 +1432,7 @@ export function MapCanvas({
       return;
     }
 
-    const jobByPropertyId = new Map(jobs.map((job) => [job.property_id, job]));
+    const jobByPropertyId = new Map(jobs.filter((job) => job.job_id).map((job) => [job.property_id, job]));
     const matchedProperties = properties.filter((property) => jobByPropertyId.has(property.id));
     if (matchedProperties.length === 0) {
       onPropertyStatus("Eiendomslag venter på gyldig jobId ...");
@@ -1442,7 +1442,8 @@ export function MapCanvas({
     const layerGroup = L.layerGroup();
     matchedProperties.forEach((property) => {
       const job = jobByPropertyId.get(property.id);
-      if (!job) return;
+      if (!job?.job_id) return;
+      const jobId = job.job_id;
 
       const wmsOptions: L.WMSOptions & { maxZoom?: number; [key: string]: unknown } = {
         layers: "eiendomsgrenser",
@@ -1451,7 +1452,7 @@ export function MapCanvas({
         transparent: true,
         version: "1.3.0",
         maxZoom: BASE_MAP_STYLES[baseMapStyle].maxZoom,
-        jobid: job.job_id,
+        jobid: jobId,
         pane: "propertyPane",
         attribution: "NIBIO Gårdskart",
       };
@@ -1459,7 +1460,7 @@ export function MapCanvas({
       const layer = L.tileLayer.wms("https://wms.nibio.no/cgi-bin/gardskart", wmsOptions);
       layer.on("tileerror", () => {
         onPropertyStatus("Eiendomslag feilet. Prøver automatisk oppfriskning ...");
-        onPropertyTileError(job.job_id);
+        onPropertyTileError(jobId);
       });
 
       layerGroup.addLayer(layer);

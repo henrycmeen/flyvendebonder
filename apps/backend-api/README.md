@@ -48,12 +48,13 @@ python3 import_photos.py "/Users/henmee/Movies/Droneshots/Meen gård/Analysebil
 ## Notes
 - Databasen ligger i `apps/backend-api/data/flyvendebonder.db`.
 - Ved funn av legacy/halv-migrert DB tar backend automatisk backup og migrerer på nytt.
-- `gardskart-job` endpoint fornyer jobId automatisk når cache er utløpt.
+- `gardskart-job` endpoint fornyer jobId automatisk når cache er utløpt, men NIBIO Gårdskart er deaktivert som sikker default. Sett `NIBIO_GARDSKART_ENABLED=true` bare i miljø med avklart tilgang.
 
 ## AR5 + jordsmonn (v0.1)
 - Analyse beriker bilder med `ar5_class` og `soil_class`.
 - Oppslagspunkt følger samme geometri som vises i appen (`view_lat/view_lng`-logikk), med fallback til dronepunkt.
-- Standardoppsett bruker NIBIO WMS `GetFeatureInfo`:
+- Kildepolicyen ligger i `docs/drift/kildepolicy-v1.md`. Kortversjonen er at Geonorge brukes som primær felt-/teigkilde, mens NIBIO-lag brukes som overlay eller analysekontekst.
+- Standardoppsett bruker NIBIO WMS `GetFeatureInfo`, men AR5/Gårdskart-avhengigheter må behandles som rettighetsstyrte i bred distribusjon:
   - AR5: `https://wms.nibio.no/cgi-bin/ar5` (`Arealtype`)
   - Jordkvalitet: `https://wms.nibio.no/cgi-bin/jordkvalitet` (`Jordkvalitet`)
 - WFS brukes som fallback der det er konfigurert.

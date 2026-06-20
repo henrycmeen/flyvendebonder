@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     demo_seed_assets_dir: Path = REPO_ROOT / "apps" / "demo-fotokart" / "assets" / "photos"
 
     nibio_job_ttl_hours: int = 24 * 6
+    nibio_gardskart_enabled: bool = False
     nibio_gpiareastat_url: str = "https://kart17.nibio.no/gardskart_ws_04/gpiareastat"
     geonorge_eiendom_api_url: str = "https://ws.geonorge.no/eiendom/v1"
     geonorge_http_timeout_seconds: float = 20.0

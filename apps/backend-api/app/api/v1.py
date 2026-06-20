@@ -359,6 +359,14 @@ async def _build_gardskart_job_response(
     *,
     force_refresh: bool,
 ) -> GardskartJobResponse:
+    if not settings.nibio_gardskart_enabled:
+        return GardskartJobResponse(
+            property_id=property_obj.id,
+            source="disabled",
+            status_desc="Gårdskart er deaktivert i dette miljøet.",
+            is_expired=False,
+        )
+
     try:
         cache, source = await get_job_id(db, property_obj=property_obj, force_refresh=force_refresh)
         now = datetime.utcnow()
