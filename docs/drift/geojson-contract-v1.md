@@ -55,6 +55,8 @@ Felt-eksport inkluderer blant annet:
 - `created_at`
 - `updated_at`
 
+Kildeverdier og proveniens skal følge `docs/drift/kildepolicy-v1.md`. For Geonorge-teiger betyr det at eksporten bør kunne forklare kilde, hentetid og eventuell kildeoppdatering. Manuelt tegnede felt og importerte felt skal ikke presenteres som Geonorge-data uten eksplisitt kilde.
+
 Rute-eksport viderefører feature-properties fra oppdragsgeneratoren, som:
 - `field_id`
 - `field_name`

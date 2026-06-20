@@ -788,12 +788,12 @@ class PhotoPageResponse(BaseModel):
 
 class GardskartJobResponse(BaseModel):
     property_id: int
-    job_id: str
+    job_id: str | None = None
     status_code: int | None = None
     status_desc: str | None = None
-    fetched_at: datetime
-    expires_at: datetime
-    source: Literal["cache", "fresh", "stale-cache"]
+    fetched_at: datetime | None = None
+    expires_at: datetime | None = None
+    source: Literal["cache", "fresh", "stale-cache", "disabled"]
     is_expired: bool
 
 

@@ -1064,12 +1064,14 @@ export default function App() {
         if (seq !== gardskartJobLoadSeqRef.current) return;
 
         const successes = results.filter((result) => result.ok);
+        const activeSuccesses = successes.filter((result) => result.data.source !== "disabled" && result.data.job_id);
+        const disabledSuccesses = successes.filter((result) => result.data.source === "disabled" || !result.data.job_id);
         const failures = results.filter((result) => !result.ok);
         if (failures.length > 0 && failures.every((result) => isRequestAborted(result.error))) {
           return;
         }
 
-        setPropertyJobs(successes.map((result) => result.data));
+        setPropertyJobs(activeSuccesses.map((result) => result.data));
         tileRetryJobRef.current = null;
 
         failures.forEach((result) => {
@@ -1080,13 +1082,21 @@ export default function App() {
           });
         });
 
-        if (successes.length === 0) {
+        if (activeSuccesses.length === 0) {
+          if (disabledSuccesses.length > 0) {
+            setPropertyStatus("Eiendomslag er deaktivert i dette miljøet.");
+            addLog("info", "Eiendomslag er deaktivert", null, {
+              total: disabledSuccesses.length,
+            });
+            return;
+          }
+
           setPropertyStatus("Kunne ikke hente eiendomslag fra backend.");
           return;
         }
 
-        const hasStaleCache = successes.some((result) => result.data.source === "stale-cache");
-        const warningResults = successes.filter((result) => {
+        const hasStaleCache = activeSuccesses.some((result) => result.data.source === "stale-cache");
+        const warningResults = activeSuccesses.filter((result) => {
           const statusDescLower = (result.data.status_desc ?? "").toLowerCase();
           return !(
             result.data.status_code === null ||
@@ -1097,9 +1107,9 @@ export default function App() {
         });
 
         if (failures.some((result) => !isRequestAborted(result.error))) {
-          setPropertyStatus(`Eiendomslag delvis aktivt (${successes.length} av ${targetProperties.length} eiendommer).`);
+          setPropertyStatus(`Eiendomslag delvis aktivt (${activeSuccesses.length} av ${targetProperties.length} eiendommer).`);
           addLog("warn", "Eiendomslag delvis lastet", null, {
-            loaded: successes.length,
+            loaded: activeSuccesses.length,
             total: targetProperties.length,
           });
         } else if (hasStaleCache) {
@@ -1118,15 +1128,15 @@ export default function App() {
               source: result.data.source,
             });
           });
-        } else if (successes.length === 1) {
-          setPropertyStatus(`Eiendomslag aktivt (${formatPropertyReference(successes[0].property)}).`);
+        } else if (activeSuccesses.length === 1) {
+          setPropertyStatus(`Eiendomslag aktivt (${formatPropertyReference(activeSuccesses[0].property)}).`);
         } else {
-          setPropertyStatus(`Eiendomslag aktivt (${successes.length} eiendommer).`);
+          setPropertyStatus(`Eiendomslag aktivt (${activeSuccesses.length} eiendommer).`);
         }
 
         addLog("info", forceRefresh ? "Eiendomslag oppfrisket" : "Eiendomslag lastet", null, {
-          properties: successes.map((result) => formatPropertyReference(result.property)),
-          total: successes.length,
+          properties: activeSuccesses.map((result) => formatPropertyReference(result.property)),
+          total: activeSuccesses.length,
         });
       } catch (error) {
         const apiError = error as ApiError;
