@@ -8,6 +8,7 @@ import time
 from datetime import timedelta
 from datetime import date as date_type, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
@@ -143,9 +144,11 @@ from ..services.flight_missions import (
 from ..services.planning import (
     create_field_from_candidate,
     ensure_active_planning_unit_for_field,
+    field_source_provenance,
     find_field_plot_for_geometry,
     get_drone_profile,
     list_drone_profiles,
+    normalize_source_provenance,
     planning_unit_field_name,
     planning_unit_payload_from_field,
     planning_unit_payload_from_unit,
@@ -604,6 +607,7 @@ def _field_plot_out(item: FieldPlot) -> FieldPlotOut:
         geometry=json.loads(item.geometry_json),
         area_m2=area_m2,
         area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
+        source_provenance=field_source_provenance(item),
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -613,7 +617,9 @@ def _planning_unit_out(
     item: PlanningUnit,
     *,
     source_field_name: str,
+    source_field_source: str = "manual",
     source_field_status: str = "draft",
+    source_field_provenance: dict[str, Any] | None = None,
     latest_mission_id: int | None = None,
     latest_mission_name: str | None = None,
     latest_duration_status: str | None = None,
@@ -631,7 +637,9 @@ def _planning_unit_out(
         area_m2=area_m2,
         area_ha=round(area_m2 / 10_000, 4) if area_m2 is not None else None,
         source_field_name=source_field_name,
+        source_field_source=source_field_source,
         source_field_status=source_field_status,
+        source_field_provenance=source_field_provenance or {},
         is_split=item.parent_unit_id is not None,
         latest_mission_id=latest_mission_id,
         latest_mission_name=latest_mission_name,
@@ -1211,6 +1219,7 @@ def _resolve_planning_units_for_mission(
     unit_items = (
         db.execute(
             select(PlanningUnit)
+            .options(selectinload(PlanningUnit.source_field_plot))
             .where(PlanningUnit.property_id == property_obj.id)
             .where(PlanningUnit.status == "active")
             .where(PlanningUnit.id.in_(normalized_ids))
@@ -1395,7 +1404,9 @@ def _planning_unit_list_response(
             _planning_unit_out(
                 unit,
                 source_field_name=planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}",
+                source_field_source=source_field.source if source_field else "manual",
                 source_field_status=source_field.status if source_field else "draft",
+                source_field_provenance=field_source_provenance(source_field),
                 latest_mission_id=latest_mission.id if latest_mission else None,
                 latest_mission_name=(latest_mission.name or f"Oppdrag {latest_mission.id}").strip() if latest_mission else None,
                 latest_duration_status=latest_mission.duration_status if latest_mission else None,
@@ -1648,6 +1659,7 @@ def create_field_plot(
         status=payload.status,
         geometry_json=geometry_json,
         area_m2=area_m2,
+        source_provenance_json=json.dumps(normalize_source_provenance(payload.source_provenance), ensure_ascii=False),
     )
     db.add(item)
     db.flush()
@@ -1676,6 +1688,8 @@ def patch_field_plot(
         item.source = payload.source
     if payload.status is not None:
         item.status = payload.status
+    if "source_provenance" in payload.model_fields_set:
+        item.source_provenance_json = json.dumps(normalize_source_provenance(payload.source_provenance), ensure_ascii=False)
     if payload.geometry is not None:
         geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
         item.geometry_json = geometry_json
@@ -1751,6 +1765,7 @@ def export_field_plots_geojson(
                 "name": item.name,
                 "source": item.source,
                 "status": item.status,
+                "source_provenance": field_source_provenance(item),
                 "area_m2": round(item.area_m2, 2) if item.area_m2 is not None else None,
                 "area_ha": round((item.area_m2 or 0) / 10_000, 4) if item.area_m2 is not None else None,
                 "created_at": item.created_at.isoformat(),
@@ -1874,9 +1889,21 @@ def split_property_planning_unit(
     source_field_name = planning_unit_field_name(source_field) if source_field else f"Jord {unit.source_field_plot_id}"
     source_field_status = source_field.status if source_field else "draft"
     return PlanningUnitSplitOut(
-        archived_unit=_planning_unit_out(unit, source_field_name=source_field_name, source_field_status=source_field_status),
+        archived_unit=_planning_unit_out(
+            unit,
+            source_field_name=source_field_name,
+            source_field_source=source_field.source if source_field else "manual",
+            source_field_status=source_field_status,
+            source_field_provenance=field_source_provenance(source_field),
+        ),
         created_units=[
-            _planning_unit_out(item, source_field_name=source_field_name, source_field_status=source_field_status)
+            _planning_unit_out(
+                item,
+                source_field_name=source_field_name,
+                source_field_source=source_field.source if source_field else "manual",
+                source_field_status=source_field_status,
+                source_field_provenance=field_source_provenance(source_field),
+            )
             for item in created_units
         ],
     )
@@ -1945,7 +1972,9 @@ async def resolve_owned_planning_point(
         unit=_planning_unit_out(
             unit,
             source_field_name=planning_unit_field_name(field),
+            source_field_source=field.source,
             source_field_status=field.status,
+            source_field_provenance=field_source_provenance(field),
         ),
         imported_field=imported_field,
         created_unit=created_unit,
@@ -2004,7 +2033,9 @@ async def resolve_property_planning_point(
         unit=_planning_unit_out(
             unit,
             source_field_name=planning_unit_field_name(field),
+            source_field_source=field.source,
             source_field_status=field.status,
+            source_field_provenance=field_source_provenance(field),
         ),
         imported_field=imported_field,
         created_unit=created_unit,

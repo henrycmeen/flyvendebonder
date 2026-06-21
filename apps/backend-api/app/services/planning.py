@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import date, datetime
 from typing import Any
 
 from shapely.geometry import LineString, Polygon, mapping, shape
@@ -204,6 +205,59 @@ def planning_unit_field_name(field: FieldPlot) -> str:
     return (field.name or f"Jord {field.id}").strip()
 
 
+def normalize_source_provenance(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        if item is None:
+            continue
+        if isinstance(item, (datetime, date)):
+            normalized[str(key)] = item.isoformat()
+        elif isinstance(item, (str, int, float, bool)):
+            normalized[str(key)] = item
+        elif isinstance(item, dict):
+            nested = normalize_source_provenance(item)
+            if nested:
+                normalized[str(key)] = nested
+        elif isinstance(item, list):
+            normalized_list = [
+                entry.isoformat() if isinstance(entry, (datetime, date)) else entry
+                for entry in item
+                if isinstance(entry, (str, int, float, bool, datetime, date))
+            ]
+            if normalized_list:
+                normalized[str(key)] = normalized_list
+    return normalized
+
+
+def field_source_provenance(field: FieldPlot | None) -> dict[str, Any]:
+    if field is None:
+        return {}
+    try:
+        parsed = json.loads(field.source_provenance_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return normalize_source_provenance(parsed)
+
+
+def source_provenance_from_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return normalize_source_provenance(
+        {
+            "source": candidate.get("source"),
+            "source_endpoint": candidate.get("source_endpoint"),
+            "source_fetched_at": candidate.get("source_fetched_at"),
+            "source_updated_at": candidate.get("source_updated_at"),
+            "accuracy_class": candidate.get("accuracy_class"),
+            "local_id": candidate.get("local_id"),
+            "matrikkelnummer": candidate.get("matrikkelnummer"),
+            "object_type": candidate.get("object_type"),
+            "land_use_kind": candidate.get("land_use_kind"),
+            "land_use_label": candidate.get("land_use_label"),
+        }
+    )
+
+
 def planning_unit_payload_from_field(field: FieldPlot) -> dict[str, Any]:
     geometry = {"type": "Polygon", "coordinates": normalize_polygon_coordinates(shape_to_coordinates(field.geometry_json))}
     area_m2 = round(field.area_m2 or polygon_area_m2(geometry["coordinates"]), 2)
@@ -211,6 +265,8 @@ def planning_unit_payload_from_field(field: FieldPlot) -> dict[str, Any]:
         "field_id": field.id,
         "planning_unit_id": None,
         "name": planning_unit_field_name(field),
+        "source": field.source,
+        "source_provenance": field_source_provenance(field),
         "geometry": geometry,
         "area_m2": area_m2,
     }
@@ -219,10 +275,13 @@ def planning_unit_payload_from_field(field: FieldPlot) -> dict[str, Any]:
 def planning_unit_payload_from_unit(unit: PlanningUnit) -> dict[str, Any]:
     geometry = {"type": "Polygon", "coordinates": normalize_polygon_coordinates(shape_to_coordinates(unit.geometry_json))}
     area_m2 = round(unit.area_m2 or polygon_area_m2(geometry["coordinates"]), 2)
+    source_field = unit.source_field_plot
     return {
         "field_id": unit.source_field_plot_id,
         "planning_unit_id": unit.id,
         "name": (unit.name or f"Planenhet {unit.id}").strip(),
+        "source": source_field.source if source_field else "manual",
+        "source_provenance": field_source_provenance(source_field),
         "geometry": geometry,
         "area_m2": area_m2,
     }
@@ -282,6 +341,7 @@ def create_field_from_candidate(
         status=status,
         geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
         area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
+        source_provenance_json=json.dumps(source_provenance_from_candidate(candidate), ensure_ascii=False),
     )
     db.add(item)
     db.flush()

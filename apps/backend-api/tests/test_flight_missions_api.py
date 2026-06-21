@@ -35,14 +35,22 @@ def _sample_polygon(offset: float = 0.0) -> dict:
     }
 
 
-def _create_field(client, *, name: str, offset: float = 0.0) -> dict:
+def _create_field(
+    client,
+    *,
+    name: str,
+    offset: float = 0.0,
+    source: str = "manual",
+    source_provenance: dict | None = None,
+) -> dict:
     response = client.post(
         "/api/v1/fields",
         json={
             "name": name,
-            "source": "manual",
+            "source": source,
             "status": "confirmed",
             "geometry": _sample_polygon(offset),
+            "source_provenance": source_provenance or {},
         },
     )
     assert response.status_code == 201
@@ -69,7 +77,12 @@ def _create_additional_property(client, *, label: str = "Leiejord øst", gnr: in
 
 
 def test_flight_mission_roundtrip_and_export_bundle(client):
-    nord = _create_field(client, name="Nordjordet")
+    nord = _create_field(
+        client,
+        name="Nordjordet",
+        source="imported",
+        source_provenance={"source": "geonorge", "source_endpoint": "/teiger", "accuracy_class": "Grønt"},
+    )
     sor = _create_field(client, name="Sørjordet", offset=0.003)
 
     create_response = client.post(
@@ -134,6 +147,10 @@ def test_flight_mission_roundtrip_and_export_bundle(client):
     route_geojson = json.loads(archive.read("route.geojson"))
     assert route_geojson["type"] == "FeatureCollection"
     assert any(feature["geometry"]["type"] == "LineString" for feature in route_geojson["features"])
+    fields_geojson = json.loads(archive.read("fields.geojson"))
+    nord_feature = next(feature for feature in fields_geojson["features"] if feature["properties"]["field_id"] == nord["id"])
+    assert nord_feature["properties"]["source"] == "imported"
+    assert nord_feature["properties"]["source_provenance"]["source"] == "geonorge"
 
 
 def test_flight_mission_export_returns_dji_kmz_for_supported_profile(client):

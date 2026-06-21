@@ -117,9 +117,15 @@ def test_field_plot_geojson_export_includes_contract_metadata(client):
         "/api/v1/fields",
         json={
             "name": "Nordjordet",
-            "source": "manual",
+            "source": "imported",
             "status": "confirmed",
             "geometry": _sample_polygon(),
+            "source_provenance": {
+                "source": "geonorge",
+                "source_endpoint": "/geokoding",
+                "accuracy_class": "Gult",
+                "source_updated_at": "2024-01-01T00:00:00",
+            },
         },
     )
     assert create_response.status_code == 201
@@ -135,6 +141,9 @@ def test_field_plot_geojson_export_includes_contract_metadata(client):
     assert payload["flyvendebonder_contract"]["coordinate_reference_system"] == "OGC:CRS84"
     assert payload["features"][0]["properties"]["field_id"] == created["id"]
     assert payload["features"][0]["properties"]["status"] == "confirmed"
+    assert payload["features"][0]["properties"]["source"] == "imported"
+    assert payload["features"][0]["properties"]["source_provenance"]["source"] == "geonorge"
+    assert payload["features"][0]["properties"]["source_provenance"]["source_endpoint"] == "/geokoding"
 
 
 def test_field_history_summarizes_mission_capture_and_processing(client):

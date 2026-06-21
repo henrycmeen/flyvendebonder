@@ -86,6 +86,19 @@ export interface GeoJSONLineString {
 export type FieldPlotStatus = "draft" | "confirmed";
 export type FieldPlotSource = "manual" | "suggested" | "imported";
 
+export interface FieldSourceProvenance {
+  source?: string | null;
+  source_endpoint?: string | null;
+  source_fetched_at?: string | null;
+  source_updated_at?: string | null;
+  accuracy_class?: string | null;
+  local_id?: number | null;
+  matrikkelnummer?: string | null;
+  object_type?: string | null;
+  land_use_kind?: string | null;
+  land_use_label?: string | null;
+}
+
 export interface FieldPlot {
   id: number;
   property_id: number;
@@ -95,6 +108,7 @@ export interface FieldPlot {
   geometry: GeoJSONPolygon;
   area_m2: number | null;
   area_ha: number | null;
+  source_provenance: FieldSourceProvenance;
   created_at: string;
   updated_at: string;
 }
@@ -217,7 +231,9 @@ export interface PlanningUnit {
   area_m2: number | null;
   area_ha: number | null;
   source_field_name: string;
+  source_field_source: FieldPlotSource;
   source_field_status: FieldPlotStatus;
+  source_field_provenance: FieldSourceProvenance;
   is_split: boolean;
   latest_mission_id: number | null;
   latest_mission_name: string | null;
@@ -292,6 +308,8 @@ export type FieldCandidateSource = "geonorge";
 
 export interface FieldCandidate {
   source: FieldCandidateSource;
+  source_endpoint: string | null;
+  source_fetched_at: string | null;
   name: string;
   local_id: number | null;
   matrikkelnummer: string | null;

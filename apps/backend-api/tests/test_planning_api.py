@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 
 def _disable_candidate_import(monkeypatch) -> None:
     import app.api.v1 as v1
@@ -24,14 +26,23 @@ def _sample_polygon(offset: float = 0.0) -> dict:
     }
 
 
-def _create_field(client, *, name: str, status: str = "confirmed", offset: float = 0.0) -> dict:
+def _create_field(
+    client,
+    *,
+    name: str,
+    status: str = "confirmed",
+    offset: float = 0.0,
+    source: str = "manual",
+    source_provenance: dict | None = None,
+) -> dict:
     response = client.post(
         "/api/v1/fields",
         json={
             "name": name,
-            "source": "manual",
+            "source": source,
             "status": status,
             "geometry": _sample_polygon(offset),
+            "source_provenance": source_provenance or {},
         },
     )
     assert response.status_code == 201
@@ -133,11 +144,14 @@ def test_patch_field_updates_active_root_planning_unit_geometry_without_resync(c
 
 def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client, monkeypatch):
     import app.api.v1 as v1
+    fetched_at = datetime(2026, 6, 21, 9, 0, 0)
 
     async def fake_list_field_candidates_for_property(property_obj):
         return [
             {
                 "source": "geonorge",
+                "source_endpoint": "/geokoding",
+                "source_fetched_at": fetched_at,
                 "name": f"{property_obj.gnr}/{property_obj.bnr} · hovedteig",
                 "local_id": 42465981,
                 "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
@@ -148,7 +162,7 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
                 "geometry": _sample_polygon(),
                 "area_m2": 2400.0,
                 "area_ha": 0.24,
-                "source_updated_at": None,
+                "source_updated_at": datetime(2024, 1, 1, 0, 0, 0),
             }
         ]
 
@@ -160,6 +174,10 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
     assert payload["created_count"] == 1
     assert payload["count"] == 1
     assert payload["units"][0]["name"] == "70/17 · hovedteig"
+    assert payload["units"][0]["source_field_source"] == "imported"
+    assert payload["units"][0]["source_field_provenance"]["source"] == "geonorge"
+    assert payload["units"][0]["source_field_provenance"]["source_endpoint"] == "/geokoding"
+    assert payload["units"][0]["source_field_provenance"]["accuracy_class"] == "Gult"
 
     fields_response = client.get("/api/v1/fields")
     assert fields_response.status_code == 200
@@ -167,6 +185,7 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
     assert fields_payload["count"] == 1
     assert fields_payload["fields"][0]["source"] == "imported"
     assert fields_payload["fields"][0]["status"] == "draft"
+    assert fields_payload["fields"][0]["source_provenance"]["matrikkelnummer"] == "70/17"
     assert payload["units"][0]["source_field_status"] == "draft"
 
 
@@ -188,6 +207,7 @@ def test_deleting_field_also_removes_planning_units(client, monkeypatch):
 
 def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypatch):
     import app.api.v1 as v1
+    fetched_at = datetime(2026, 6, 21, 9, 5, 0)
 
     async def fake_lookup_field_candidates_by_point(property_obj, *, lat, lng, radius_m):
         assert lat == 59.0
@@ -196,6 +216,8 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
         return [
             {
                 "source": "geonorge",
+                "source_endpoint": "/punkt/omrader",
+                "source_fetched_at": fetched_at,
                 "name": f"{property_obj.gnr}/{property_obj.bnr} · teig 1",
                 "local_id": 1,
                 "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
@@ -206,7 +228,7 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
                 "geometry": _sample_polygon(0.02),
                 "area_m2": 2400.0,
                 "area_ha": 0.24,
-                "source_updated_at": None,
+                "source_updated_at": datetime(2024, 1, 2, 0, 0, 0),
             }
         ]
 
@@ -223,6 +245,8 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
     assert first_payload["candidate_name"] == "70/17 · teig 1"
     assert first_payload["matrikkelnummer"] == "70/17"
     assert first_payload["unit"]["source_field_status"] == "draft"
+    assert first_payload["unit"]["source_field_provenance"]["source"] == "geonorge"
+    assert first_payload["unit"]["source_field_provenance"]["source_endpoint"] == "/punkt/omrader"
 
     second = client.post(
         "/api/v1/planning/properties/1/resolve-point",
@@ -364,7 +388,18 @@ def test_planning_split_archives_parent_and_creates_two_children(client, monkeyp
 
 def test_flight_mission_preview_and_create_from_planning_units_with_drone_profile(client, monkeypatch):
     _disable_candidate_import(monkeypatch)
-    _create_field(client, name="Vestjordet", status="confirmed")
+    _create_field(
+        client,
+        name="Vestjordet",
+        status="confirmed",
+        source="imported",
+        source_provenance={
+            "source": "geonorge",
+            "source_endpoint": "/geokoding",
+            "accuracy_class": "Gult",
+            "source_updated_at": "2024-01-01T00:00:00",
+        },
+    )
     sync_response = client.post("/api/v1/planning/properties/1/sync")
     unit = sync_response.json()["units"][0]
 
@@ -399,6 +434,8 @@ def test_flight_mission_preview_and_create_from_planning_units_with_drone_profil
     assert preview["estimated_duration_s"] is not None
     assert preview["duration_status"] in {"ok", "warning", "over_limit"}
     assert preview["fields"][0]["planning_unit_id"] == unit["id"]
+    assert preview["fields"][0]["source"] == "imported"
+    assert preview["fields"][0]["source_provenance"]["source"] == "geonorge"
 
     create_response = client.post(
         "/api/v1/flight-missions",
@@ -421,3 +458,4 @@ def test_flight_mission_preview_and_create_from_planning_units_with_drone_profil
     assert created["estimated_duration_s"] == preview["estimated_duration_s"]
     assert created["fields"][0]["field_id"] == unit["source_field_plot_id"]
     assert created["fields"][0]["planning_unit_id"] == unit["id"]
+    assert created["fields"][0]["source_provenance"]["accuracy_class"] == "Gult"

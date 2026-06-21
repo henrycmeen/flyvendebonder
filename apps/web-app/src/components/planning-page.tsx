@@ -15,6 +15,8 @@ import type {
   FieldCandidateListResponse,
   FieldPlotDeleteResponse,
   FieldPlot,
+  FieldPlotSource,
+  FieldSourceProvenance,
   FlightMission,
   FlightMissionParameters,
   FlightMissionPreview,
@@ -248,6 +250,57 @@ function missionStatusLabel(status: string | null): string {
   if (status === "warning") return "Nær grensen";
   if (status === "ok") return "Klar";
   return "";
+}
+
+function formatSourceDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("nb-NO", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function sourceLabel(source: FieldPlotSource | FieldCandidate["source"] | string | null | undefined, provenance?: FieldSourceProvenance | null): string {
+  const provenanceSource = provenance?.source?.trim().toLowerCase();
+  if (provenanceSource === "geonorge" || source === "geonorge") return "Geonorge";
+  if (source === "manual") return "Manuelt tegnet";
+  if (source === "suggested") return "Foreslått";
+  if (source === "imported") return "Importert";
+  return "Ukjent kilde";
+}
+
+function sourceDetailParts(provenance?: FieldSourceProvenance | null): string[] {
+  if (!provenance) return [];
+  const parts: string[] = [];
+  if (provenance.accuracy_class) parts.push(`Nøyaktighet ${provenance.accuracy_class}`);
+  const updated = formatSourceDate(provenance.source_updated_at);
+  if (updated) parts.push(`Oppdatert ${updated}`);
+  const fetched = formatSourceDate(provenance.source_fetched_at);
+  if (fetched) parts.push(`Hentet ${fetched}`);
+  if (provenance.source_endpoint) parts.push(provenance.source_endpoint);
+  return parts;
+}
+
+function sourceSummary(
+  source: FieldPlotSource | FieldCandidate["source"] | string | null | undefined,
+  provenance?: FieldSourceProvenance | null,
+): string {
+  const details = sourceDetailParts(provenance);
+  return [sourceLabel(source, provenance), ...details].join(" · ");
+}
+
+function candidateSourceProvenance(candidate: FieldCandidate): FieldSourceProvenance {
+  return {
+    source: candidate.source,
+    source_endpoint: candidate.source_endpoint,
+    source_fetched_at: candidate.source_fetched_at,
+    source_updated_at: candidate.source_updated_at,
+    accuracy_class: candidate.accuracy_class,
+    local_id: candidate.local_id,
+    matrikkelnummer: candidate.matrikkelnummer,
+    object_type: candidate.object_type,
+    land_use_kind: candidate.land_use_kind,
+    land_use_label: candidate.land_use_label,
+  };
 }
 
 function classifyUnitBucket(unit: PlanningUnit, propertyLabel: string | undefined): UnitBucket {
@@ -533,6 +586,7 @@ export function PlanningPage({
       const haystack = [
         unit.name,
         unit.source_field_name,
+        sourceSummary(unit.source_field_source, unit.source_field_provenance),
         propertyLabelById.get(unit.property_id) ?? "",
       ]
         .join(" ")
@@ -554,7 +608,13 @@ export function PlanningPage({
   const filteredSuggestions = useMemo(() => {
     if (!normalizedSearch) return visibleSuggestions;
     return visibleSuggestions.filter((candidate) => {
-      const haystack = [candidate.name, candidate.property_label, candidate.land_use_label, candidate.ar5_class ?? ""]
+      const haystack = [
+        candidate.name,
+        candidate.property_label,
+        candidate.land_use_label,
+        candidate.ar5_class ?? "",
+        sourceSummary(candidate.source, candidateSourceProvenance(candidate)),
+      ]
         .join(" ")
         .toLocaleLowerCase("nb");
       return haystack.includes(normalizedSearch);
@@ -1086,6 +1146,7 @@ export function PlanningPage({
           source: "imported",
           status: "draft",
           geometry: candidate.geometry,
+          source_provenance: candidateSourceProvenance(candidate),
         });
         const syncResponse = await apiPost<PlanningUnitSyncResponse>(`/api/v1/planning/properties/${candidate.property_id}/sync`);
         const syncedUnits = Array.isArray(syncResponse.data?.units) ? syncResponse.data.units : [];
@@ -1369,6 +1430,9 @@ export function PlanningPage({
                                     <p className="mt-1 text-xs text-fb-text-secondary">
                                       {propertyLabelById.get(unit.property_id) ?? `${unit.property_id}`} · {formatArea(unit.area_ha)}
                                     </p>
+                                    <p className="mt-1 text-[11px] text-fb-text-secondary">
+                                      {sourceSummary(unit.source_field_source, unit.source_field_provenance)}
+                                    </p>
                                   </div>
                                   {unit.latest_duration_status ? (
                                     <div className="flex flex-col items-end gap-1">
@@ -1440,6 +1504,9 @@ export function PlanningPage({
                           <p className={cn("mt-1 text-xs font-medium", landUseTone(candidate.land_use_kind))}>
                             {candidate.land_use_label}
                             {candidate.ar5_class ? ` · ${candidate.ar5_class}` : ""}
+                          </p>
+                          <p className="mt-1 text-[11px] text-fb-text-secondary">
+                            {sourceSummary(candidate.source, candidateSourceProvenance(candidate))}
                           </p>
                         </div>
                         <span className="text-[11px] font-medium text-fb-text-secondary">Forslag</span>
@@ -1741,6 +1808,19 @@ export function PlanningPage({
                   <p className="text-sm text-fb-text-secondary">
                     {(propertyLabelById.get(selectedUnit.property_id) ?? selectedUnit.source_field_name)} · {formatArea(selectedUnit.area_ha)}
                   </p>
+                  <div className="mt-3 rounded-xl bg-fb-surface-ghost px-3 py-2">
+                    <p className="text-xs font-medium text-fb-text-primary">
+                      Kilde: {sourceLabel(selectedUnit.source_field_source, selectedUnit.source_field_provenance)}
+                    </p>
+                    {sourceDetailParts(selectedUnit.source_field_provenance).length > 0 ? (
+                      <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
+                        {sourceDetailParts(selectedUnit.source_field_provenance).join(" · ")}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
+                      Teiggrensen kan korrigeres manuelt i kartet dersom kildegrunnlaget ikke stemmer med faktisk drift.
+                    </p>
+                  </div>
                   {selectedUnit.latest_duration_status ? (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <span className={cn("text-xs font-medium", durationTone(selectedUnit.latest_duration_status))}>

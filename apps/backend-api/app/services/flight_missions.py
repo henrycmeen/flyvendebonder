@@ -132,6 +132,8 @@ def build_flight_mission_payload(
             "field_id": field_id,
             "planning_unit_id": planning_unit_id,
             "name": field_name,
+            "source": field.get("source"),
+            "source_provenance": field.get("source_provenance") if isinstance(field.get("source_provenance"), dict) else {},
             "area_m2": area_m2,
             "area_ha": round(area_m2 / 10_000, 4) if area_m2 is not None else None,
             "geometry": {"type": "Polygon", "coordinates": coordinates},
@@ -357,6 +359,8 @@ def build_flight_mission_export_bundle(
             "properties": {
                 "field_id": field["field_id"],
                 "field_name": field["name"],
+                "source": field.get("source"),
+                "source_provenance": field.get("source_provenance") if isinstance(field.get("source_provenance"), dict) else {},
                 "area_m2": field.get("area_m2"),
                 "area_ha": field.get("area_ha"),
             },
