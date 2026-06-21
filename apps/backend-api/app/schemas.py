@@ -176,6 +176,7 @@ class FieldPlotCreate(BaseModel):
     source: FieldPlotSource = "manual"
     status: FieldPlotStatus = "draft"
     geometry: GeoJSONPolygon
+    source_provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class FieldPlotPatch(BaseModel):
@@ -183,6 +184,7 @@ class FieldPlotPatch(BaseModel):
     source: FieldPlotSource | None = None
     status: FieldPlotStatus | None = None
     geometry: GeoJSONPolygon | None = None
+    source_provenance: dict[str, Any] | None = None
 
 
 class FieldPlotOut(BaseModel):
@@ -194,6 +196,7 @@ class FieldPlotOut(BaseModel):
     geometry: GeoJSONPolygon
     area_m2: float | None = None
     area_ha: float | None = None
+    source_provenance: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -251,7 +254,9 @@ class PlanningUnitOut(BaseModel):
     area_m2: float | None = None
     area_ha: float | None = None
     source_field_name: str
+    source_field_source: FieldPlotSource = "manual"
     source_field_status: FieldPlotStatus
+    source_field_provenance: dict[str, Any] = Field(default_factory=dict)
     is_split: bool = False
     latest_mission_id: int | None = None
     latest_mission_name: str | None = None
@@ -385,6 +390,8 @@ class FlightMissionFieldOut(BaseModel):
     field_id: int
     planning_unit_id: int | None = None
     name: str
+    source: FieldPlotSource | None = None
+    source_provenance: dict[str, Any] = Field(default_factory=dict)
     area_m2: float | None = None
     area_ha: float | None = None
     geometry: GeoJSONPolygon

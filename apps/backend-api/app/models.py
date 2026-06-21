@@ -142,6 +142,7 @@ class FieldPlot(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft")
     geometry_json: Mapped[str] = mapped_column(Text, nullable=False)
     area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    source_provenance_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
     property: Mapped[Property] = relationship(back_populates="field_plots")
     planning_units: Mapped[list[PlanningUnit]] = relationship(back_populates="source_field_plot")
