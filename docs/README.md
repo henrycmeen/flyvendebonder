@@ -9,6 +9,7 @@
 - `docs/drift/stac-contract-v1.md` – første STAC-kontrakt for collections og items over processing-runs
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
+- `docs/drift/kildepolicy-v1.md` – kilde-/lisensmatrise for Geonorge, NIBIO, feltvalg og analysekontekst
 - `docs/drift/planlegging-workspace-v1.md` – første kontrakt for den nye planleggingsarbeidsflaten
 - `docs/drift/dji-wpml-export-v1.md` – første ekte DJI KMZ/WPML-eksport for støttede enterprise-profiler
 - `docs/drift/dji-fly-mini4pro-export-v1.md` – første Mini 4 Pro / DJI Fly KMZ-eksport og praktisk filflyt
@@ -24,6 +25,7 @@
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
+- `docs/drift/kildepolicy-v1.md` – hvilke kart- og geodatakilder som kan brukes til feltvalg, overlay, ingest og analyse
 - `docs/drift/planlegging-workspace-v1.md` – hvordan planenheter, splitting og flytidsestimat fungerer
 - `docs/drift/dji-wpml-export-v1.md` – hva som faktisk eksporteres som DJI KMZ, og hva som fortsatt faller tilbake til bundle
 - `docs/drift/dji-fly-mini4pro-export-v1.md` – hvordan Mini 4 Pro bruker DJI Fly-sporet i stedet for Pilot 2
