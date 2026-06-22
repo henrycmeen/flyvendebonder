@@ -69,3 +69,34 @@ def test_fallback_when_far_and_low_confidence_missing_context():
         estimated_ar5=None,
         estimated_soil=None,
     ) is True
+
+
+def test_ar5_lookup_is_gated_by_default(monkeypatch):
+    import app.services.analysis_enrich as analysis_enrich
+
+    calls: list[dict] = []
+
+    def fake_query_layer_value(**kwargs):
+        calls.append(kwargs)
+        return "Fulldyrka jord"
+
+    monkeypatch.setattr(analysis_enrich.settings, "photo_ar5_enabled", False)
+    monkeypatch.setattr(analysis_enrich, "_query_layer_value", fake_query_layer_value)
+
+    assert analysis_enrich._query_ar5_value(59.0, 10.0, ["artype"]) is None
+    assert calls == []
+
+
+def test_soil_lookup_remains_explicit_context(monkeypatch):
+    import app.services.analysis_enrich as analysis_enrich
+
+    calls: list[dict] = []
+
+    def fake_query_layer_value(**kwargs):
+        calls.append(kwargs)
+        return "Svært god jordkvalitet"
+
+    monkeypatch.setattr(analysis_enrich, "_query_layer_value", fake_query_layer_value)
+
+    assert analysis_enrich._query_soil_value(59.0, 10.0, ["jordkvalitet"]) == "Svært god jordkvalitet"
+    assert calls

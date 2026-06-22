@@ -599,6 +599,35 @@ def _query_wms_property(url: str, layers: str, lat: float, lng: float, field_hin
     return _majority_value(sample_values)
 
 
+def _query_ar5_value(lat: float, lng: float, field_hints: list[str]) -> str | None:
+    if not settings.photo_ar5_enabled:
+        return None
+
+    return _query_layer_value(
+        lat=lat,
+        lng=lng,
+        url_wms=settings.photo_ar5_wms_url,
+        layers_wms=settings.photo_ar5_wms_layers,
+        field_hints=field_hints,
+        url_wfs=settings.photo_ar5_wfs_url,
+        layers_wfs=settings.photo_ar5_wfs_layers,
+        layer_fields_fallback=_split_comma_values(settings.photo_ar5_layer_fields),
+    )
+
+
+def _query_soil_value(lat: float, lng: float, field_hints: list[str]) -> str | None:
+    return _query_layer_value(
+        lat=lat,
+        lng=lng,
+        url_wms=settings.photo_soil_wms_url,
+        layers_wms=settings.photo_soil_wms_layers,
+        field_hints=field_hints,
+        url_wfs=settings.photo_soil_wfs_url,
+        layers_wfs=settings.photo_soil_wfs_layers,
+        layer_fields_fallback=_split_comma_values(settings.photo_soil_layer_fields),
+    )
+
+
 def _derive_geometry(
     photo: Photo,
     metadata: ExtractedMetadata,
@@ -704,52 +733,16 @@ def enrich_photo(
     ar5_hints = _split_comma_values(settings.photo_ar5_wms_layer_fields) or _split_comma_values(settings.photo_ar5_layer_fields)
     soil_hints = _split_comma_values(settings.photo_soil_wms_layer_fields) or _split_comma_values(settings.photo_soil_layer_fields)
 
-    ar5 = _query_layer_value(
-        lat=geometry.lat,
-        lng=geometry.lng,
-        url_wms=settings.photo_ar5_wms_url,
-        layers_wms=settings.photo_ar5_wms_layers,
-        field_hints=ar5_hints,
-        url_wfs=settings.photo_ar5_wfs_url,
-        layers_wfs=settings.photo_ar5_wfs_layers,
-        layer_fields_fallback=_split_comma_values(settings.photo_ar5_layer_fields),
-    )
-    soil = _query_layer_value(
-        lat=geometry.lat,
-        lng=geometry.lng,
-        url_wms=settings.photo_soil_wms_url,
-        layers_wms=settings.photo_soil_wms_layers,
-        field_hints=soil_hints,
-        url_wfs=settings.photo_soil_wfs_url,
-        layers_wfs=settings.photo_soil_wfs_layers,
-        layer_fields_fallback=_split_comma_values(settings.photo_soil_layer_fields),
-    )
+    ar5 = _query_ar5_value(geometry.lat, geometry.lng, ar5_hints)
+    soil = _query_soil_value(geometry.lat, geometry.lng, soil_hints)
 
     if _estimate_to_source_fallback_needed(
         geometry=geometry,
         estimated_ar5=ar5,
         estimated_soil=soil,
     ):
-        ar5_source = _query_layer_value(
-            lat=photo.lat,
-            lng=photo.lng,
-            url_wms=settings.photo_ar5_wms_url,
-            layers_wms=settings.photo_ar5_wms_layers,
-            field_hints=ar5_hints,
-            url_wfs=settings.photo_ar5_wfs_url,
-            layers_wfs=settings.photo_ar5_wfs_layers,
-            layer_fields_fallback=_split_comma_values(settings.photo_ar5_layer_fields),
-        )
-        soil_source = _query_layer_value(
-            lat=photo.lat,
-            lng=photo.lng,
-            url_wms=settings.photo_soil_wms_url,
-            layers_wms=settings.photo_soil_wms_layers,
-            field_hints=soil_hints,
-            url_wfs=settings.photo_soil_wfs_url,
-            layers_wfs=settings.photo_soil_wfs_layers,
-            layer_fields_fallback=_split_comma_values(settings.photo_soil_layer_fields),
-        )
+        ar5_source = _query_ar5_value(photo.lat, photo.lng, ar5_hints)
+        soil_source = _query_soil_value(photo.lat, photo.lng, soil_hints)
 
         estimated_score = _analysis_context_score(ar5, soil)
         source_score = _analysis_context_score(ar5_source, soil_source)
