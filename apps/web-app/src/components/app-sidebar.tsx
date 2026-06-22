@@ -1,4 +1,4 @@
-import { Image, Images, Import, Map as MapIcon, Route, Settings2 } from "lucide-react";
+import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
 
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -8,7 +8,7 @@ import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
-type AppView = "map" | "planning" | "album" | "orthophotos" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video";
 
 interface LogEntry {
   id: string;
@@ -134,6 +134,14 @@ function SidebarNavigation({
               <Image className="h-4 w-4 shrink-0" />
             </span>
             <span className="fb-sidebar-label">Ortofotoene</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "forest"} closeOnClick onClick={() => onChangeView("forest")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Trees className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Skogbruk</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         {onStartMediaImport ? (

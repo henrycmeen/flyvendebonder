@@ -27,6 +27,7 @@ interface MapCanvasProps {
   showZoomControls: boolean;
   showSoilLayer: boolean;
   showPropertyLayer: boolean;
+  showForestLayer: boolean;
   soilRefreshToken: number;
   fieldPlots: FieldPlot[];
   activeFieldDraft: FieldPlotDraft | null;
@@ -104,6 +105,11 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function isForestOverlay(overlay: (typeof DEV_ORTHOPHOTO_OVERLAYS)[number]): boolean {
+  const text = `${overlay.id} ${overlay.label}`.toLocaleLowerCase("nb-NO");
+  return text.includes("skog");
 }
 
 function buildPinClassName(active: boolean, photo: PhotoFeature | null): string {
@@ -505,6 +511,7 @@ export function MapCanvas({
   showZoomControls,
   showSoilLayer,
   showPropertyLayer,
+  showForestLayer,
   soilRefreshToken,
   fieldPlots,
   activeFieldDraft,
@@ -538,6 +545,7 @@ export function MapCanvas({
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const orthophotoLayerRef = useRef<L.LayerGroup | null>(null);
+  const forestLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldHandleLayerRef = useRef<L.LayerGroup | null>(null);
@@ -605,6 +613,14 @@ export function MapCanvas({
       soilPane.style.mixBlendMode = "multiply";
     }
 
+    map.createPane("forestPane");
+    const forestPane = map.getPane("forestPane");
+    if (forestPane) {
+      forestPane.style.zIndex = "390";
+      forestPane.style.pointerEvents = "none";
+      forestPane.style.mixBlendMode = "multiply";
+    }
+
     map.createPane("orthophotoPane");
     const orthophotoPane = map.getPane("orthophotoPane");
     if (orthophotoPane) {
@@ -668,6 +684,9 @@ export function MapCanvas({
     const orthophotoLayer = L.layerGroup();
     orthophotoLayer.addTo(map);
     orthophotoLayerRef.current = orthophotoLayer;
+    const forestLayer = L.layerGroup();
+    forestLayer.addTo(map);
+    forestLayerRef.current = forestLayer;
     const videoLayer = L.layerGroup();
     videoLayer.addTo(map);
     videoLayerRef.current = videoLayer;
@@ -699,6 +718,10 @@ export function MapCanvas({
       if (orthophotoLayerRef.current) {
         orthophotoLayerRef.current.remove();
         orthophotoLayerRef.current = null;
+      }
+      if (forestLayerRef.current) {
+        forestLayerRef.current.remove();
+        forestLayerRef.current = null;
       }
       propertyLayerRef.current = null;
       if (fieldLayerRef.current) {
@@ -839,6 +862,39 @@ export function MapCanvas({
       orthophotoLayer.addLayer(imageLayer);
     });
   }, [properties, selectedSeason, selectedYear]);
+
+  useEffect(() => {
+    if (!mapRef.current || !forestLayerRef.current) return;
+
+    const forestLayer = forestLayerRef.current;
+    forestLayer.clearLayers();
+    if (!showForestLayer) return;
+
+    const propertyReferences = new Set(properties.map((property) => formatPropertyReference(property)));
+    const forestOverlays = DEV_ORTHOPHOTO_OVERLAYS.filter(
+      (overlay) => propertyReferences.has(overlay.propertyReference) && isForestOverlay(overlay),
+    );
+
+    forestOverlays.forEach((overlay) => {
+      const bounds = L.latLngBounds(
+        [overlay.bounds.south, overlay.bounds.west],
+        [overlay.bounds.north, overlay.bounds.east],
+      );
+      if (!bounds.isValid()) return;
+
+      const layer = L.rectangle(bounds, {
+        pane: "forestPane",
+        interactive: false,
+        color: "var(--fb-map-forest)",
+        weight: 2,
+        opacity: 0.86,
+        fillColor: "var(--fb-map-forest)",
+        fillOpacity: 0.18,
+        dashArray: "8 7",
+      });
+      layer.addTo(forestLayer);
+    });
+  }, [properties, showForestLayer]);
 
   useEffect(() => {
     if (!mapRef.current || !focusedOrthophotoId) return;

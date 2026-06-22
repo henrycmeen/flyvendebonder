@@ -59,6 +59,9 @@ interface MapLayerPanelProps {
   showSoilLayer: boolean;
   soilStatus: string;
   onToggleSoilLayer: (next: boolean) => void;
+  showForestLayer: boolean;
+  forestStatus: string;
+  onToggleForestLayer: (next: boolean) => void;
   baseMapStyle: BaseMapStyle;
   onChangeQuickBaseMap: (style: BaseMapStyle) => void;
 }
@@ -71,6 +74,9 @@ export function MapLayerPanel({
   showSoilLayer,
   soilStatus,
   onToggleSoilLayer,
+  showForestLayer,
+  forestStatus,
+  onToggleForestLayer,
   baseMapStyle,
   onChangeQuickBaseMap,
 }: MapLayerPanelProps) {
@@ -191,6 +197,13 @@ export function MapLayerPanel({
                 status={soilStatus}
                 accentClassName="bg-[color:var(--fb-accent-success)]"
                 onToggle={onToggleSoilLayer}
+              />
+              <LayerToggle
+                active={showForestLayer}
+                label="Naturskogindikasjon"
+                status={forestStatus}
+                accentClassName="bg-[color:var(--fb-map-forest)]"
+                onToggle={onToggleForestLayer}
               />
             </div>
 
