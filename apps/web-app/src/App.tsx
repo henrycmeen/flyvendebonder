@@ -31,6 +31,7 @@ import { MediaImportPage, type MediaImportSelection } from "@/components/media-i
 import { MapCanvas } from "@/components/map-canvas";
 import { PlanningPage } from "@/components/planning-page";
 import { PhotoInspector } from "@/components/photo-inspector";
+import { SkogbrukPage } from "@/components/skogbruk-page";
 import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -79,7 +80,7 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "planning" | "album" | "orthophotos" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
@@ -97,6 +98,7 @@ const VIDEO_WORKFLOW_DISABLED_REASON =
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
+  if (rawView === "forest" || rawView === "skogbruk") return "forest";
   if (rawView === "import") {
     return BROWSER_MEDIA_IMPORT_ENABLED ? "import" : "map";
   }
@@ -220,6 +222,11 @@ function formatCount(value: number, singular: string, plural: string): string | 
   return `${value} ${value === 1 ? singular : plural}`;
 }
 
+function isForestOverlay(overlay: (typeof DEV_ORTHOPHOTO_OVERLAYS)[number]): boolean {
+  const text = `${overlay.id} ${overlay.label}`.toLocaleLowerCase("nb-NO");
+  return text.includes("skog");
+}
+
 function summarizeMediaFinalizeResult(result: MediaFinalizeResult): string {
   const failedCount = result.items.filter((item) => item.status === "failed" || item.status === "rejected").length;
   const parts = [
@@ -332,6 +339,7 @@ export default function App() {
   });
   const [showPropertyLayer, setShowPropertyLayer] = useState(true);
   const [showSoilLayer, setShowSoilLayer] = useState(false);
+  const [showForestLayer, setShowForestLayer] = useState(false);
   const [showOnlyManualQc, setShowOnlyManualQc] = useState(false);
   const [showOnlyLowConfidence, setShowOnlyLowConfidence] = useState(false);
   const [propertyStatus, setPropertyStatus] = useState("Laster eiendomslag ...");
@@ -600,6 +608,18 @@ export default function App() {
     const propertyReferences = new Set(activeProperties.map((property) => formatPropertyReference(property)));
     return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference));
   }, [activeProperties]);
+
+  const activeForestOverlays = useMemo(
+    () => activeOrthophotoOverlays.filter(isForestOverlay),
+    [activeOrthophotoOverlays],
+  );
+
+  const forestStatus =
+    activeForestOverlays.length > 0
+      ? showForestLayer
+        ? `${activeForestOverlays.length} skogflater vises som indikativt kartlag.`
+        : `${activeForestOverlays.length} skogflater tilgjengelig.`
+      : "Ingen skogflater tilgjengelig for aktiv eiendom.";
 
   const availableYears = useMemo(
     () =>
@@ -2017,8 +2037,8 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album" || activeView === "import" || activeView === "video") {
-      next.set("view", activeView);
+    if (activeView === "album" || activeView === "forest" || activeView === "import" || activeView === "video") {
+      next.set("view", activeView === "forest" ? "skogbruk" : activeView);
     } else {
       next.delete("view");
     }
@@ -2595,6 +2615,12 @@ export default function App() {
     addLog("info", "Jordsmonnlag skrudd på av bruker");
   }, [addLog]);
 
+  const handleToggleForestLayer = useCallback((next: boolean) => {
+    setShowForestLayer(next);
+    setStatusText(next ? "Naturskogindikasjon vises i kartet." : "Naturskogindikasjon er skrudd av.");
+    addLog("info", next ? "Naturskogindikasjon skrudd på" : "Naturskogindikasjon skrudd av");
+  }, [addLog]);
+
   const handleTogglePropertyLayer = useCallback((next: boolean) => {
     if (next && activeProperties.length === 0) {
       setShowPropertyLayer(false);
@@ -2727,6 +2753,8 @@ export default function App() {
                   ? "Album åpnet"
                   : view === "orthophotos"
                     ? "Ortofotoene åpnet"
+                  : view === "forest"
+                    ? "Skogbruk åpnet"
                   : view === "planning"
                     ? "Planlegging åpnet"
                   : view === "import"
@@ -2791,6 +2819,9 @@ export default function App() {
                   showSoilLayer={showSoilLayer}
                   soilStatus={soilStatus}
                   onToggleSoilLayer={handleToggleSoilLayer}
+                  showForestLayer={showForestLayer}
+                  forestStatus={forestStatus}
+                  onToggleForestLayer={handleToggleForestLayer}
                   baseMapStyle={baseMapStyle}
                   onChangeQuickBaseMap={(nextStyle) => {
                     if (baseMapStyle === nextStyle) {
@@ -2823,6 +2854,7 @@ export default function App() {
                   showZoomControls={showZoomControls}
                   showSoilLayer={showSoilLayer}
                   showPropertyLayer={showPropertyLayer}
+                  showForestLayer={showForestLayer}
                   soilRefreshToken={soilRefreshToken}
                   fieldPlots={[]}
                   activeFieldDraft={null}
@@ -2886,6 +2918,24 @@ export default function App() {
                     setOrthophotoFocusToken((value) => value + 1);
                     setActiveView("map");
                     addLog("info", "Ortofoto åpnet i kart", null, { overlayId });
+                  }}
+                />
+              ) : activeView === "forest" ? (
+                <SkogbrukPage
+                  overlays={activeOrthophotoOverlays}
+                  showForestLayer={showForestLayer}
+                  onToggleForestLayer={handleToggleForestLayer}
+                  onOpenInMap={(overlayId) => {
+                    const overlay = DEV_ORTHOPHOTO_OVERLAYS.find((item) => item.id === overlayId);
+                    if (!overlay) return;
+                    setSyncSelectionToUrl(true);
+                    setSelectedYear(overlay.capturedDate.slice(0, 4));
+                    setSelectedSeason(monthToSeason(overlay.capturedDate.slice(5, 7)));
+                    setFocusedOrthophotoId(overlayId);
+                    setOrthophotoFocusToken((value) => value + 1);
+                    setShowForestLayer(true);
+                    setActiveView("map");
+                    addLog("info", "Skogflate åpnet i kart", null, { overlayId });
                   }}
                 />
               ) : activeView === "import" ? (
