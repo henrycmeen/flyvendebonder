@@ -804,6 +804,19 @@ class GardskartJobResponse(BaseModel):
     is_expired: bool
 
 
+class SourceLayerStatus(BaseModel):
+    enabled: bool
+    configured: bool
+    source: Literal["enabled", "disabled"]
+    status_desc: str
+
+
+class SourceStatusResponse(BaseModel):
+    ar5: SourceLayerStatus
+    gardskart: SourceLayerStatus
+    soil: SourceLayerStatus
+
+
 class ImportRunOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

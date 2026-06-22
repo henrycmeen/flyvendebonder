@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     admin_session_ttl_hours: int = 12
 
     photo_analysis_enabled: bool = True
+    photo_ar5_enabled: bool = False
     photo_ar5_wms_url: str = "https://wms.nibio.no/cgi-bin/ar5"
     photo_ar5_wms_layers: str = "Arealtype"
     photo_ar5_wms_layer_fields: str = "artype_beskrivelse,vanlig_beskrivelse,enkel_beskrivelse,artype"

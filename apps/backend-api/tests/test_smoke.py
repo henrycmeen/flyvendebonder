@@ -188,6 +188,18 @@ def test_current_gardskart_job_endpoint_is_disabled_by_default(client):
     assert payload["is_expired"] is False
 
 
+def test_source_status_endpoint_shows_rights_gated_defaults(client):
+    response = client.get("/api/v1/sources/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ar5"]["source"] == "disabled"
+    assert payload["ar5"]["enabled"] is False
+    assert "PHOTO_AR5_ENABLED" in payload["ar5"]["status_desc"]
+    assert payload["gardskart"]["source"] == "disabled"
+    assert payload["soil"]["source"] == "disabled"
+
+
 def test_property_specific_gardskart_job_endpoint(client, monkeypatch):
     import app.api.v1 as v1
 

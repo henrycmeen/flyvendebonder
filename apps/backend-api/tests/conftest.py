@@ -26,6 +26,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_DATA_ROOT", app_data_root.as_posix())
     monkeypatch.setenv("DEMO_SEED_GEOJSON", empty_geojson.as_posix())
     monkeypatch.setenv("DEMO_SEED_ASSETS_DIR", empty_assets.as_posix())
+    monkeypatch.setenv("PHOTO_AR5_ENABLED", "false")
     monkeypatch.setenv("PHOTO_AR5_WMS_URL", "")
     monkeypatch.setenv("PHOTO_AR5_WMS_LAYERS", "")
     monkeypatch.setenv("PHOTO_SOIL_WMS_URL", "")

@@ -70,6 +70,8 @@ from ..schemas import (
     PhotoMetadataPatchRequest,
     PhotoAnalysisRefreshResponse,
     PhotoReprocessResponse,
+    SourceLayerStatus,
+    SourceStatusResponse,
     StacAsset,
     StacCollectionListResponse,
     StacCollectionOut,
@@ -386,6 +388,19 @@ async def _build_gardskart_job_response(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Gardskart jobId henting feilet", extra={"error": str(exc), "property_id": property_obj.id})
         raise HTTPException(status_code=502, detail=f"Kunne ikke hente jobId: {exc}") from exc
+
+
+def _configured_layer(url_wms: str, layers_wms: str, url_wfs: str = "", layers_wfs: str = "") -> bool:
+    return bool((url_wms and layers_wms) or (url_wfs and layers_wfs))
+
+
+def _source_layer_status(*, enabled: bool, configured: bool, enabled_desc: str, disabled_desc: str) -> SourceLayerStatus:
+    return SourceLayerStatus(
+        enabled=enabled,
+        configured=configured,
+        source="enabled" if enabled else "disabled",
+        status_desc=enabled_desc if enabled else disabled_desc,
+    )
 
 
 def _parse_stored_tags(photo: Photo) -> tuple[list[str], list[str]]:
@@ -2903,6 +2918,43 @@ def reprocess_photo_metadata(
         force_analysis=force_analysis,
     )
     return PhotoReprocessResponse(**results)
+
+
+@router.get("/sources/status", response_model=SourceStatusResponse)
+def get_source_status() -> SourceStatusResponse:
+    ar5_configured = _configured_layer(
+        settings.photo_ar5_wms_url,
+        settings.photo_ar5_wms_layers,
+        settings.photo_ar5_wfs_url,
+        settings.photo_ar5_wfs_layers,
+    )
+    soil_configured = _configured_layer(
+        settings.photo_soil_wms_url,
+        settings.photo_soil_wms_layers,
+        settings.photo_soil_wfs_url,
+        settings.photo_soil_wfs_layers,
+    )
+
+    return SourceStatusResponse(
+        ar5=_source_layer_status(
+            enabled=settings.photo_ar5_enabled and ar5_configured,
+            configured=ar5_configured,
+            enabled_desc="AR5-oppslag er aktivert for dette miljøet.",
+            disabled_desc="AR5 er deaktivert som sikker default. Sett PHOTO_AR5_ENABLED=true bare ved avklart tilgang.",
+        ),
+        gardskart=_source_layer_status(
+            enabled=settings.nibio_gardskart_enabled,
+            configured=bool(settings.nibio_gpiareastat_url),
+            enabled_desc="Gårdskart jobId-henting er aktivert for dette miljøet.",
+            disabled_desc="Gårdskart er deaktivert som sikker default. Sett NIBIO_GARDSKART_ENABLED=true bare ved avklart tilgang.",
+        ),
+        soil=_source_layer_status(
+            enabled=soil_configured,
+            configured=soil_configured,
+            enabled_desc="Jordsmonn/jordkvalitet er konfigurert som eksplisitt analysekontekst.",
+            disabled_desc="Jordsmonn/jordkvalitet er deaktivert fordi ingen WMS/WFS-kilde er konfigurert.",
+        ),
+    )
 
 
 @router.get("/properties/current")

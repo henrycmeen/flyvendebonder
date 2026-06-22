@@ -34,6 +34,7 @@ python3 -m pytest -q tests/test_smoke.py
 - `GET /api/v1/properties/current`
 - `GET /api/v1/properties/current/gardskart-job`
 - `GET /api/v1/properties/current/field-candidates` returnerer også provenance-feltene `source_endpoint`, `source_fetched_at` og `source_updated_at` per kandidat.
+- `GET /api/v1/sources/status` viser om AR5, Gårdskart og jordsmonn/jordkvalitet er aktivert eller deaktivert i miljøet.
 - `POST /api/v1/imports/photos`
 - `GET /api/v1/imports/{id}`
 - `GET /api/v1/assets/{asset_path}`
@@ -54,12 +55,15 @@ python3 import_photos.py "/Users/henmee/Movies/Droneshots/Meen gård/Analysebil
 - Analyse beriker bilder med `ar5_class` og `soil_class`.
 - Oppslagspunkt følger samme geometri som vises i appen (`view_lat/view_lng`-logikk), med fallback til dronepunkt.
 - Kildepolicyen ligger i `docs/drift/kildepolicy-v1.md`. Kortversjonen er at Geonorge brukes som primær felt-/teigkilde, mens NIBIO-lag brukes som overlay eller analysekontekst.
-- Standardoppsett bruker NIBIO WMS `GetFeatureInfo`, men AR5/Gårdskart-avhengigheter må behandles som rettighetsstyrte i bred distribusjon:
+- Standardoppsett kan bruke NIBIO WMS `GetFeatureInfo`, men AR5/Gårdskart-avhengigheter behandles som rettighetsstyrte i bred distribusjon:
   - AR5: `https://wms.nibio.no/cgi-bin/ar5` (`Arealtype`)
   - Jordkvalitet: `https://wms.nibio.no/cgi-bin/jordkvalitet` (`Jordkvalitet`)
 - WFS brukes som fallback der det er konfigurert.
+- AR5-oppslag er deaktivert som sikker default med `PHOTO_AR5_ENABLED=false`. Sett `PHOTO_AR5_ENABLED=true` bare i miljø med avklart Geovekst/Norge Digitalt-tilgang.
+- `GET /api/v1/sources/status` kan brukes i drift/smoke for å se om AR5, Gårdskart og jordsmonn/jordkvalitet faktisk er aktivt.
 
 Nyttige env-variabler:
+- `PHOTO_AR5_ENABLED`
 - `PHOTO_AR5_WMS_URL`
 - `PHOTO_AR5_WMS_LAYERS`
 - `PHOTO_AR5_WMS_LAYER_FIELDS`

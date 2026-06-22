@@ -52,12 +52,12 @@ Dette er beslutningstabellen for eksterne kart- og geodatakilder i Flyvendebønd
 
 - `apps/backend-api/app/services/geonorge_teiger.py` bruker `https://ws.geonorge.no/eiendom/v1` for teigkandidater og punktoppslag.
 - Planleggings-API-et eksponerer feltkandidater, sync og punktoppslag basert på Geonorge-datalinjen.
-- Bildeanalyse har fortsatt konfigurerte AR5- og jordkvalitetsoppslag. AR5-delen må regnes som rettighetsstyrt i bred distribusjon inntil tilgang er avklart.
+- Bildeanalyse kan fortsatt bruke AR5 og jordkvalitet som analysekontekst, men AR5-oppslag er deaktivert som sikker runtime-default med `PHOTO_AR5_ENABLED=false`.
+- `GET /api/v1/sources/status` viser om AR5, Gårdskart og jordsmonn/jordkvalitet faktisk er aktivert i miljøet.
 - Gårdskart jobId-cache finnes fortsatt for eiendomslag, men henting er gated med `NIBIO_GARDSKART_ENABLED=false` som sikker default og skal ikke være primær produktkilde for feltvalg.
 
 ## Oppfølgingsbehov
 
-- Lag en liten runtime-gate for rettighetsstyrte AR5/Gårdskart-lag slik at miljø uten avtale kan kjøre uten disse som default-avhengighet.
 - Dokumenter attribusjon i UI/rapport når NIBIO- eller Copernicus-data vises eller eksporteres.
 - Fortsett Geonorge-hardening med cache/fallback og tydelig visning av nøyaktighetsklasse i planleggingsflyten.
 
