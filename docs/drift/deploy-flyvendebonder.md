@@ -3,7 +3,7 @@
 ## Forutsetninger
 - SSH alias `macmini` fungerer.
 - Remote webroot finnes: `/Users/henrymeen/srv/www/flyvendebonder/`.
-- Backend API kjører separat på Mac mini (`127.0.0.1:8787`) bak Caddy `/api/*`.
+- Backend API kjører som egen LaunchAgent-prosess på Mac mini (`127.0.0.1:8787`) bak Caddy `/api/*`.
 
 ## Staging
 Bygg en lokal staging-kopi med riktig URL-struktur:
@@ -28,6 +28,8 @@ Resultat i:
 5. Kopierer `apps/web-app/dist/*` til staging `/app/`.
 
 ## Deploy
+Denne seksjonen beskriver manuell webroot-deploy. Normal deploy fra `main` bruker GitHub Actions-flyten lenger ned, som deployer både backend-kode og webroot.
+
 ### Dry-run
 ```bash
 ./scripts/deploy-flyvendebonder.sh --dry-run
@@ -80,9 +82,10 @@ Den kjører nå både backend og webroot:
    - `npm` og vanlig macOS-verktøy som `rsync`
 
 ### Viktig avgrensning
-- Workflowen synker backend-kode, installerer Python-avhengigheter og restarter `com.flyvendebonder.backend`.
-- Webroot publiseres fortsatt separat via `deploy-flyvendebonder.sh`.
+- Workflowen synker backend-kode, installerer Python-avhengigheter, restarter `com.flyvendebonder.backend`, og krever grønn lokal health-check før webroot-steget.
+- Webroot publiseres fortsatt som et separat steg via `deploy-flyvendebonder.sh`.
 - `.env`, `data/`, `logs/` og andre runtime-artefakter beholdes lokalt på Mac mini og overskrives ikke av workflowen.
+- Database-migreringer, produksjonsdataendringer, backfills og hemmeligheter er fortsatt manuell drift og skal ikke antas håndtert av main-workflowen.
 - Rollback er fortsatt manuell drift dersom deploy skulle feile etter sync.
 
 ## Backend runtime på Mac mini
@@ -120,6 +123,20 @@ Måling av nåværende lagring/varianter:
 ```
 
 ## Publiseringsrekkefølge (runbook)
+Normal repo-publisering gjøres ved merge/push til `main` og verifisering av GitHub Actions-runnen `Deploy live from main`.
+
+I en grønn main-run skal disse stegene være fullført:
+1. `Deploy backend locally`
+2. `Deploy live webroot locally`
+
+Etterpå kan live sjekkes med:
+```bash
+curl -fsS https://xn--flyvendebnder-jnb.no/api/v1/health
+curl -fsSI https://xn--flyvendebnder-jnb.no/app/
+```
+
+Manuell publisering er fortsatt relevant ved backfill, dataarbeid eller direkte drift utenom GitHub Actions:
+
 1. Kjør derivat-backfill:
 ```bash
 cd apps/backend-api

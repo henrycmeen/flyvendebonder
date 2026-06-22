@@ -42,13 +42,14 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - Hurtigsjekk før deploy: `ssh macmini 'hostname && whoami'`.
 
 ## Live deploy fra `main`
-- `main` er live-branch for webrooten.
+- `main` er live-branch for webrooten og backend-koden.
 - Push eller merge til `main` trigger GitHub Actions-workflowen `.github/workflows/deploy-main.yml`.
 - Workflowen kjører på en self-hosted runner på Mac mini med label `flyvendebonder-live`.
-- Runneren sjekker ut repoet lokalt på Mac mini, kjører `npm ci` i `apps/web-app`, og kjører deretter `./scripts/deploy-flyvendebonder.sh --local`.
-- Resultatet blir synket til `/Users/henrymeen/srv/www/flyvendebonder/`, som serveres av Caddy.
+- Runneren sjekker ut repoet lokalt på Mac mini, kjører `npm ci` i `apps/web-app`, og deployer deretter backend og webroot lokalt.
+- Backend-steg: `./scripts/deploy-backend-macmini.sh` synker `apps/backend-api` til `/Users/henrymeen/srv/apps/flyvendebonder/apps/backend-api`, installerer Python-avhengigheter, restarter `com.flyvendebonder.backend`, og health-sjekker `127.0.0.1:8787`.
+- Webroot-steg: `./scripts/deploy-flyvendebonder.sh --local` bygger staging og synker til `/Users/henrymeen/srv/www/flyvendebonder/`, som serveres av Caddy.
 - Dette betyr at Mac mini ikke serverer direkte fra GitHub. GitHub brukes bare til å trigge workflowen og levere repo-innholdet til runner-jobben.
-- Backend deployes ikke automatisk av denne workflowen. `apps/backend-api` kjører fortsatt som egen prosess på Mac mini og håndteres separat.
+- Backend kjører fortsatt som egen LaunchAgent-prosess på Mac mini. Workflowen deployer kode og restart, men runtime `.env`, `data/`, `logs/`, `storage/`, migreringer, backfills og produksjonsdata håndteres separat.
 
 ## Arbeidskopier lokalt
 - Mappen over repoet inneholder nå to vanlige git-kloner: `prod/` og `test/`.
