@@ -815,12 +815,17 @@ export function PlanningPage({
       return;
     }
     try {
+      const visibleUnitIds = new Set(
+        [selectedUnit.id, selectedUnit.parent_unit_id].filter((unitId): unitId is number => typeof unitId === "number"),
+      );
       const { data } = await apiGet<ScoutingTaskListResponse>("/api/v1/scouting/tasks", {
         query: { field_id: selectedUnit.source_field_plot_id },
         cache: false,
         dedupe: false,
       });
-      const nextTasks = Array.isArray(data?.tasks) ? data.tasks : [];
+      const nextTasks = (Array.isArray(data?.tasks) ? data.tasks : []).filter(
+        (task) => task.planning_unit_id == null || visibleUnitIds.has(task.planning_unit_id),
+      );
       setScoutingTasks(nextTasks);
       setScoutingStatusText(
         nextTasks.length === 0 ? "Ingen feltoppgaver for dette området ennå." : `${nextTasks.length} feltoppgave${nextTasks.length === 1 ? "" : "r"} på området.`,
