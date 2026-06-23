@@ -270,6 +270,30 @@ export interface PlanningPointResolveResponse {
   distance_m: number | null;
 }
 
+export type ScoutingTaskStatus = "open" | "in_progress" | "done";
+export type ScoutingTaskPriority = "low" | "normal" | "high";
+
+export interface ScoutingTask {
+  id: number;
+  property_id: number;
+  field_id: number;
+  planning_unit_id: number | null;
+  title: string;
+  notes: string | null;
+  status: ScoutingTaskStatus;
+  priority: ScoutingTaskPriority;
+  position: GeoPoint;
+  photo_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScoutingTaskListResponse {
+  property_id: number | null;
+  count: number;
+  tasks: ScoutingTask[];
+}
+
 export interface CameraPreset {
   id: string;
   name: string;

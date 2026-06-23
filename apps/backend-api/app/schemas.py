@@ -303,6 +303,112 @@ class PlanningPointResolveOut(BaseModel):
     distance_m: int | None = None
 
 
+ScoutingTaskStatus = Literal["open", "in_progress", "done"]
+ScoutingTaskPriority = Literal["low", "normal", "high"]
+
+
+class ScoutingTaskCreate(BaseModel):
+    property_id: int | None = None
+    field_id: int = Field(gt=0)
+    planning_unit_id: int | None = Field(default=None, ge=1)
+    title: str = Field(min_length=1, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    status: ScoutingTaskStatus = "open"
+    priority: ScoutingTaskPriority = "normal"
+    position: GeoPoint
+    photo_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("title")
+    @classmethod
+    def _normalize_title(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Tittel kan ikke være tom")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("photo_ids")
+    @classmethod
+    def _normalize_photo_ids(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for raw_id in value:
+            photo_id = str(raw_id).strip()
+            if photo_id and photo_id not in normalized:
+                normalized.append(photo_id)
+        if len(normalized) > 50:
+            raise ValueError("Maks 50 bilder kan knyttes til et feltfunn")
+        return normalized
+
+
+class ScoutingTaskPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    status: ScoutingTaskStatus | None = None
+    priority: ScoutingTaskPriority | None = None
+    position: GeoPoint | None = None
+    photo_ids: list[str] | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Tittel kan ikke være tom")
+        return normalized
+
+    @field_validator("notes")
+    @classmethod
+    def _normalize_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("photo_ids")
+    @classmethod
+    def _normalize_photo_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized: list[str] = []
+        for raw_id in value:
+            photo_id = str(raw_id).strip()
+            if photo_id and photo_id not in normalized:
+                normalized.append(photo_id)
+        if len(normalized) > 50:
+            raise ValueError("Maks 50 bilder kan knyttes til et feltfunn")
+        return normalized
+
+
+class ScoutingTaskOut(BaseModel):
+    id: int
+    property_id: int
+    field_id: int
+    planning_unit_id: int | None = None
+    title: str
+    notes: str | None = None
+    status: ScoutingTaskStatus
+    priority: ScoutingTaskPriority
+    position: GeoPoint
+    photo_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ScoutingTaskListResponse(BaseModel):
+    property_id: int | None = None
+    count: int
+    tasks: list[ScoutingTaskOut]
+
+
 class CameraPresetOut(BaseModel):
     id: str
     name: str
