@@ -81,6 +81,9 @@ class Property(TimestampMixin, Base):
     flight_captures: Mapped[list[FlightCapture]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
+    scouting_tasks: Mapped[list[ScoutingTask]] = relationship(
+        back_populates="property", cascade="all, delete-orphan"
+    )
     media_staging_jobs: Mapped[list[MediaStagingJob]] = relationship(back_populates="property")
     video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="property")
 
@@ -146,6 +149,7 @@ class FieldPlot(TimestampMixin, Base):
 
     property: Mapped[Property] = relationship(back_populates="field_plots")
     planning_units: Mapped[list[PlanningUnit]] = relationship(back_populates="source_field_plot")
+    scouting_tasks: Mapped[list[ScoutingTask]] = relationship(back_populates="field_plot")
 
 
 class PlanningUnit(TimestampMixin, Base):
@@ -167,6 +171,30 @@ class PlanningUnit(TimestampMixin, Base):
 
     property: Mapped[Property] = relationship(back_populates="planning_units")
     source_field_plot: Mapped[FieldPlot] = relationship(back_populates="planning_units")
+    scouting_tasks: Mapped[list[ScoutingTask]] = relationship(back_populates="planning_unit")
+
+
+class ScoutingTask(TimestampMixin, Base):
+    __tablename__ = "scouting_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    field_plot_id: Mapped[int] = mapped_column(ForeignKey("field_plots.id", ondelete="CASCADE"), index=True)
+    planning_unit_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("planning_units.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="open")
+    priority: Mapped[str] = mapped_column(String(24), nullable=False, default="normal")
+    lat: Mapped[float] = mapped_column(Float, nullable=False)
+    lng: Mapped[float] = mapped_column(Float, nullable=False)
+    photo_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    property: Mapped[Property] = relationship(back_populates="scouting_tasks")
+    field_plot: Mapped[FieldPlot] = relationship(back_populates="scouting_tasks")
+    planning_unit: Mapped[Optional[PlanningUnit]] = relationship(back_populates="scouting_tasks")
 
 
 class FlightMission(TimestampMixin, Base):

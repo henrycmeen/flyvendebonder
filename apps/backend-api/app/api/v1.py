@@ -32,6 +32,7 @@ from ..models import (
     ProcessingArtifact,
     ProcessingRun,
     Property,
+    ScoutingTask,
     User,
 )
 from ..schemas import (
@@ -95,6 +96,11 @@ from ..schemas import (
     PlanningUnitSyncResponse,
     PlanningPointResolveIn,
     PlanningPointResolveOut,
+    ScoutingTaskCreate,
+    ScoutingTaskListResponse,
+    ScoutingTaskOut,
+    ScoutingTaskPatch,
+    ScoutingTaskStatus,
     PhotoPageResponse,
     PhotoResponse,
     ProfileOut,
@@ -516,6 +522,23 @@ def _require_user_planning_unit(db: Session, *, user_id: int, unit_id: int) -> P
     return item
 
 
+def _require_user_scouting_task(db: Session, *, user_id: int, task_id: int) -> ScoutingTask:
+    property_ids = _active_property_ids(db, user_id)
+    item = (
+        db.execute(
+            select(ScoutingTask).where(
+                ScoutingTask.id == task_id,
+                ScoutingTask.property_id.in_(property_ids or [-1]),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke feltoppgave")
+    return item
+
+
 def _normalize_field_name(value: str | None) -> str | None:
     if value is None:
         return None
@@ -663,6 +686,57 @@ def _planning_unit_out(
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+def _scouting_task_out(item: ScoutingTask) -> ScoutingTaskOut:
+    try:
+        photo_ids = json.loads(item.photo_ids_json or "[]")
+    except (TypeError, json.JSONDecodeError):
+        photo_ids = []
+    return ScoutingTaskOut(
+        id=item.id,
+        property_id=item.property_id,
+        field_id=item.field_plot_id,
+        planning_unit_id=item.planning_unit_id,
+        title=item.title,
+        notes=item.notes,
+        status=item.status,
+        priority=item.priority,
+        position={"lat": item.lat, "lng": item.lng},
+        photo_ids=[str(photo_id) for photo_id in photo_ids if str(photo_id).strip()],
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _validate_scouting_position(position) -> tuple[float, float]:
+    lat = float(position.lat)
+    lng = float(position.lng)
+    if not math.isfinite(lat) or not math.isfinite(lng):
+        raise HTTPException(status_code=400, detail="Posisjon må være gyldig bredde- og lengdegrad")
+    if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+        raise HTTPException(status_code=400, detail="Posisjon må være innenfor gyldige koordinater")
+    return lat, lng
+
+
+def _resolve_scouting_scope(
+    db: Session,
+    *,
+    user_id: int,
+    field_id: int,
+    property_id: int | None,
+    planning_unit_id: int | None,
+) -> tuple[Property, FieldPlot, PlanningUnit | None]:
+    field = _require_user_field_plot(db, user_id=user_id, field_id=field_id)
+    if property_id is not None and property_id != field.property_id:
+        raise HTTPException(status_code=400, detail="Feltet tilhører ikke valgt eiendom")
+    property_obj = _require_active_property(db, user_id, field.property_id)
+    planning_unit = None
+    if planning_unit_id is not None:
+        planning_unit = _require_user_planning_unit(db, user_id=user_id, unit_id=planning_unit_id)
+        if planning_unit.property_id != property_obj.id or planning_unit.source_field_plot_id != field.id:
+            raise HTTPException(status_code=400, detail="Planenheten tilhører ikke valgt felt")
+    return property_obj, field, planning_unit
 
 
 def _field_ids_contains(raw_value: str, field_id: int) -> bool:
@@ -1854,6 +1928,118 @@ def list_property_planning_units(property_id: int, db: Session = Depends(get_db)
         .all()
     )
     return _planning_unit_list_response(db, property_obj=property_obj, units=units)
+
+
+@router.get("/scouting/tasks", response_model=ScoutingTaskListResponse)
+def list_scouting_tasks(
+    property_id: int | None = Query(default=None),
+    field_id: int | None = Query(default=None),
+    planning_unit_id: int | None = Query(default=None),
+    status_filter: ScoutingTaskStatus | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+) -> ScoutingTaskListResponse:
+    user = _current_user(db)
+    property_ids = _active_property_ids(db, user.id)
+    selected_property_id: int | None = None
+    selected_field: FieldPlot | None = None
+    selected_unit: PlanningUnit | None = None
+
+    query = select(ScoutingTask).where(ScoutingTask.property_id.in_(property_ids or [-1]))
+    if property_id is not None:
+        property_obj = _require_active_property(db, user.id, property_id)
+        selected_property_id = property_obj.id
+        query = query.where(ScoutingTask.property_id == property_obj.id)
+    if field_id is not None:
+        selected_field = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
+        if selected_property_id is not None and selected_field.property_id != selected_property_id:
+            raise HTTPException(status_code=400, detail="Feltet tilhører ikke valgt eiendom")
+        selected_property_id = selected_field.property_id
+        query = query.where(ScoutingTask.field_plot_id == selected_field.id)
+    if planning_unit_id is not None:
+        selected_unit = _require_user_planning_unit(db, user_id=user.id, unit_id=planning_unit_id)
+        if selected_property_id is not None and selected_unit.property_id != selected_property_id:
+            raise HTTPException(status_code=400, detail="Planenheten tilhører ikke valgt eiendom")
+        if selected_field is not None and selected_unit.source_field_plot_id != selected_field.id:
+            raise HTTPException(status_code=400, detail="Planenheten tilhører ikke valgt felt")
+        selected_property_id = selected_unit.property_id
+        query = query.where(ScoutingTask.planning_unit_id == selected_unit.id)
+    if status_filter is not None:
+        query = query.where(ScoutingTask.status == status_filter)
+
+    tasks = (
+        db.execute(query.order_by(ScoutingTask.updated_at.desc(), ScoutingTask.id.desc()))
+        .scalars()
+        .all()
+    )
+    return ScoutingTaskListResponse(
+        property_id=selected_property_id,
+        count=len(tasks),
+        tasks=[_scouting_task_out(item) for item in tasks],
+    )
+
+
+@router.post("/scouting/tasks", response_model=ScoutingTaskOut, status_code=status.HTTP_201_CREATED)
+def create_scouting_task(
+    payload: ScoutingTaskCreate = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> ScoutingTaskOut:
+    user = _current_user(db)
+    property_obj, field, planning_unit = _resolve_scouting_scope(
+        db,
+        user_id=user.id,
+        field_id=payload.field_id,
+        property_id=payload.property_id,
+        planning_unit_id=payload.planning_unit_id,
+    )
+    lat, lng = _validate_scouting_position(payload.position)
+
+    item = ScoutingTask(
+        property_id=property_obj.id,
+        field_plot_id=field.id,
+        planning_unit_id=planning_unit.id if planning_unit else None,
+        title=payload.title,
+        notes=payload.notes,
+        status=payload.status,
+        priority=payload.priority,
+        lat=lat,
+        lng=lng,
+        photo_ids_json=json.dumps(payload.photo_ids, ensure_ascii=False),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _scouting_task_out(item)
+
+
+@router.patch("/scouting/tasks/{task_id}", response_model=ScoutingTaskOut)
+def patch_scouting_task(
+    task_id: int,
+    payload: ScoutingTaskPatch = Body(default_factory=ScoutingTaskPatch),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> ScoutingTaskOut:
+    user = _current_user(db)
+    item = _require_user_scouting_task(db, user_id=user.id, task_id=task_id)
+
+    if payload.title is not None:
+        item.title = payload.title
+    if "notes" in payload.model_fields_set:
+        item.notes = payload.notes
+    if payload.status is not None:
+        item.status = payload.status
+    if payload.priority is not None:
+        item.priority = payload.priority
+    if payload.position is not None:
+        lat, lng = _validate_scouting_position(payload.position)
+        item.lat = lat
+        item.lng = lng
+    if payload.photo_ids is not None:
+        item.photo_ids_json = json.dumps(payload.photo_ids, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(item)
+    return _scouting_task_out(item)
 
 
 @router.post("/planning/units/{unit_id}/split", response_model=PlanningUnitSplitOut)

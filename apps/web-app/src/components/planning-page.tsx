@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, CircleOff, Download, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Settings2, TimerReset, Trash2, Search } from "lucide-react";
+import { Camera, CheckCircle2, CircleOff, ClipboardList, Download, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Search, Settings2, TimerReset, Trash2 } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,10 @@ import type {
   PlanningUnitSplitResponse,
   PlanningUnitSyncResponse,
   Property,
+  ScoutingTask,
+  ScoutingTaskListResponse,
+  ScoutingTaskPriority,
+  ScoutingTaskStatus,
 } from "@/types";
 import type { BaseMapStyle } from "@/lib/map-styles";
 
@@ -82,6 +86,13 @@ type MissionCapturePoint = {
   lat: number;
   lng: number;
 };
+type ScoutingTaskDraft = {
+  title: string;
+  notes: string;
+  lat: string;
+  lng: string;
+  priority: ScoutingTaskPriority;
+};
 
 interface HoverActionButtonProps extends ComponentProps<typeof Button> {
   help: string;
@@ -115,6 +126,49 @@ function formatDuration(seconds: number | null): string {
   const hours = Math.floor(minutes / 60);
   const remaining = minutes % 60;
   return remaining === 0 ? `${hours} t` : `${hours} t ${remaining} min`;
+}
+
+function scoutingStatusLabel(status: ScoutingTaskStatus): string {
+  if (status === "done") return "Ferdig";
+  if (status === "in_progress") return "Under arbeid";
+  return "Åpen";
+}
+
+function scoutingPriorityLabel(priority: ScoutingTaskPriority): string {
+  if (priority === "high") return "Høy";
+  if (priority === "low") return "Lav";
+  return "Normal";
+}
+
+function scoutingPriorityTone(priority: ScoutingTaskPriority): string {
+  if (priority === "high") return "text-[color:var(--fb-accent-danger)]";
+  if (priority === "low") return "text-fb-text-secondary";
+  return "text-[color:var(--fb-season-solid)]";
+}
+
+function unitApproxCenter(unit: PlanningUnit | null): GeoPoint | null {
+  const ring = unit?.geometry?.coordinates?.[0] ?? [];
+  const points = ring
+    .filter((point) => Array.isArray(point) && point.length >= 2)
+    .map((point) => ({ lng: Number(point[0]), lat: Number(point[1]) }))
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+  if (points.length === 0) return null;
+  const closed =
+    points.length > 1 &&
+    points[0].lat === points[points.length - 1].lat &&
+    points[0].lng === points[points.length - 1].lng;
+  const usable = closed ? points.slice(0, -1) : points;
+  const total = usable.reduce(
+    (acc, point) => ({
+      lat: acc.lat + point.lat,
+      lng: acc.lng + point.lng,
+    }),
+    { lat: 0, lng: 0 },
+  );
+  return {
+    lat: total.lat / usable.length,
+    lng: total.lng / usable.length,
+  };
 }
 
 function roundSpacing(value: number): number {
@@ -452,6 +506,17 @@ export function PlanningPage({
   );
   const [units, setUnits] = useState<PlanningUnit[]>([]);
   const [unitsStatus, setUnitsStatus] = useState("Planenheter lastes …");
+  const [scoutingTasks, setScoutingTasks] = useState<ScoutingTask[]>([]);
+  const [scoutingStatusText, setScoutingStatusText] = useState("");
+  const [scoutingBusy, setScoutingBusy] = useState(false);
+  const [scoutingPatchBusyId, setScoutingPatchBusyId] = useState<number | null>(null);
+  const [scoutingDraft, setScoutingDraft] = useState<ScoutingTaskDraft>({
+    title: "",
+    notes: "",
+    lat: "",
+    lng: "",
+    priority: "normal",
+  });
   const [profiles, setProfiles] = useState<DroneProfile[]>([]);
   const [suggestions, setSuggestions] = useState<PlanningSuggestion[]>([]);
   const [selectedDroneProfileId, setSelectedDroneProfileId] = useState<string>("");
@@ -485,6 +550,7 @@ export function PlanningPage({
     () => units.find((item) => item.id === selectedUnitId) ?? null,
     [selectedUnitId, units],
   );
+  const selectedUnitCenter = useMemo(() => unitApproxCenter(selectedUnit), [selectedUnit]);
   const selectedDroneProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedDroneProfileId) ?? null,
     [profiles, selectedDroneProfileId],
@@ -742,6 +808,30 @@ export function PlanningPage({
     }
   }, [applyUnits, properties]);
 
+  const loadScoutingTasks = useCallback(async () => {
+    if (!selectedUnit) {
+      setScoutingTasks([]);
+      setScoutingStatusText("");
+      return;
+    }
+    try {
+      const { data } = await apiGet<ScoutingTaskListResponse>("/api/v1/scouting/tasks", {
+        query: { field_id: selectedUnit.source_field_plot_id },
+        cache: false,
+        dedupe: false,
+      });
+      const nextTasks = Array.isArray(data?.tasks) ? data.tasks : [];
+      setScoutingTasks(nextTasks);
+      setScoutingStatusText(
+        nextTasks.length === 0 ? "Ingen feltoppgaver for dette området ennå." : `${nextTasks.length} feltoppgave${nextTasks.length === 1 ? "" : "r"} på området.`,
+      );
+    } catch (error) {
+      const apiError = error as ApiError;
+      setScoutingTasks([]);
+      setScoutingStatusText(`Kunne ikke laste feltoppgaver: ${apiError.message}`);
+    }
+  }, [selectedUnit]);
+
   const handleSyncOwnedFields = useCallback(async () => {
     if (properties.length === 0 || !canEdit || syncAllBusy) return;
     setSyncAllBusy(true);
@@ -792,6 +882,30 @@ export function PlanningPage({
   useEffect(() => {
     void loadProfiles();
   }, [loadProfiles]);
+
+  useEffect(() => {
+    if (selectedUnitId == null) {
+      setScoutingDraft((current) => ({
+        ...current,
+        title: "",
+        notes: "",
+        lat: "",
+        lng: "",
+      }));
+      return;
+    }
+    setScoutingDraft((current) => ({
+      ...current,
+      title: "",
+      notes: "",
+      lat: selectedUnitCenter ? selectedUnitCenter.lat.toFixed(6) : "",
+      lng: selectedUnitCenter ? selectedUnitCenter.lng.toFixed(6) : "",
+    }));
+  }, [selectedUnitCenter, selectedUnitId]);
+
+  useEffect(() => {
+    void loadScoutingTasks();
+  }, [loadScoutingTasks]);
 
   useEffect(() => {
     setMissionName("");
@@ -1052,6 +1166,59 @@ export function PlanningPage({
     }));
     setPreviewStatus("Oppdaterer rute uten hinderet …");
   }, [canEdit]);
+
+  const handleCreateScoutingTask = useCallback(async () => {
+    if (!canEdit || !selectedUnit || scoutingBusy) return;
+    const lat = Number(scoutingDraft.lat);
+    const lng = Number(scoutingDraft.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setScoutingStatusText("Skriv inn gyldig bredde- og lengdegrad for feltfunnet.");
+      return;
+    }
+    setScoutingBusy(true);
+    try {
+      const title = scoutingDraft.title.trim() || `Funn i ${selectedUnit.name}`;
+      const { data } = await apiPost<ScoutingTask>("/api/v1/scouting/tasks", {
+        property_id: selectedUnit.property_id,
+        field_id: selectedUnit.source_field_plot_id,
+        planning_unit_id: selectedUnit.id,
+        title,
+        notes: scoutingDraft.notes.trim() || null,
+        priority: scoutingDraft.priority,
+        position: { lat, lng },
+      });
+      setScoutingTasks((current) => [data, ...current.filter((item) => item.id !== data.id)]);
+      setScoutingDraft((current) => ({
+        ...current,
+        title: "",
+        notes: "",
+      }));
+      setScoutingStatusText(`Lagret feltoppgave: ${data.title}.`);
+    } catch (error) {
+      const apiError = error as ApiError;
+      setScoutingStatusText(`Kunne ikke lagre feltoppgave: ${apiError.message}`);
+    } finally {
+      setScoutingBusy(false);
+    }
+  }, [canEdit, scoutingBusy, scoutingDraft, selectedUnit]);
+
+  const handlePatchScoutingTaskStatus = useCallback(
+    async (task: ScoutingTask, status: ScoutingTaskStatus) => {
+      if (!canEdit || scoutingPatchBusyId != null) return;
+      setScoutingPatchBusyId(task.id);
+      try {
+        const { data } = await apiPatch<ScoutingTask>(`/api/v1/scouting/tasks/${task.id}`, { status });
+        setScoutingTasks((current) => current.map((item) => (item.id === data.id ? data : item)));
+        setScoutingStatusText(`${data.title} er satt til ${scoutingStatusLabel(data.status).toLocaleLowerCase("nb")}.`);
+      } catch (error) {
+        const apiError = error as ApiError;
+        setScoutingStatusText(`Kunne ikke oppdatere feltoppgave: ${apiError.message}`);
+      } finally {
+        setScoutingPatchBusyId(null);
+      }
+    },
+    [canEdit, scoutingPatchBusyId],
+  );
 
   const handleResolvePoint = useCallback(
     async (point: GeoPoint) => {
@@ -1826,6 +1993,156 @@ export function PlanningPage({
                       <span className={cn("text-xs font-medium", durationTone(selectedUnit.latest_duration_status))}>
                         {missionStatusLabel(selectedUnit.latest_duration_status)}
                       </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-2xl bg-fb-surface-ghost px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ClipboardList className="h-4 w-4 shrink-0 text-[color:var(--fb-season-solid)]" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-fb-text-primary">Feltoppgaver</p>
+                        <p className="mt-1 text-xs text-fb-text-secondary">
+                          Funn med posisjon og status for dette området.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-fb-text-secondary">
+                      {scoutingTasks.length}
+                    </span>
+                  </div>
+                  <p className="sr-only" aria-live="polite">
+                    {scoutingStatusText}
+                  </p>
+
+                  <div className="mt-3 divide-y divide-fb-border-subtle">
+                    {scoutingTasks.length === 0 ? (
+                      <p className="py-3 text-xs leading-5 text-fb-text-secondary">
+                        Ingen feltoppgaver ennå. Lagre første funn når du ser noe som må sjekkes i felt.
+                      </p>
+                    ) : (
+                      scoutingTasks.slice(0, 5).map((task) => (
+                        <div key={task.id} className="py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-fb-text-primary">{task.title}</p>
+                              <p className="mt-1 text-xs text-fb-text-secondary">
+                                {scoutingStatusLabel(task.status)} ·{" "}
+                                <span className={cn("font-medium", scoutingPriorityTone(task.priority))}>
+                                  {scoutingPriorityLabel(task.priority)}
+                                </span>
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={task.status === "done" ? "outline" : "ghost"}
+                              onClick={() => void handlePatchScoutingTaskStatus(task, task.status === "done" ? "open" : "done")}
+                              loading={scoutingPatchBusyId === task.id}
+                              loadingLabel="Oppdaterer"
+                              disabled={!canEdit}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {task.status === "done" ? "Åpne" : "Ferdig"}
+                            </Button>
+                          </div>
+                          {task.notes ? <p className="mt-2 text-xs leading-5 text-fb-text-secondary">{task.notes}</p> : null}
+                          <p className="mt-2 text-[11px] text-fb-text-secondary">
+                            {task.position.lat.toFixed(5)}, {task.position.lng.toFixed(5)}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {canEdit ? (
+                    <div className="mt-3 space-y-2 border-t border-fb-border-subtle pt-3">
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Nytt funn</span>
+                        <input
+                          type="text"
+                          value={scoutingDraft.title}
+                          onChange={(event) =>
+                            setScoutingDraft((current) => ({
+                              ...current,
+                              title: event.target.value,
+                            }))
+                          }
+                          placeholder={`Funn i ${selectedUnit.name}`}
+                          className="w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                        />
+                      </label>
+                      <textarea
+                        value={scoutingDraft.notes}
+                        onChange={(event) =>
+                          setScoutingDraft((current) => ({
+                            ...current,
+                            notes: event.target.value,
+                          }))
+                        }
+                        placeholder="Kort notat, for eksempel ugras, kjørespor, vann eller behov for nytt bilde."
+                        className="min-h-[4.5rem] w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors placeholder:text-fb-text-secondary focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Lat</span>
+                          <input
+                            type="number"
+                            step="0.000001"
+                            value={scoutingDraft.lat}
+                            onChange={(event) =>
+                              setScoutingDraft((current) => ({
+                                ...current,
+                                lat: event.target.value,
+                              }))
+                            }
+                            className="w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Lng</span>
+                          <input
+                            type="number"
+                            step="0.000001"
+                            value={scoutingDraft.lng}
+                            onChange={(event) =>
+                              setScoutingDraft((current) => ({
+                                ...current,
+                                lng: event.target.value,
+                              }))
+                            }
+                            className="w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={scoutingDraft.priority}
+                          onChange={(event) =>
+                            setScoutingDraft((current) => ({
+                              ...current,
+                              priority: event.target.value as ScoutingTaskPriority,
+                            }))
+                          }
+                          className="min-w-0 flex-1 rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                        >
+                          <option value="low">Lav prioritet</option>
+                          <option value="normal">Normal prioritet</option>
+                          <option value="high">Høy prioritet</option>
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void handleCreateScoutingTask()}
+                          loading={scoutingBusy}
+                          loadingLabel="Lagrer funn"
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
+                          Lagre
+                        </Button>
+                      </div>
+                      {scoutingStatusText ? <p className="text-xs leading-5 text-fb-text-secondary">{scoutingStatusText}</p> : null}
                     </div>
                   ) : null}
                 </div>
