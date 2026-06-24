@@ -842,6 +842,7 @@ class AnalysisZone(BaseModel):
 
 class PhotoFeature(BaseModel):
     id: str
+    property_id: int | None = None
     title: str
     captured_at: datetime
     captured_date: date

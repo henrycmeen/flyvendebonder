@@ -2879,6 +2879,7 @@ export default function App() {
                 <PlanningPage
                   properties={activeProperties}
                   canEdit={isAdminAuthenticated}
+                  photos={photos}
                   missions={flightMissions}
                   activeMissionId={activeFlightMissionId}
                   missionFocusToken={flightMissionFocusToken}

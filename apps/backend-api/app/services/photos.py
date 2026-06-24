@@ -243,6 +243,7 @@ def _serialize_photo(
 
     return {
         "id": photo.id,
+        "property_id": photo.property_id,
         "title": f"Foto {photo.captured_date.isoformat()} · {photo.source_filename}",
         "captured_at": photo.captured_at,
         "captured_date": photo.captured_date,
