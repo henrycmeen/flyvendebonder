@@ -739,6 +739,40 @@ def _resolve_scouting_scope(
     return property_obj, field, planning_unit
 
 
+def _resolve_scouting_photo_ids(
+    db: Session,
+    *,
+    user_id: int,
+    property_obj: Property,
+    photo_ids: list[str],
+) -> list[str]:
+    if not photo_ids:
+        return []
+
+    photo_items = (
+        db.execute(
+            select(Photo)
+            .where(Photo.user_id == user_id)
+            .where(Photo.id.in_(photo_ids))
+            .order_by(Photo.captured_at.asc(), Photo.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    photo_by_id = {item.id: item for item in photo_items}
+    missing_ids = [photo_id for photo_id in photo_ids if photo_id not in photo_by_id]
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"Fant ikke valgte bilder: {missing_ids}")
+
+    wrong_property = [photo_id for photo_id in photo_ids if photo_by_id[photo_id].property_id != property_obj.id]
+    if wrong_property:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Alle bilder på en feltoppgave må tilhøre valgt eiendom: {wrong_property}",
+        )
+    return photo_ids
+
+
 def _field_ids_contains(raw_value: str, field_id: int) -> bool:
     return field_id in {int(value) for value in json.loads(raw_value)}
 
@@ -1993,6 +2027,12 @@ def create_scouting_task(
         planning_unit_id=payload.planning_unit_id,
     )
     lat, lng = _validate_scouting_position(payload.position)
+    photo_ids = _resolve_scouting_photo_ids(
+        db,
+        user_id=user.id,
+        property_obj=property_obj,
+        photo_ids=payload.photo_ids,
+    )
 
     item = ScoutingTask(
         property_id=property_obj.id,
@@ -2004,7 +2044,7 @@ def create_scouting_task(
         priority=payload.priority,
         lat=lat,
         lng=lng,
-        photo_ids_json=json.dumps(payload.photo_ids, ensure_ascii=False),
+        photo_ids_json=json.dumps(photo_ids, ensure_ascii=False),
     )
     db.add(item)
     db.commit()
@@ -2035,7 +2075,14 @@ def patch_scouting_task(
         item.lat = lat
         item.lng = lng
     if payload.photo_ids is not None:
-        item.photo_ids_json = json.dumps(payload.photo_ids, ensure_ascii=False)
+        property_obj = _require_active_property(db, user.id, item.property_id)
+        photo_ids = _resolve_scouting_photo_ids(
+            db,
+            user_id=user.id,
+            property_obj=property_obj,
+            photo_ids=payload.photo_ids,
+        )
+        item.photo_ids_json = json.dumps(photo_ids, ensure_ascii=False)
 
     db.commit()
     db.refresh(item)

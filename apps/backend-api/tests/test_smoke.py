@@ -355,6 +355,7 @@ def test_timeline_dates_and_photos_smoke(client):
     photos_payload = photos_response.json()
     assert photos_payload["count"] == 3
     assert len(photos_payload["photos"]) == 3
+    assert photos_payload["photos"][0]["property_id"] >= 1
     assert photos_payload["photos"][0]["thumbnail_url"] is not None
 
 

@@ -29,6 +29,7 @@ import type {
   PlanningPointResolveResponse,
   PlanningUnitSplitResponse,
   PlanningUnitSyncResponse,
+  PhotoFeature,
   Property,
   ScoutingTask,
   ScoutingTaskListResponse,
@@ -52,10 +53,12 @@ const DEFAULT_FLIGHT_MISSION_PARAMETERS: FlightMissionParameters = {
 
 const RESOLVE_PRIMARY_RADIUS_M = 90;
 const RESOLVE_FALLBACK_RADIUS_M = 180;
+const MAX_SCOUTING_PHOTO_OPTIONS = 12;
 
 interface PlanningPageProps {
   properties: Property[];
   canEdit: boolean;
+  photos: PhotoFeature[];
   missions: FlightMission[];
   activeMissionId: number | null;
   missionFocusToken: number;
@@ -92,6 +95,7 @@ type ScoutingTaskDraft = {
   lat: string;
   lng: string;
   priority: ScoutingTaskPriority;
+  photoIds: string[];
 };
 
 interface HoverActionButtonProps extends ComponentProps<typeof Button> {
@@ -144,6 +148,25 @@ function scoutingPriorityTone(priority: ScoutingTaskPriority): string {
   if (priority === "high") return "text-[color:var(--fb-accent-danger)]";
   if (priority === "low") return "text-fb-text-secondary";
   return "text-[color:var(--fb-season-solid)]";
+}
+
+function photoTitle(photo: PhotoFeature): string {
+  return photo.title?.trim() || photo.id;
+}
+
+function photoThumbUrl(photo: PhotoFeature): string {
+  return photo.thumbnail_url || photo.image_url || "";
+}
+
+function formatPhotoCapturedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Ukjent tidspunkt";
+  return date.toLocaleString("nb-NO", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function unitApproxCenter(unit: PlanningUnit | null): GeoPoint | null {
@@ -483,6 +506,7 @@ function geometryKey(coordinates: number[][][] | null | undefined): string {
 export function PlanningPage({
   properties,
   canEdit,
+  photos,
   missions,
   activeMissionId,
   missionFocusToken,
@@ -516,6 +540,7 @@ export function PlanningPage({
     lat: "",
     lng: "",
     priority: "normal",
+    photoIds: [],
   });
   const [profiles, setProfiles] = useState<DroneProfile[]>([]);
   const [suggestions, setSuggestions] = useState<PlanningSuggestion[]>([]);
@@ -687,6 +712,22 @@ export function PlanningPage({
     });
   }, [normalizedSearch, visibleSuggestions]);
   const previewSuggestion = pinnedSuggestion ?? hoveredSuggestion;
+  const photoById = useMemo(() => new Map(photos.map((photo) => [photo.id, photo])), [photos]);
+  const scoutingPhotoOptions = useMemo(() => {
+    if (!selectedUnit) return [];
+    return photos
+      .filter((photo) => photo.property_id === selectedUnit.property_id)
+      .sort((a, b) => {
+        const bTime = Date.parse(b.captured_at);
+        const aTime = Date.parse(a.captured_at);
+        return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime) || b.id.localeCompare(a.id);
+      })
+      .slice(0, MAX_SCOUTING_PHOTO_OPTIONS);
+  }, [photos, selectedUnit]);
+  const selectedScoutingDraftPhotos = useMemo(
+    () => scoutingDraft.photoIds.flatMap((photoId) => photoById.get(photoId) ?? []),
+    [photoById, scoutingDraft.photoIds],
+  );
 
   const handleSelectUnit = useCallback(
     (unitId: number) => {
@@ -896,6 +937,7 @@ export function PlanningPage({
         notes: "",
         lat: "",
         lng: "",
+        photoIds: [],
       }));
       return;
     }
@@ -905,6 +947,7 @@ export function PlanningPage({
       notes: "",
       lat: selectedUnitCenter ? selectedUnitCenter.lat.toFixed(6) : "",
       lng: selectedUnitCenter ? selectedUnitCenter.lng.toFixed(6) : "",
+      photoIds: [],
     }));
   }, [selectedUnitCenter, selectedUnitId]);
 
@@ -1172,6 +1215,18 @@ export function PlanningPage({
     setPreviewStatus("Oppdaterer rute uten hinderet …");
   }, [canEdit]);
 
+  const handleToggleScoutingDraftPhoto = useCallback((photoId: string) => {
+    setScoutingDraft((current) => {
+      const selected = current.photoIds.includes(photoId);
+      return {
+        ...current,
+        photoIds: selected
+          ? current.photoIds.filter((item) => item !== photoId)
+          : [...current.photoIds, photoId],
+      };
+    });
+  }, []);
+
   const handleCreateScoutingTask = useCallback(async () => {
     if (!canEdit || !selectedUnit || scoutingBusy) return;
     const lat = Number(scoutingDraft.lat);
@@ -1191,12 +1246,14 @@ export function PlanningPage({
         notes: scoutingDraft.notes.trim() || null,
         priority: scoutingDraft.priority,
         position: { lat, lng },
+        photo_ids: scoutingDraft.photoIds,
       });
       setScoutingTasks((current) => [data, ...current.filter((item) => item.id !== data.id)]);
       setScoutingDraft((current) => ({
         ...current,
         title: "",
         notes: "",
+        photoIds: [],
       }));
       setScoutingStatusText(`Lagret feltoppgave: ${data.title}.`);
     } catch (error) {
@@ -2027,37 +2084,72 @@ export function PlanningPage({
                         Ingen feltoppgaver ennå. Lagre første funn når du ser noe som må sjekkes i felt.
                       </p>
                     ) : (
-                      scoutingTasks.slice(0, 5).map((task) => (
-                        <div key={task.id} className="py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-fb-text-primary">{task.title}</p>
-                              <p className="mt-1 text-xs text-fb-text-secondary">
-                                {scoutingStatusLabel(task.status)} ·{" "}
-                                <span className={cn("font-medium", scoutingPriorityTone(task.priority))}>
-                                  {scoutingPriorityLabel(task.priority)}
-                                </span>
-                              </p>
+                      scoutingTasks.slice(0, 5).map((task) => {
+                        const linkedPhotos = task.photo_ids.flatMap((photoId) => photoById.get(photoId) ?? []);
+                        const unavailablePhotoCount = Math.max(0, task.photo_ids.length - linkedPhotos.length);
+                        return (
+                          <div key={task.id} className="py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-fb-text-primary">{task.title}</p>
+                                <p className="mt-1 text-xs text-fb-text-secondary">
+                                  {scoutingStatusLabel(task.status)} ·{" "}
+                                  <span className={cn("font-medium", scoutingPriorityTone(task.priority))}>
+                                    {scoutingPriorityLabel(task.priority)}
+                                  </span>
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={task.status === "done" ? "outline" : "ghost"}
+                                onClick={() => void handlePatchScoutingTaskStatus(task, task.status === "done" ? "open" : "done")}
+                                loading={scoutingPatchBusyId === task.id}
+                                loadingLabel="Oppdaterer"
+                                disabled={!canEdit}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                {task.status === "done" ? "Åpne" : "Ferdig"}
+                              </Button>
                             </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={task.status === "done" ? "outline" : "ghost"}
-                              onClick={() => void handlePatchScoutingTaskStatus(task, task.status === "done" ? "open" : "done")}
-                              loading={scoutingPatchBusyId === task.id}
-                              loadingLabel="Oppdaterer"
-                              disabled={!canEdit}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              {task.status === "done" ? "Åpne" : "Ferdig"}
-                            </Button>
+                            {task.notes ? <p className="mt-2 text-xs leading-5 text-fb-text-secondary">{task.notes}</p> : null}
+                            {task.photo_ids.length > 0 ? (
+                              <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/60 px-2 py-1.5">
+                                <Camera className="h-3.5 w-3.5 shrink-0 text-[color:var(--fb-season-solid)]" />
+                                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                  {linkedPhotos.slice(0, 3).map((photo) => {
+                                    const thumb = photoThumbUrl(photo);
+                                    return thumb ? (
+                                      <img
+                                        key={photo.id}
+                                        src={thumb}
+                                        alt={photoTitle(photo)}
+                                        loading="lazy"
+                                        decoding="async"
+                                        className="h-8 w-8 rounded-lg object-cover"
+                                      />
+                                    ) : (
+                                      <span
+                                        key={photo.id}
+                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-fb-surface-ghost text-[10px] text-fb-text-secondary"
+                                      >
+                                        Foto
+                                      </span>
+                                    );
+                                  })}
+                                  <span className="truncate text-[11px] text-fb-text-secondary">
+                                    {task.photo_ids.length} bilde{task.photo_ids.length === 1 ? "" : "r"} koblet
+                                    {unavailablePhotoCount > 0 ? ` · ${unavailablePhotoCount} utenfor valgt bildefilter` : ""}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : null}
+                            <p className="mt-2 text-[11px] text-fb-text-secondary">
+                              {task.position.lat.toFixed(5)}, {task.position.lng.toFixed(5)}
+                            </p>
                           </div>
-                          {task.notes ? <p className="mt-2 text-xs leading-5 text-fb-text-secondary">{task.notes}</p> : null}
-                          <p className="mt-2 text-[11px] text-fb-text-secondary">
-                            {task.position.lat.toFixed(5)}, {task.position.lng.toFixed(5)}
-                          </p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 
@@ -2089,6 +2181,66 @@ export function PlanningPage({
                         placeholder="Kort notat, for eksempel ugras, kjørespor, vann eller behov for nytt bilde."
                         className="min-h-[4.5rem] w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors placeholder:text-fb-text-secondary focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                       />
+                      <div className="space-y-2 rounded-xl bg-white/55 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Bilder</span>
+                          <span className="text-[11px] text-fb-text-secondary">
+                            {scoutingDraft.photoIds.length} valgt
+                          </span>
+                        </div>
+                        {scoutingPhotoOptions.length === 0 ? (
+                          <p className="text-xs leading-5 text-fb-text-secondary">
+                            Ingen bilder i valgt kartfilter ennå.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-3 gap-2">
+                            {scoutingPhotoOptions.map((photo) => {
+                              const selected = scoutingDraft.photoIds.includes(photo.id);
+                              const thumb = photoThumbUrl(photo);
+                              return (
+                                <label
+                                  key={photo.id}
+                                  className={cn(
+                                    "group cursor-pointer rounded-xl border bg-white/70 p-1.5 transition-colors",
+                                    selected
+                                      ? "border-[color:var(--fb-season-solid)] text-fb-text-primary"
+                                      : "border-fb-border-subtle text-fb-text-secondary hover:border-fb-border-strong",
+                                  )}
+                                  title={photoTitle(photo)}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    onChange={() => handleToggleScoutingDraftPhoto(photo.id)}
+                                    className="sr-only"
+                                  />
+                                  {thumb ? (
+                                    <img
+                                      src={thumb}
+                                      alt={photoTitle(photo)}
+                                      loading="lazy"
+                                      decoding="async"
+                                      className="aspect-square w-full rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <span className="flex aspect-square w-full items-center justify-center rounded-lg bg-fb-surface-ghost text-[11px]">
+                                      Foto
+                                    </span>
+                                  )}
+                                  <span className="mt-1 block truncate text-[10px]">
+                                    {formatPhotoCapturedAt(photo.captured_at)}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {selectedScoutingDraftPhotos.length > 0 ? (
+                          <p className="text-[11px] leading-5 text-fb-text-secondary">
+                            Kobles til: {selectedScoutingDraftPhotos.map((photo) => photoTitle(photo)).join(", ")}
+                          </p>
+                        ) : null}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block">
                           <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Lat</span>

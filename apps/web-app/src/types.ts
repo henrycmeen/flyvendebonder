@@ -397,6 +397,7 @@ export interface PhotoMetadataActionResponse {
 
 export interface PhotoFeature {
   id: string;
+  property_id: number | null;
   title: string;
   captured_at: string;
   captured_date: string;
