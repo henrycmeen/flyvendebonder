@@ -307,6 +307,10 @@ body {
   cursor: crosshair;
 }
 
+.fb-map-color-analysis-mode {
+  cursor: crosshair;
+}
+
 .fb-field-label-shell,
 .fb-field-handle-shell {
   background: transparent;

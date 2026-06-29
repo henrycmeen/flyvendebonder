@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Filter, Map, Mountain, Satellite } from "lucide-react";
+import { Filter, Map, Mountain, Pipette, Satellite } from "lucide-react";
 
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,10 @@ interface MapLayerPanelProps {
   showForestLayer: boolean;
   forestStatus: string;
   onToggleForestLayer: (next: boolean) => void;
+  colorAnalysisActive: boolean;
+  colorAnalysisAvailable: boolean;
+  colorAnalysisStatus: string;
+  onToggleColorAnalysis: (next: boolean) => void;
   baseMapStyle: BaseMapStyle;
   onChangeQuickBaseMap: (style: BaseMapStyle) => void;
 }
@@ -77,6 +81,10 @@ export function MapLayerPanel({
   showForestLayer,
   forestStatus,
   onToggleForestLayer,
+  colorAnalysisActive,
+  colorAnalysisAvailable,
+  colorAnalysisStatus,
+  onToggleColorAnalysis,
   baseMapStyle,
   onChangeQuickBaseMap,
 }: MapLayerPanelProps) {
@@ -156,6 +164,23 @@ export function MapLayerPanel({
         </span>
       </button>
 
+      <button
+        type="button"
+        onClick={() => onToggleColorAnalysis(!colorAnalysisActive)}
+        disabled={!colorAnalysisAvailable}
+        aria-pressed={colorAnalysisActive}
+        className={cn(
+          "fb-map-overlay-trigger pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-fb-surface-page px-2.5 text-sm font-medium text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid sm:px-3",
+          colorAnalysisActive && "bg-fb-surface-ghost text-fb-text-primary ring-2 ring-fb-season-solid/55",
+          !colorAnalysisAvailable && "cursor-not-allowed opacity-50 hover:bg-fb-surface-page",
+        )}
+        aria-label={colorAnalysisActive ? "Slå av fargeanalyse" : "Slå på fargeanalyse"}
+        title={colorAnalysisStatus}
+      >
+        <Pipette className="h-4 w-4" />
+        <span className="hidden sm:inline">Farge</span>
+      </button>
+
       <div className="pointer-events-auto relative">
         <button
           type="button"
@@ -204,6 +229,14 @@ export function MapLayerPanel({
                 status={forestStatus}
                 accentClassName="bg-[color:var(--fb-map-forest)]"
                 onToggle={onToggleForestLayer}
+              />
+              <LayerToggle
+                active={colorAnalysisActive}
+                label="Fargeanalyse"
+                status={colorAnalysisStatus}
+                accentClassName="bg-[color:var(--fb-map-analysis-accent)]"
+                onToggle={onToggleColorAnalysis}
+                disabled={!colorAnalysisAvailable}
               />
             </div>
 
