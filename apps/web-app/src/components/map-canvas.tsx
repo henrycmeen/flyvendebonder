@@ -3,9 +3,15 @@ import L from "leaflet";
 import "leaflet.markercluster";
 
 import type { FieldPlot, FieldPlotDraft, FlightMission, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
+import { OrthophotoColorAnalysisPopup } from "@/components/orthophoto-color-analysis-popup";
+import {
+  sampleOrthophotoColorAtLatLng,
+  type OrthophotoColorAnalysisOutcome,
+  type RenderedOrthophotoCandidate,
+} from "@/lib/browser-orthophoto-sampler";
 import { formatPropertyReference } from "@/lib/formatters";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
-import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
+import { DEV_ORTHOPHOTO_OVERLAYS, type OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
 import { seasonFromCapturedDate, type SeasonOrMixed } from "@/lib/season-theme";
 
 interface MapCanvasProps {
@@ -14,10 +20,11 @@ interface MapCanvasProps {
   hoveredPhotoId: string | null;
   focusToken: number;
   resetViewToken: number;
-  selectedYear: string;
-  selectedSeason: SeasonOrMixed | "all";
+  orthophotoOverlays: OrthophotoOverlayDefinition[];
   focusedOrthophotoId: string | null;
   orthophotoFocusToken: number;
+  colorAnalysisActive: boolean;
+  onColorAnalysisActiveChange: (next: boolean) => void;
   properties: Property[];
   jobs: GardskartJob[];
   videoMapArtifacts: VideoMapArtifact[];
@@ -498,10 +505,11 @@ export function MapCanvas({
   hoveredPhotoId,
   focusToken,
   resetViewToken,
-  selectedYear,
-  selectedSeason,
+  orthophotoOverlays,
   focusedOrthophotoId,
   orthophotoFocusToken,
+  colorAnalysisActive,
+  onColorAnalysisActiveChange,
   properties,
   jobs,
   videoMapArtifacts,
@@ -545,6 +553,7 @@ export function MapCanvas({
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const orthophotoLayerRef = useRef<L.LayerGroup | null>(null);
+  const renderedOrthophotosRef = useRef<RenderedOrthophotoCandidate[]>([]);
   const forestLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
@@ -556,6 +565,7 @@ export function MapCanvas({
   const hasVideoFitRef = useRef(false);
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
   const shouldShowZoomControls = showZoomControls && !isMobileViewport;
+  const [colorAnalysisOutcome, setColorAnalysisOutcome] = useState<OrthophotoColorAnalysisOutcome | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -817,22 +827,13 @@ export function MapCanvas({
 
     const orthophotoLayer = orthophotoLayerRef.current;
     orthophotoLayer.clearLayers();
+    renderedOrthophotosRef.current = [];
 
-    const propertyReferences = new Set(properties.map((property) => formatPropertyReference(property)));
-    const matchingOverlays = DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => {
-      if (!propertyReferences.has(overlay.propertyReference)) return false;
-      const [year] = overlay.capturedDate.split("-");
-      if (selectedYear !== "all" && year !== selectedYear) return false;
-      if (selectedSeason !== "all" && seasonFromCapturedDate(overlay.capturedDate) !== selectedSeason) return false;
-      return true;
-    }).sort((a, b) => {
-      const byDate = a.capturedDate.localeCompare(b.capturedDate);
-      if (byDate !== 0) return byDate;
-      return a.id.localeCompare(b.id);
-    });
-    if (matchingOverlays.length === 0) return;
+    if (orthophotoOverlays.length === 0) return;
 
-    matchingOverlays.forEach((overlay) => {
+    const renderedCandidates: RenderedOrthophotoCandidate[] = [];
+
+    orthophotoOverlays.forEach((overlay) => {
       const bounds = L.latLngBounds(
         [overlay.bounds.south, overlay.bounds.west],
         [overlay.bounds.north, overlay.bounds.east],
@@ -850,6 +851,12 @@ export function MapCanvas({
           noWrap: true,
         });
         orthophotoLayer.addLayer(tileLayer);
+        renderedCandidates.push({
+          overlay,
+          bounds,
+          getImageElement: () => null,
+          supportsBrowserSampling: false,
+        });
         return;
       }
 
@@ -857,11 +864,19 @@ export function MapCanvas({
         pane: "orthophotoPane",
         opacity: overlay.opacity ?? 0.8,
         interactive: false,
-        crossOrigin: false,
+        crossOrigin: "anonymous",
       });
       orthophotoLayer.addLayer(imageLayer);
+      renderedCandidates.push({
+        overlay,
+        bounds,
+        getImageElement: () => imageLayer.getElement() ?? null,
+        supportsBrowserSampling: true,
+      });
     });
-  }, [properties, selectedSeason, selectedYear]);
+
+    renderedOrthophotosRef.current = renderedCandidates;
+  }, [orthophotoOverlays]);
 
   useEffect(() => {
     if (!mapRef.current || !forestLayerRef.current) return;
@@ -941,6 +956,39 @@ export function MapCanvas({
   }, [fieldCreateMode]);
 
   useEffect(() => {
+    const container = mapRef.current?.getContainer();
+    if (!container) return;
+
+    container.classList.toggle("fb-map-color-analysis-mode", colorAnalysisActive);
+    return () => {
+      container.classList.remove("fb-map-color-analysis-mode");
+    };
+  }, [colorAnalysisActive]);
+
+  useEffect(() => {
+    if (!colorAnalysisActive) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      onColorAnalysisActiveChange(false);
+      setColorAnalysisOutcome(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [colorAnalysisActive, onColorAnalysisActiveChange]);
+
+  useEffect(() => {
+    if (orthophotoOverlays.length > 0 || !colorAnalysisActive) return;
+    onColorAnalysisActiveChange(false);
+    setColorAnalysisOutcome(null);
+  }, [colorAnalysisActive, onColorAnalysisActiveChange, orthophotoOverlays.length]);
+
+  useEffect(() => {
+    setColorAnalysisOutcome(null);
+  }, [orthophotoOverlays]);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -954,6 +1002,25 @@ export function MapCanvas({
       map.off("click", handleMapClick);
     };
   }, [fieldCreateMode, onRequestFieldCreateAt]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !colorAnalysisActive) return undefined;
+
+    const handleMapClick = (event: L.LeafletMouseEvent) => {
+      const outcome = sampleOrthophotoColorAtLatLng({
+        map,
+        latLng: event.latlng,
+        candidates: renderedOrthophotosRef.current,
+      });
+      setColorAnalysisOutcome(outcome);
+    };
+
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [colorAnalysisActive]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -1309,6 +1376,10 @@ export function MapCanvas({
       });
 
       marker.on("click", () => {
+        if (colorAnalysisActive) {
+          marker.closePopup();
+          return;
+        }
         onSelectPhoto(photo.id);
         if (desktopHover) {
           onHoverPhoto(null);
@@ -1354,7 +1425,7 @@ export function MapCanvas({
     if (photos.length === 0) {
       hasFitRef.current = false;
     }
-  }, [onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
+  }, [colorAnalysisActive, onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
 
   useEffect(() => {
     const hoverCapable = supportsHoverPointer();
@@ -1751,6 +1822,16 @@ export function MapCanvas({
     <div className="absolute inset-0 z-0">
       <div ref={mapElementRef} className="absolute inset-0" aria-label="Kart med geotaggede bilder" />
       {mapVintage ? <div className="map-vintage-overlay" aria-hidden="true" /> : null}
+      {colorAnalysisActive ? (
+        <div className="pointer-events-none absolute left-1/2 top-[4.25rem] z-[760] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-fb-border-subtle bg-fb-surface-page/95 px-3 py-2 text-center text-xs font-medium text-fb-text-primary shadow-fb-floating backdrop-blur">
+          Klikk i et synlig ortofoto for relative RGB-indikatorer. Esc avslutter.
+        </div>
+      ) : null}
+      {colorAnalysisOutcome ? (
+        <div className="pointer-events-none absolute bottom-[6.5rem] left-3 z-[910] sm:left-4">
+          <OrthophotoColorAnalysisPopup outcome={colorAnalysisOutcome} onClose={() => setColorAnalysisOutcome(null)} />
+        </div>
+      ) : null}
     </div>
   );
 }

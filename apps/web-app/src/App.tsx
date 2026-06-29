@@ -20,6 +20,7 @@ import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { makePhotoFilter } from "@/lib/photo-filters";
 import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKey } from "@/lib/photo-ordering";
 import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
+import { selectVisibleOrthophotoOverlays } from "@/lib/orthophoto-overlay-selection";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { AlbumPage } from "@/components/album-page";
@@ -395,6 +396,7 @@ export default function App() {
   const [mapFocusToken, setMapFocusToken] = useState(0);
   const [focusedOrthophotoId, setFocusedOrthophotoId] = useState<string | null>(null);
   const [orthophotoFocusToken, setOrthophotoFocusToken] = useState(0);
+  const [colorAnalysisActive, setColorAnalysisActive] = useState(false);
   const [soilRefreshToken, setSoilRefreshToken] = useState(0);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
@@ -609,10 +611,32 @@ export default function App() {
     return DEV_ORTHOPHOTO_OVERLAYS.filter((overlay) => propertyReferences.has(overlay.propertyReference));
   }, [activeProperties]);
 
+  const visibleMapOrthophotoOverlays = useMemo(() => {
+    const propertyReferences = new Set(activeProperties.map((property) => formatPropertyReference(property)));
+    return selectVisibleOrthophotoOverlays({
+      overlays: DEV_ORTHOPHOTO_OVERLAYS,
+      propertyReferences,
+      selectedYear,
+      selectedSeason,
+    });
+  }, [activeProperties, selectedSeason, selectedYear]);
+
   const activeForestOverlays = useMemo(
     () => activeOrthophotoOverlays.filter(isForestOverlay),
     [activeOrthophotoOverlays],
   );
+
+  useEffect(() => {
+    if (visibleMapOrthophotoOverlays.length > 0 || !colorAnalysisActive) return;
+    setColorAnalysisActive(false);
+  }, [colorAnalysisActive, visibleMapOrthophotoOverlays.length]);
+
+  const colorAnalysisStatus =
+    visibleMapOrthophotoOverlays.length > 0
+      ? colorAnalysisActive
+        ? "Fargeanalyse aktiv. Klikk i synlig ortofoto."
+        : `${visibleMapOrthophotoOverlays.length} ortofoto kan analyseres i valgt filter.`
+      : "Ingen synlige ortofoto i valgt år/sesong.";
 
   const forestStatus =
     activeForestOverlays.length > 0
@@ -2822,6 +2846,13 @@ export default function App() {
                   showForestLayer={showForestLayer}
                   forestStatus={forestStatus}
                   onToggleForestLayer={handleToggleForestLayer}
+                  colorAnalysisActive={colorAnalysisActive}
+                  colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
+                  colorAnalysisStatus={colorAnalysisStatus}
+                  onToggleColorAnalysis={(next) => {
+                    setColorAnalysisActive(next);
+                    addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
+                  }}
                   baseMapStyle={baseMapStyle}
                   onChangeQuickBaseMap={(nextStyle) => {
                     if (baseMapStyle === nextStyle) {
@@ -2841,10 +2872,11 @@ export default function App() {
                   hoveredPhotoId={hoverPreviewPhotoId}
                   focusToken={mapFocusToken}
                   resetViewToken={mapResetToken}
-                  selectedYear={selectedYear}
-                  selectedSeason={selectedSeason}
+                  orthophotoOverlays={visibleMapOrthophotoOverlays}
                   focusedOrthophotoId={focusedOrthophotoId}
                   orthophotoFocusToken={orthophotoFocusToken}
+                  colorAnalysisActive={colorAnalysisActive}
+                  onColorAnalysisActiveChange={setColorAnalysisActive}
                   properties={activeProperties}
                   jobs={propertyJobs}
                   videoMapArtifacts={activeVideoMapArtifacts}
