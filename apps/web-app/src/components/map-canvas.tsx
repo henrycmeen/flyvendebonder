@@ -985,6 +985,10 @@ export function MapCanvas({
   }, [colorAnalysisActive, onColorAnalysisActiveChange, orthophotoOverlays.length]);
 
   useEffect(() => {
+    setColorAnalysisOutcome(null);
+  }, [orthophotoOverlays]);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
