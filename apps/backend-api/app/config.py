@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
+DEPLOYED_WEBROOT_APP = Path("/Users/henrymeen/srv/www/flyvendebonder/app")
+DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT = DEPLOYED_WEBROOT_APP / "dev-overlays"
+LOCAL_ORTHOPHOTO_OVERLAY_ROOT = REPO_ROOT / "apps" / "web-app" / "public" / "dev-overlays"
 
 
 class Settings(BaseSettings):
@@ -55,6 +58,7 @@ class Settings(BaseSettings):
     terrain_dem_image_server_url: str = "https://hoydedata.no/arcgis/rest/services/DTM/ImageServer"
     terrain_http_timeout_seconds: float = 20.0
     terrain_sample_batch_size: int = 200
+    orthophoto_overlay_root: Path = DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT
 
     default_user_name: str = "Roar Meen"
     default_municipality_code: str = "4003"

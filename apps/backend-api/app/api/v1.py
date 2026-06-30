@@ -71,6 +71,7 @@ from ..schemas import (
     PhotoMetadataPatchRequest,
     PhotoAnalysisRefreshResponse,
     PhotoReprocessResponse,
+    OrthophotoColorSampleResponse,
     SourceLayerStatus,
     SourceStatusResponse,
     StacAsset,
@@ -138,6 +139,14 @@ from ..services.media_staging import (
     finalize_media_staging_job as finalize_media_staging_job_record,
     get_media_staging_job as get_media_staging_job_record,
     list_media_staging_jobs as list_media_staging_jobs_record,
+)
+from ..services.orthophoto_sampling import (
+    OrthophotoNoData,
+    OrthophotoNotFound,
+    OrthophotoPointOutsideBounds,
+    OrthophotoSamplingError,
+    OrthophotoSourceUnavailable,
+    sample_orthophoto_color,
 )
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
@@ -1546,6 +1555,32 @@ def health() -> dict:
         "service": settings.app_name,
         "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
+
+
+@router.get("/orthophotos/{overlay_id}/color-sample", response_model=OrthophotoColorSampleResponse)
+def get_orthophoto_color_sample(
+    overlay_id: str,
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    sample_size_px: int = Query(21, ge=3, le=101),
+) -> dict:
+    try:
+        return sample_orthophoto_color(
+            overlay_id,
+            lat=lat,
+            lng=lng,
+            sample_size_px=sample_size_px,
+        )
+    except OrthophotoNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrthophotoPointOutsideBounds as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OrthophotoNoData as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OrthophotoSourceUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OrthophotoSamplingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/logs", response_model=BackendLogsResponse)
