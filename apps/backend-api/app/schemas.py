@@ -111,6 +111,73 @@ class PhotoAnalysisActionResponse(BaseModel):
     analysis: PhotoAnalysisOut
 
 
+class RgbTripletOut(BaseModel):
+    r: float
+    g: float
+    b: float
+
+
+class OrthophotoVegetationIndicesOut(BaseModel):
+    exg: float
+    vari: float
+    ngrdi: float
+    gli: float
+    ndyi: float
+
+
+class OrthophotoColorAnalysisOut(BaseModel):
+    requested_size_px: int
+    sampled_width_px: int
+    sampled_height_px: int
+    requested_pixels: int
+    sampled_pixels: int
+    valid_pixels: int
+    clipped: bool
+    mean_rgb: RgbTripletOut
+    median_rgb: RgbTripletOut
+    brightness: float
+    light_assessment: str
+    indices: OrthophotoVegetationIndicesOut
+    quality_flags: list[str] = Field(default_factory=list)
+
+
+class OrthophotoSampleOverlayOut(BaseModel):
+    id: str
+    label: str
+    captured_date: str | None = None
+    property_reference: str | None = None
+
+
+class OrthophotoSampleSourceOut(BaseModel):
+    kind: Literal["canonical", "preview"]
+    path_basename: str
+    width_px: int
+    height_px: int
+    canonical_width_px: int
+    canonical_height_px: int
+    gsd_m_per_px: dict[str, float] | None = None
+
+
+class OrthophotoImagePixelOut(BaseModel):
+    x: float
+    y: float
+    ratio_x: float
+    ratio_y: float
+
+
+class OrthophotoSamplePointOut(BaseModel):
+    lat: float
+    lng: float
+
+
+class OrthophotoColorSampleResponse(BaseModel):
+    overlay: OrthophotoSampleOverlayOut
+    source: OrthophotoSampleSourceOut
+    point: OrthophotoSamplePointOut
+    image_pixel: OrthophotoImagePixelOut
+    analysis: OrthophotoColorAnalysisOut
+
+
 class PhotoMetadataPatchRequest(BaseModel):
     tags: list[str] | None = None
     caption: str | None = None

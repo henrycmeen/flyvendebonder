@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     terrain_dem_image_server_url: str = "https://hoydedata.no/arcgis/rest/services/DTM/ImageServer"
     terrain_http_timeout_seconds: float = 20.0
     terrain_sample_batch_size: int = 200
+    orthophoto_overlay_root: Path = REPO_ROOT / "apps" / "web-app" / "public" / "dev-overlays"
 
     default_user_name: str = "Roar Meen"
     default_municipality_code: str = "4003"
