@@ -98,6 +98,27 @@ def test_sample_orthophoto_color_reports_no_data(tmp_path):
         raise AssertionError("Expected transparent crop to raise OrthophotoNoData")
 
 
+def test_sample_orthophoto_color_falls_back_to_local_default_root(tmp_path, monkeypatch):
+    overlay_root = tmp_path / "local-dev-overlays"
+    _write_overlay_fixture(overlay_root)
+    missing_root = tmp_path / "missing-deployed-root"
+
+    monkeypatch.setenv("ORTHOPHOTO_OVERLAY_ROOT", missing_root.as_posix())
+    fresh_backend_modules()
+    sampling_module = importlib.import_module("app.services.orthophoto_sampling")
+    monkeypatch.setattr(sampling_module, "LOCAL_ORTHOPHOTO_OVERLAY_ROOT", overlay_root)
+
+    sample = sampling_module.sample_orthophoto_color(
+        "test-orthophoto",
+        lat=59.5,
+        lng=9.5,
+        sample_size_px=3,
+    )
+
+    assert sample["overlay"]["id"] == "test-orthophoto"
+    assert sample["source"]["kind"] == "canonical"
+
+
 def test_orthophoto_color_sample_api_maps_bounds_error(tmp_path, monkeypatch):
     overlay_root = tmp_path / "overlays"
     db_file = tmp_path / "flyvendebonder-test.db"

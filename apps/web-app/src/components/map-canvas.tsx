@@ -555,6 +555,7 @@ export function MapCanvas({
   const soilLayerRef = useRef<L.TileLayer.WMS | null>(null);
   const orthophotoLayerRef = useRef<L.LayerGroup | null>(null);
   const renderedOrthophotosRef = useRef<RenderedOrthophotoCandidate[]>([]);
+  const colorAnalysisRequestIdRef = useRef(0);
   const forestLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
@@ -567,6 +568,11 @@ export function MapCanvas({
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
   const shouldShowZoomControls = showZoomControls && !isMobileViewport;
   const [colorAnalysisOutcome, setColorAnalysisOutcome] = useState<OrthophotoColorAnalysisOutcome | null>(null);
+
+  const clearColorAnalysisOutcome = useCallback(() => {
+    colorAnalysisRequestIdRef.current += 1;
+    setColorAnalysisOutcome(null);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -972,22 +978,22 @@ export function MapCanvas({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       onColorAnalysisActiveChange(false);
-      setColorAnalysisOutcome(null);
+      clearColorAnalysisOutcome();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [colorAnalysisActive, onColorAnalysisActiveChange]);
+  }, [clearColorAnalysisOutcome, colorAnalysisActive, onColorAnalysisActiveChange]);
 
   useEffect(() => {
     if (orthophotoOverlays.length > 0 || !colorAnalysisActive) return;
     onColorAnalysisActiveChange(false);
-    setColorAnalysisOutcome(null);
-  }, [colorAnalysisActive, onColorAnalysisActiveChange, orthophotoOverlays.length]);
+    clearColorAnalysisOutcome();
+  }, [clearColorAnalysisOutcome, colorAnalysisActive, onColorAnalysisActiveChange, orthophotoOverlays.length]);
 
   useEffect(() => {
-    setColorAnalysisOutcome(null);
-  }, [orthophotoOverlays]);
+    clearColorAnalysisOutcome();
+  }, [clearColorAnalysisOutcome, orthophotoOverlays]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1010,6 +1016,8 @@ export function MapCanvas({
     let cancelled = false;
 
     const handleMapClick = (event: L.LeafletMouseEvent) => {
+      const requestId = colorAnalysisRequestIdRef.current + 1;
+      colorAnalysisRequestIdRef.current = requestId;
       const outcome = sampleOrthophotoColorAtLatLng({
         map,
         latLng: event.latlng,
@@ -1025,7 +1033,7 @@ export function MapCanvas({
           overlay: outcome.overlay,
           latLng: event.latlng,
         }).then((backendOutcome) => {
-          if (!cancelled) {
+          if (!cancelled && colorAnalysisRequestIdRef.current === requestId) {
             setColorAnalysisOutcome(backendOutcome);
           }
         });
@@ -1849,7 +1857,7 @@ export function MapCanvas({
       ) : null}
       {colorAnalysisOutcome ? (
         <div className="pointer-events-none absolute bottom-[6.5rem] left-3 z-[910] sm:left-4">
-          <OrthophotoColorAnalysisPopup outcome={colorAnalysisOutcome} onClose={() => setColorAnalysisOutcome(null)} />
+          <OrthophotoColorAnalysisPopup outcome={colorAnalysisOutcome} onClose={clearColorAnalysisOutcome} />
         </div>
       ) : null}
     </div>

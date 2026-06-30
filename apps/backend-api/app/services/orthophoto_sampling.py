@@ -8,7 +8,7 @@ from typing import Any
 
 from PIL import Image, UnidentifiedImageError
 
-from ..config import get_settings
+from ..config import DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT, LOCAL_ORTHOPHOTO_OVERLAY_ROOT, get_settings
 
 ORTHOPHOTO_SAMPLE_SIZE_PX = 21
 ALPHA_VALID_THRESHOLD = 16
@@ -102,6 +102,24 @@ def _load_metadata(overlay_id: str, overlay_root: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise OrthophotoSourceUnavailable("Ortofoto-metadata kan ikke leses.") from exc
+
+
+def _candidate_overlay_roots(primary_root: Path, include_defaults: bool) -> list[Path]:
+    roots = [primary_root]
+    if include_defaults:
+        for fallback_root in (DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT, LOCAL_ORTHOPHOTO_OVERLAY_ROOT):
+            if fallback_root not in roots:
+                roots.append(fallback_root)
+    return roots
+
+
+def _load_metadata_from_roots(overlay_id: str, roots: list[Path]) -> tuple[dict[str, Any], Path]:
+    for root in roots:
+        try:
+            return _load_metadata(overlay_id, root), root
+        except OrthophotoNotFound:
+            continue
+    raise OrthophotoNotFound("Ukjent ortofoto.")
 
 
 def _resolve_bounds(metadata: dict[str, Any]) -> dict[str, float]:
@@ -334,18 +352,20 @@ def sample_orthophoto_color(
         sample_size_px += 1
 
     root = overlay_root or get_settings().orthophoto_overlay_root
-    metadata = _load_metadata(overlay_id, root)
+    metadata, root = _load_metadata_from_roots(
+        overlay_id,
+        _candidate_overlay_roots(root, include_defaults=overlay_root is None),
+    )
     overlay = _as_record(metadata.get("overlay"))
     bounds = _resolve_bounds(metadata)
     source_path, source_kind = _resolve_source(metadata, root)
 
     try:
         with Image.open(source_path) as image:
-            rgba_image = image.convert("RGBA")
-            image_width, image_height = rgba_image.size
+            image_width, image_height = image.size
             image_pixel = _image_pixel(lat, lng, bounds, image_width, image_height)
             left, top, right, bottom, clipped = _crop_box(image_pixel, image_width, image_height, sample_size_px)
-            crop = rgba_image.crop((left, top, right, bottom))
+            crop = image.crop((left, top, right, bottom)).convert("RGBA")
             pixels = list(crop.getdata())
     except UnidentifiedImageError as exc:
         raise OrthophotoSourceUnavailable("Ortofoto-raster kan ikke leses.") from exc

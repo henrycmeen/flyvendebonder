@@ -7,7 +7,7 @@ Fargeanalyse v1 er et inspeksjonsverktøy i kartet. Brukeren slår på `Fargeana
 V1 har to prøvebaner:
 
 - `Web-overlay`: direkte piksel-lesing fra bildeoverlayet som faktisk vises i nettleseren.
-- `Backend/ortofoto`: API-prøve fra overlay-metadata og rasterfil. Backend foretrekker kanonisk raster når `source_file` finnes lokalt, og faller ellers tilbake til sjekket-inn preview-raster for pilotens dev-overlays.
+- `Backend/ortofoto`: API-prøve fra overlay-metadata og rasterfil. Backend leser normalt publiserte overlay-filer fra webrooten under `/Users/henrymeen/srv/www/flyvendebonder/app/dev-overlays`, foretrekker kanonisk raster når `source_file` finnes lokalt, og faller ellers tilbake til preview-raster for pilotens dev-overlays.
 
 Dette er ikke agronomisk rådgivning, sykdomsdiagnose eller gjødslingsgrunnlag. Verdiene er ment for rask sammenligning innen samme ortofoto og samme visningskontekst.
 
@@ -25,7 +25,7 @@ Dette er ikke agronomisk rådgivning, sykdomsdiagnose eller gjødslingsgrunnlag.
 ## Kjente begrensninger
 
 - Browser-sampleren kan bare lese live `ImageOverlay`-bilder. Tiled overlays bruker backend-prøve.
-- Backend-prøven bruker kanonisk raster bare når `source_file` i overlay-metadata finnes lokalt for backend-prosessen. I repo/dev uten lokal ODM-raster brukes preview-rasteret, og UI viser dette som `Backend/ortofoto`.
+- Backend-prøven bruker kanonisk raster bare når `source_file` i overlay-metadata finnes lokalt for backend-prosessen. I drift brukes publiserte webroot-overlays; i repo/dev uten lokal ODM-raster brukes preview-rasteret, og UI viser dette som `Backend/ortofoto`.
 - Canvas kan bli blokkert av CORS hvis bildekilden ikke tillater piksel-lesing.
 - Web-ortofotoet kan være nedskalert eller fargekorrigert; verdiene er derfor relative til visningsbildet.
 - Ingen prøver lagres i v1.
