@@ -1,6 +1,12 @@
 import type * as Leaflet from "leaflet";
 
-import { analyzeOrthophotoColorPixels, ORTHOPHOTO_SAMPLE_SIZE_PX, type OrthophotoColorAnalysis } from "@/lib/orthophoto-color-analysis";
+import { apiGet, ApiError } from "@/lib/api";
+import {
+  analyzeOrthophotoColorPixels,
+  ORTHOPHOTO_SAMPLE_SIZE_PX,
+  type OrthophotoColorAnalysis,
+  type OrthophotoQualityFlag,
+} from "@/lib/orthophoto-color-analysis";
 import type { OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
 
 export interface RenderedOrthophotoCandidate {
@@ -22,6 +28,7 @@ export interface OrthophotoColorAnalysisResult {
   overlay: OrthophotoOverlayDefinition;
   analysis: OrthophotoColorAnalysis;
   imagePixel: ProjectedImagePixel;
+  source: OrthophotoColorAnalysisSource;
 }
 
 export interface OrthophotoColorAnalysisUnavailable {
@@ -39,6 +46,148 @@ export type OrthophotoColorAnalysisOutcome =
   | OrthophotoColorAnalysisResult
   | OrthophotoColorAnalysisUnavailable
   | OrthophotoColorAnalysisNoCoverage;
+
+export interface OrthophotoColorAnalysisSource {
+  kind: "browser_overlay" | "backend_orthophoto";
+  label: string;
+  detail: string;
+  sourceKind?: "canonical" | "preview" | "unknown";
+  gsdMPerPx?: { x: number; y: number } | null;
+  sourceWidthPx?: number;
+  sourceHeightPx?: number;
+}
+
+interface BackendRgbTriplet {
+  r: number;
+  g: number;
+  b: number;
+}
+
+interface BackendOrthophotoColorSample {
+  overlay: {
+    id: string;
+    label: string;
+    captured_date: string | null;
+    property_reference: string | null;
+  };
+  source: {
+    kind: "canonical" | "preview";
+    path_basename: string;
+    width_px: number;
+    height_px: number;
+    canonical_width_px: number;
+    canonical_height_px: number;
+    gsd_m_per_px: { x: number; y: number } | null;
+  };
+  point: {
+    lat: number;
+    lng: number;
+  };
+  image_pixel: {
+    x: number;
+    y: number;
+    ratio_x: number;
+    ratio_y: number;
+  };
+  analysis: {
+    requested_size_px: number;
+    sampled_width_px: number;
+    sampled_height_px: number;
+    requested_pixels: number;
+    sampled_pixels: number;
+    valid_pixels: number;
+    clipped: boolean;
+    mean_rgb: BackendRgbTriplet;
+    median_rgb: BackendRgbTriplet;
+    brightness: number;
+    light_assessment: string;
+    indices: {
+      exg: number;
+      vari: number;
+      ngrdi: number;
+      gli: number;
+      ndyi: number;
+    };
+    quality_flags: string[];
+  };
+}
+
+export function orthophotoBackendSampleToOutcome(
+  overlay: OrthophotoOverlayDefinition,
+  sample: BackendOrthophotoColorSample,
+): OrthophotoColorAnalysisResult {
+  const sourceKindLabel = sample.source.kind === "canonical" ? "kanonisk raster" : "backend-preview";
+  return {
+    status: "analysis",
+    overlay,
+    imagePixel: {
+      x: sample.image_pixel.x,
+      y: sample.image_pixel.y,
+      ratioX: sample.image_pixel.ratio_x,
+      ratioY: sample.image_pixel.ratio_y,
+    },
+    source: {
+      kind: "backend_orthophoto",
+      label: "Backend/ortofoto",
+      detail: `${sourceKindLabel}: ${sample.source.path_basename}`,
+      sourceKind: sample.source.kind,
+      gsdMPerPx: sample.source.gsd_m_per_px,
+      sourceWidthPx: sample.source.width_px,
+      sourceHeightPx: sample.source.height_px,
+    },
+    analysis: {
+      requestedSizePx: sample.analysis.requested_size_px,
+      sampledWidthPx: sample.analysis.sampled_width_px,
+      sampledHeightPx: sample.analysis.sampled_height_px,
+      requestedPixels: sample.analysis.requested_pixels,
+      sampledPixels: sample.analysis.sampled_pixels,
+      validPixels: sample.analysis.valid_pixels,
+      clipped: sample.analysis.clipped,
+      meanRgb: sample.analysis.mean_rgb,
+      medianRgb: sample.analysis.median_rgb,
+      brightness: sample.analysis.brightness,
+      lightAssessment: sample.analysis.light_assessment,
+      indices: sample.analysis.indices,
+      qualityFlags: sample.analysis.quality_flags as OrthophotoQualityFlag[],
+    },
+  };
+}
+
+export async function sampleBackendOrthophotoColorAtLatLng({
+  overlay,
+  latLng,
+  sampleSizePx = ORTHOPHOTO_SAMPLE_SIZE_PX,
+}: {
+  overlay: OrthophotoOverlayDefinition;
+  latLng: Leaflet.LatLng;
+  sampleSizePx?: number;
+}): Promise<OrthophotoColorAnalysisOutcome> {
+  try {
+    const response = await apiGet<BackendOrthophotoColorSample>(
+      `/api/v1/orthophotos/${encodeURIComponent(overlay.id)}/color-sample`,
+      {
+        query: {
+          lat: latLng.lat,
+          lng: latLng.lng,
+          sample_size_px: sampleSizePx,
+        },
+        cache: false,
+        retries: 0,
+        timeoutMs: 8_000,
+      },
+    );
+    return orthophotoBackendSampleToOutcome(overlay, response.data);
+  } catch (error) {
+    return {
+      status: "unavailable",
+      overlay,
+      reason:
+        error instanceof ApiError && error.message
+          ? `Backend-sampling feilet: ${error.message}`
+          : "Backend-sampling feilet for dette ortofotoet.",
+    };
+  }
+}
 
 export function projectLayerPointToImagePixel({
   point,
@@ -163,6 +312,14 @@ export function sampleOrthophotoColorAtLatLng({
         overlay: candidate.overlay,
         analysis,
         imagePixel,
+        source: {
+          kind: "browser_overlay",
+          label: "Web-overlay",
+          detail: "Piksler lest fra bildet som vises i nettleseren",
+          sourceKind: candidate.overlay.tileLayer?.sourceKind,
+          sourceWidthPx: image.naturalWidth,
+          sourceHeightPx: image.naturalHeight,
+        },
       };
     } catch (error) {
       return {

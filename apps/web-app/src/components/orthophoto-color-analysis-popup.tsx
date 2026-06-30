@@ -15,6 +15,11 @@ function formatIndex(value: number): string {
   return value.toFixed(3);
 }
 
+function formatGsd(gsd: { x: number; y: number } | null | undefined): string | null {
+  if (!gsd || !Number.isFinite(gsd.x) || !Number.isFinite(gsd.y)) return null;
+  return `${gsd.x.toFixed(2)} x ${gsd.y.toFixed(2)} m/px`;
+}
+
 function formatDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
@@ -41,6 +46,10 @@ export function OrthophotoColorAnalysisPopup({ outcome, onClose }: OrthophotoCol
           <div className="grid grid-cols-2 gap-2 text-xs text-fb-text-secondary">
             <span>Kilde</span>
             <span className="text-right text-fb-text-primary">{outcome.overlay.label}</span>
+            <span>Prøvekilde</span>
+            <span className="text-right text-fb-text-primary" title={outcome.source.detail}>
+              {outcome.source.label}
+            </span>
             <span>Dato</span>
             <span className="text-right text-fb-text-primary">{formatDate(outcome.overlay.capturedDate)}</span>
             <span>Prøveflate</span>
@@ -53,6 +62,12 @@ export function OrthophotoColorAnalysisPopup({ outcome, onClose }: OrthophotoCol
             </span>
             <span>Kantklipping</span>
             <span className="text-right text-fb-text-primary">{outcome.analysis.clipped ? "Ja" : "Nei"}</span>
+            {formatGsd(outcome.source.gsdMPerPx) ? (
+              <>
+                <span>Oppløsning</span>
+                <span className="text-right text-fb-text-primary">{formatGsd(outcome.source.gsdMPerPx)}</span>
+              </>
+            ) : null}
           </div>
 
           <div className="mt-3 rounded-xl bg-fb-surface-ghost p-3">
@@ -92,7 +107,7 @@ export function OrthophotoColorAnalysisPopup({ outcome, onClose }: OrthophotoCol
           </div>
 
           <p className="mt-3 text-xs leading-5 text-fb-text-secondary">
-            Relative RGB-indikatorer fra web-ortofotoet. Dette er ikke gjødslingsråd, sykdomsdiagnose eller
+            Relative RGB-indikatorer fra {outcome.source.label.toLocaleLowerCase("nb-NO")}. Dette er ikke gjødslingsråd, sykdomsdiagnose eller
             erstatning for feltobservasjon.
           </p>
         </div>

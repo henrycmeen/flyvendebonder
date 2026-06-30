@@ -5,6 +5,7 @@ import "leaflet.markercluster";
 import type { FieldPlot, FieldPlotDraft, FlightMission, GardskartJob, GeoJSONPolygon, GeoPoint, PhotoFeature, Property, VideoMapArtifact } from "@/types";
 import { OrthophotoColorAnalysisPopup } from "@/components/orthophoto-color-analysis-popup";
 import {
+  sampleBackendOrthophotoColorAtLatLng,
   sampleOrthophotoColorAtLatLng,
   type OrthophotoColorAnalysisOutcome,
   type RenderedOrthophotoCandidate,
@@ -1006,6 +1007,7 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !colorAnalysisActive) return undefined;
+    let cancelled = false;
 
     const handleMapClick = (event: L.LeafletMouseEvent) => {
       const outcome = sampleOrthophotoColorAtLatLng({
@@ -1013,11 +1015,29 @@ export function MapCanvas({
         latLng: event.latlng,
         candidates: renderedOrthophotosRef.current,
       });
+
+      if (outcome.status === "unavailable" && outcome.overlay?.tileLayer) {
+        setColorAnalysisOutcome({
+          ...outcome,
+          reason: "Henter backend-prøve fra ortofotoet ...",
+        });
+        void sampleBackendOrthophotoColorAtLatLng({
+          overlay: outcome.overlay,
+          latLng: event.latlng,
+        }).then((backendOutcome) => {
+          if (!cancelled) {
+            setColorAnalysisOutcome(backendOutcome);
+          }
+        });
+        return;
+      }
+
       setColorAnalysisOutcome(outcome);
     };
 
     map.on("click", handleMapClick);
     return () => {
+      cancelled = true;
       map.off("click", handleMapClick);
     };
   }, [colorAnalysisActive]);
