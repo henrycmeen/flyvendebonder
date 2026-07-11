@@ -476,6 +476,50 @@ class ScoutingTaskListResponse(BaseModel):
     tasks: list[ScoutingTaskOut]
 
 
+class FieldReportContractOut(BaseModel):
+    name: Literal["flyvendebonder.field-report"] = "flyvendebonder.field-report"
+    version: Literal["v1"] = "v1"
+
+
+class FieldReportSummaryOut(BaseModel):
+    mission_count: int = 0
+    capture_count: int = 0
+    processing_run_count: int = 0
+    delivery_count: int = 0
+    finding_count: int = 0
+    open_finding_count: int = 0
+    key_photo_count: int = 0
+    artifact_kinds: list[str] = Field(default_factory=list)
+
+
+class FieldReportPhotoOut(BaseModel):
+    id: str
+    thumbnail_url: str
+    web_url: str
+
+
+class FieldReportPropertyOut(BaseModel):
+    id: int
+    label: str | None = None
+    komm: str
+    gnr: int
+    bnr: int
+    fnr: int
+
+
+class FieldReportOut(BaseModel):
+    contract: FieldReportContractOut = Field(default_factory=FieldReportContractOut)
+    title: str
+    generated_at: datetime
+    property: FieldReportPropertyOut
+    field: FieldPlotOut
+    summary: FieldReportSummaryOut
+    findings: list[ScoutingTaskOut] = Field(default_factory=list)
+    key_photos: list[FieldReportPhotoOut] = Field(default_factory=list)
+    history: list[FieldHistoryEntryOut] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class CameraPresetOut(BaseModel):
     id: str
     name: str

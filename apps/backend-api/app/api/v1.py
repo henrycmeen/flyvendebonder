@@ -5,13 +5,13 @@ import logging
 import math
 import os
 import time
-from datetime import timedelta
+from datetime import UTC, timedelta
 from datetime import date as date_type, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -53,6 +53,10 @@ from ..schemas import (
     FieldPlotDeleteResponse,
     FieldHistoryEntryOut,
     FieldHistoryOut,
+    FieldReportOut,
+    FieldReportPhotoOut,
+    FieldReportPropertyOut,
+    FieldReportSummaryOut,
     FieldPlotListResponse,
     FieldPlotOut,
     FieldPlotPatch,
@@ -149,6 +153,7 @@ from ..services.orthophoto_sampling import (
     sample_orthophoto_color,
 )
 from ..services.analysis_enrich import enrich_photo, rebuild_photo_analysis_for_user
+from ..services.field_reports import render_field_report_html
 from ..services.field_plots import normalize_polygon_coordinates, polygon_area_m2
 from ..services.flight_missions import (
     EXPORT_DJI_FLY_KMZ_FORMAT,
@@ -865,6 +870,159 @@ def _field_history_entries(
         entries,
         key=lambda item: (item.occurred_at, item.processing_run_id or 0, item.capture_id or 0, item.mission_id or 0),
         reverse=True,
+    )
+
+
+def _field_history_records(
+    db: Session,
+    *,
+    property_id: int,
+    field_id: int,
+) -> tuple[list[FlightMission], list[FlightCapture], list[ProcessingRun]]:
+    missions = (
+        db.execute(
+            select(FlightMission)
+            .where(FlightMission.property_id == property_id)
+            .order_by(FlightMission.last_generated_at.desc(), FlightMission.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    field_missions = [item for item in missions if _field_ids_contains(item.field_ids_json, field_id)]
+
+    captures = (
+        db.execute(
+            select(FlightCapture)
+            .options(selectinload(FlightCapture.processing_runs).selectinload(ProcessingRun.artifacts))
+            .where(FlightCapture.property_id == property_id)
+            .order_by(FlightCapture.updated_at.desc(), FlightCapture.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    field_captures = [item for item in captures if _field_ids_contains(item.field_ids_json, field_id)]
+    processing_runs = [run for capture in field_captures for run in capture.processing_runs]
+    return field_missions, field_captures, processing_runs
+
+
+def _build_field_report(db: Session, *, user_id: int, field_id: int) -> FieldReportOut:
+    property_ids = _active_property_ids(db, user_id)
+    field = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.id == field_id,
+                FieldPlot.property_id.in_(property_ids or [-1]),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if field is None:
+        raise HTTPException(status_code=404, detail="Fant ikke felt")
+    property_obj = _active_property_by_id(db, user_id, field.property_id)
+    if property_obj is None:
+        raise HTTPException(status_code=404, detail="Fant ikke felt")
+
+    missions, captures, processing_runs = _field_history_records(
+        db,
+        property_id=field.property_id,
+        field_id=field.id,
+    )
+    history = _field_history_entries(field=field, missions=missions, captures=captures)
+
+    finding_records = (
+        db.execute(
+            select(ScoutingTask)
+            .where(
+                ScoutingTask.property_id == field.property_id,
+                ScoutingTask.field_plot_id == field.id,
+            )
+            .order_by(ScoutingTask.created_at.desc(), ScoutingTask.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+    findings = [_scouting_task_out(item) for item in finding_records]
+
+    linked_photo_ids: list[str] = []
+    for finding in findings:
+        for photo_id in finding.photo_ids:
+            if photo_id not in linked_photo_ids:
+                linked_photo_ids.append(photo_id)
+    available_photos = (
+        db.execute(
+            select(Photo)
+            .options(selectinload(Photo.assets))
+            .where(
+                Photo.user_id == user_id,
+                Photo.property_id == field.property_id,
+                Photo.id.in_(linked_photo_ids or [""]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    photos_by_id = {photo.id: photo for photo in available_photos}
+    key_photos: list[FieldReportPhotoOut] = []
+    for photo_id in linked_photo_ids:
+        photo = photos_by_id.get(photo_id)
+        if photo is None:
+            continue
+        assets_by_kind = {asset.kind: asset for asset in photo.assets}
+        web_asset = assets_by_kind.get("web") or assets_by_kind.get("original")
+        if web_asset is None:
+            continue
+        thumbnail_asset = assets_by_kind.get("thumb") or assets_by_kind.get("web") or web_asset
+        key_photos.append(
+            FieldReportPhotoOut(
+                id=photo.id,
+                thumbnail_url=f"/api/v1/assets/{thumbnail_asset.path}",
+                web_url=f"/api/v1/assets/{web_asset.path}",
+            )
+        )
+
+    completed_processing_runs = [run for run in processing_runs if run.status == "completed"]
+    artifact_kinds = sorted(
+        {
+            artifact.kind
+            for processing_run in completed_processing_runs
+            for artifact in processing_run.artifacts
+        }
+    )
+    delivery_count = sum(
+        1 for processing_run in completed_processing_runs if processing_run.artifacts
+    )
+    field_name = (field.name or "").strip() or f"Felt {field.id}"
+
+    return FieldReportOut(
+        title=f"Feltrapport – {field_name}",
+        generated_at=datetime.now(UTC),
+        property=FieldReportPropertyOut(
+            id=property_obj.id,
+            label=property_obj.label,
+            komm=property_obj.komm,
+            gnr=property_obj.gnr,
+            bnr=property_obj.bnr,
+            fnr=property_obj.fnr,
+        ),
+        field=_field_plot_out(field),
+        summary=FieldReportSummaryOut(
+            mission_count=len(missions),
+            capture_count=len(captures),
+            processing_run_count=len(processing_runs),
+            delivery_count=delivery_count,
+            finding_count=len(findings),
+            open_finding_count=sum(1 for finding in findings if finding.status != "done"),
+            key_photo_count=len(key_photos),
+            artifact_kinds=artifact_kinds,
+        ),
+        findings=findings,
+        key_photos=key_photos,
+        history=history,
+        limitations=[
+            "Feltfunn bygger på manuelt registrerte scouting-oppgaver og er ikke en agronomisk fasit.",
+            "Rapporten viser data som var tilgjengelige da den ble generert; senere endringer inngår ikke.",
+        ],
     )
 
 
@@ -1764,30 +1922,11 @@ def get_field_history(field_id: int, db: Session = Depends(get_db)) -> FieldHist
     if field is None:
         raise HTTPException(status_code=404, detail="Fant ikke felt")
 
-    missions = (
-        db.execute(
-            select(FlightMission)
-            .where(FlightMission.property_id == property_obj.id)
-            .order_by(FlightMission.last_generated_at.desc(), FlightMission.id.desc())
-        )
-        .scalars()
-        .all()
+    field_missions, field_captures, processing_runs = _field_history_records(
+        db,
+        property_id=property_obj.id,
+        field_id=field.id,
     )
-    field_missions = [item for item in missions if _field_ids_contains(item.field_ids_json, field.id)]
-
-    captures = (
-        db.execute(
-            select(FlightCapture)
-            .options(selectinload(FlightCapture.processing_runs).selectinload(ProcessingRun.artifacts))
-            .where(FlightCapture.property_id == property_obj.id)
-            .order_by(FlightCapture.updated_at.desc(), FlightCapture.id.desc())
-        )
-        .scalars()
-        .all()
-    )
-    field_captures = [item for item in captures if _field_ids_contains(item.field_ids_json, field.id)]
-
-    processing_runs = [run for capture in field_captures for run in capture.processing_runs]
     delivery_count = sum(1 for run in processing_runs if run.status == "completed" and len(run.artifacts) > 0)
 
     return FieldHistoryOut(
@@ -1798,6 +1937,32 @@ def get_field_history(field_id: int, db: Session = Depends(get_db)) -> FieldHist
         delivery_count=delivery_count,
         entries=_field_history_entries(field=field, missions=field_missions, captures=field_captures),
     )
+
+
+@router.get("/fields/{field_id}/report", response_model=FieldReportOut)
+def get_field_report(
+    field_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> FieldReportOut:
+    user = _current_user(db)
+    report = _build_field_report(db, user_id=user.id, field_id=field_id)
+    response.headers["Cache-Control"] = "no-store"
+    return report
+
+
+@router.get("/fields/{field_id}/report.html", response_class=HTMLResponse)
+def get_field_report_html(field_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+    user = _current_user(db)
+    report = _build_field_report(db, user_id=user.id, field_id=field_id)
+    response = HTMLResponse(render_field_report_html(report))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.post("/fields", response_model=FieldPlotOut, status_code=status.HTTP_201_CREATED)

@@ -133,7 +133,10 @@ WEB_PID=$!
 wait_for_url "$APP_URL" "Frontend"
 
 echo "Running API + frontend smoke ..."
-BACKEND_URL="$BACKEND_URL" APP_URL="$APP_URL" "$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
+BACKEND_URL="$BACKEND_URL" \
+APP_URL="$APP_URL" \
+ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
+"$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
 
 SUCCESS=1
 echo "Stack smoke OK."

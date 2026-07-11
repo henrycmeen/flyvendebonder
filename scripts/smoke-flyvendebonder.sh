@@ -99,17 +99,17 @@ print(eval(expr, {"obj": payload}))
 PY
 }
 
-echo "[1/5] Backend health"
+echo "[1/7] Backend health"
 require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('status') == 'ok'"
 
-echo "[2/5] Profile og timeline"
+echo "[2/7] Profile og timeline"
 require_json_field "Profile payload" "$BACKEND_URL/api/v1/profile/current" "obj.get('user', {}).get('full_name') == 'Roar Meen'"
 require_json_field "Timeline payload" "$BACKEND_URL/api/v1/timeline/dates" "len(obj.get('dates', [])) >= 1"
 require_json_field "Property payload" "$BACKEND_URL/api/v1/properties/current" "obj.get('property', {}).get('komm') == '4003' and obj.get('property', {}).get('gnr') == 70 and obj.get('property', {}).get('bnr') == 17"
 require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id')) or obj.get('source') == 'disabled'"
 require_json_field "Source status payload" "$BACKEND_URL/api/v1/sources/status" "obj.get('ar5', {}).get('source') in ('enabled', 'disabled') and obj.get('gardskart', {}).get('source') in ('enabled', 'disabled')"
 
-echo "[3/5] Photo-feed og paginering"
+echo "[3/7] Photo-feed og paginering"
 DATE="$(extract_json_field "$BACKEND_URL/api/v1/timeline/dates" "obj.get('dates')[-1]['date']")"
 if [[ -z "$DATE" ]]; then
   fail "Fant ingen dato i timeline"
@@ -124,7 +124,7 @@ if [[ -z "$PHOTOS_PAYLOAD" ]]; then
   fail "Ingen payload fra photo/page"
 fi
 
-echo "[4/5] Assets og logger"
+echo "[4/7] Assets og logger"
 THUMB_URL="$(python3 - "$PHOTOS_PAYLOAD" <<'PY'
 import json
 import sys
@@ -188,7 +188,7 @@ PY
     fail "Logger endpoint returnerte ugyldig count: $LOGS_COUNT"
   fi
 
-  echo "[5/6] Mini 4 Pro eksport"
+  echo "[5/7] Feltrapport fra planlagt område"
   CURRENT_PROPERTY_FILE="$(new_tmp)"
   CURRENT_PROPERTY_CODE="$(curl -sS -w "%{http_code}" -b "$COOKIE_JAR" -o "$CURRENT_PROPERTY_FILE" "$BACKEND_URL/api/v1/properties/current")"
   if [[ "$CURRENT_PROPERTY_CODE" != "200" ]]; then
@@ -238,6 +238,38 @@ PY
   if ! [[ "$FIRST_UNIT_ID" =~ ^[0-9]+$ ]]; then
     fail "Fant ikke gyldig planning_unit_id for eksporttest: $FIRST_UNIT_ID"
   fi
+
+  FIRST_FIELD_ID="$(python3 - "$UNITS_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+units = payload.get("units") or []
+if not units:
+    raise SystemExit("Ingen planområder tilgjengelig for rapporttest")
+field_id = units[0].get("source_field_plot_id")
+if not isinstance(field_id, int):
+    raise SystemExit("Første planområde mangler source_field_plot_id")
+print(field_id)
+PY
+)"
+  if ! [[ "$FIRST_FIELD_ID" =~ ^[0-9]+$ ]]; then
+    fail "Fant ikke gyldig field_id for rapporttest: $FIRST_FIELD_ID"
+  fi
+
+  require_json_field \
+    "Feltrapport-kontrakt" \
+    "$BACKEND_URL/api/v1/fields/$FIRST_FIELD_ID/report" \
+    "obj.get('contract') == {'name': 'flyvendebonder.field-report', 'version': 'v1'} and obj.get('field', {}).get('id') == int('$FIRST_FIELD_ID')"
+  REPORT_HTML="$(new_tmp)"
+  require_200 "$BACKEND_URL/api/v1/fields/$FIRST_FIELD_ID/report.html" "Utskriftsklar feltrapport" "$REPORT_HTML"
+  if ! grep -qi "Feltrapport" "$REPORT_HTML"; then
+    fail "Feltrapport-HTML mangler forventet tittel"
+  fi
+
+  echo "[6/7] Mini 4 Pro eksport"
 
   CREATE_MISSION_FILE="$(new_tmp)"
   CREATE_MISSION_PAYLOAD="$(python3 - "$CURRENT_PROPERTY_ID" "$FIRST_UNIT_ID" <<'PY'
@@ -318,7 +350,7 @@ else
   echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet logs-sjekk."
 fi
 
-echo "[6/6] App side"
+echo "[7/7] App side"
 require_200 "$APP_URL" "Frontend" /tmp/flyv-smoke-app.html
 if ! grep -qi "flyvendebønder" /tmp/flyv-smoke-app.html; then
   echo "Frontend responderer, men kunne ikke verifisere tekst i HTML."
