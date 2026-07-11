@@ -17,7 +17,7 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 ## Standard arbeidsflyt
 1. Triager og prioriter arbeid i GitHub Issues først.
 2. Bruk GitHub milestones som prioriteringsrekkefølge; ikke bruk egne prioritet-labels.
-3. Kjor repo-naert agentarbeid i Cline Kanban naer oppgaven passer for worktree-basert flyt.
+3. Kjor parallelle Codex-oppgaver i egne worktrees med tydelig branch- og fileierskap.
 4. Knytt arbeid til GitHub-issue og PR når endringen er repo-nær og reviewbar.
 5. Løs med små, målbare steg.
 6. Valider med `./scripts/validate-agent-worktree.sh`, og kjør `./scripts/run-stack-smoke.sh` når overflaten er berørt.
@@ -57,7 +57,7 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `test/` brukes til ny branch og pågående arbeid før PR/merge.
 
 ## Agentflate
-- `Cline Kanban` er standard lokal agentflate for parallelle worktrees og diff-review.
+- Codex-worktrees er standard lokal agentflate for parallelt arbeid og diff-review.
 - `GitHub Issues` er backlog, prioriteringsflate og statusflate.
 - `GitHub Pull Requests` er review-, merge- og leveranseflate.
 - `GitHub Milestones` styrer rekkefølge og prioritet.

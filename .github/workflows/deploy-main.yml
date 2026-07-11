@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, tag eller branch som skal deployes. Bruk en tidligere grønn commit for rollback.
+        required: false
+        default: main
 
 permissions:
   contents: read
@@ -26,10 +31,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
+          # Keep this inline so rollback can check out commits from before
+          # .nvmrc was introduced.
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/web-app/package-lock.json
@@ -43,3 +52,18 @@ jobs:
 
       - name: Deploy live webroot locally
         run: ./scripts/deploy-flyvendebonder.sh --local --dest "$DEST"
+
+      - name: Record deployed commit
+        run: |
+          DEPLOYED_SHA="$(git rev-parse HEAD)"
+          DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf '{"sha":"%s","deployed_at":"%s"}\n' "$DEPLOYED_SHA" "$DEPLOYED_AT" > "$DEST/deployment.json"
+
+      - name: Verify live health and app
+        env:
+          LIVE_BASE_URL: https://xn--flyvendebnder-jnb.no
+        run: |
+          HEALTH_PAYLOAD="$(curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/api/v1/health")"
+          python3 -c 'import json, sys; payload=json.loads(sys.argv[1]); assert payload.get("status") == "ok", payload' "$HEALTH_PAYLOAD"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/app/" >/dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/deployment.json" >/dev/null

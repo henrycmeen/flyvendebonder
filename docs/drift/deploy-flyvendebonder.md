@@ -65,6 +65,20 @@ Den kjører nå både backend og webroot:
    ```bash
    ./scripts/deploy-flyvendebonder.sh --local --dest /Users/henrymeen/srv/www/flyvendebonder/
    ```
+6. Skriver deployet commit og UTC-tid til `/deployment.json`.
+7. Verifiserer offentlig `/api/v1/health`, `/app/` og `/deployment.json` før jobben blir grønn.
+
+### Manuell rollback
+
+Start `Deploy live from main` manuelt i GitHub Actions og fyll inn `ref` med
+commit-SHA-en eller taggen til en tidligere grønn deploy. Workflowen sjekker ut
+den valgte revisjonen og kjører samme backend-, webroot- og live-smoke-løype.
+
+Siste deployede commit kan leses fra:
+
+```bash
+curl -fsS https://xn--flyvendebnder-jnb.no/deployment.json
+```
 
 ### Hvorfor self-hosted runner
 - Du slipper å eksponere SSH på Mac mini for GitHub-hostede runners.
@@ -86,7 +100,7 @@ Den kjører nå både backend og webroot:
 - Webroot publiseres fortsatt som et separat steg via `deploy-flyvendebonder.sh`.
 - `.env`, `data/`, `logs/` og andre runtime-artefakter beholdes lokalt på Mac mini og overskrives ikke av workflowen.
 - Database-migreringer, produksjonsdataendringer, backfills og hemmeligheter er fortsatt manuell drift og skal ikke antas håndtert av main-workflowen.
-- Rollback er fortsatt manuell drift dersom deploy skulle feile etter sync.
+- Rollback er en manuell GitHub Actions-kjøring mot en tidligere grønn commit.
 
 ## Backend runtime på Mac mini
 Se:

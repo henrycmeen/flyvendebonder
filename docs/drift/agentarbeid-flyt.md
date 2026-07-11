@@ -1,19 +1,19 @@
-# Cline Kanban og GitHub i Flyvendebønder
+# Codex-worktrees og GitHub i Flyvendebønder
 
-Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `GitHub Issues` og `GitHub Milestones` som planflate og `Cline Kanban` som lokal agentflate.
+Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med
+`GitHub Issues` og `GitHub Milestones` som planflate og isolerte Codex-worktrees
+som lokal agentflate.
 
 ## Mål
 - Holde `GitHub Issues` som backlog og statusflate.
 - Holde `GitHub Milestones` som prioriteringsrekkefølge.
-- Holde `Cline Kanban` som arbeidsflate for worktrees, agentkort og diff-review.
+- Holde hver parallelle Codex-oppgave i en egen worktree med tydelig fileierskap.
 - Holde `GitHub` som kode- og PR-system.
 - La alle PR-er få samme validering lokalt og i GitHub.
 
 ## Det som er satt opp
-- `cline` er installert globalt på maskinen.
-- `Cline` er satt til `openai-codex` som standard provider lokalt.
-- Oppstartsskript finnes i `scripts/run-cline-kanban.sh`.
-- Repoet har `.clineignore` for å skjerme store eller irrelevante mapper fra agentkontekst.
+- Codex-automatiseringer oppretter isolerte worktrees.
+- Repoets `AGENTS.md` beskriver GitHub-first-kontrakten.
 - PR-validering i `.github/workflows/pull-request-validate.yml`
 - Standard lokal validering i `scripts/validate-agent-worktree.sh`
 - Ikke-interaktiv stack-smoke i `scripts/run-stack-smoke.sh`
@@ -25,11 +25,10 @@ Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `
 1. Triager saken i `GitHub Issues`.
 2. Del saken i konkrete arbeidsbiter hvis den er for stor.
 3. Bruk GitHub milestone som prioriteringsrekkefølge, ikke egne prioritet-labels.
-4. Start Kanban fra repo-roten:
-   - `./scripts/run-cline-kanban.sh`
-5. Opprett ett Kanban-kort per konkret kodeoppgave.
-6. La agenten jobbe i egen worktree fra Kanban.
-7. Review diff i Kanban før commit eller PR.
+4. Sjekk aktive Codex-tråder og worktrees før nytt arbeid starter.
+5. Gi hver oppgave en egen branch og worktree fra oppdatert `origin/main`.
+6. Avtal repo-, branch- og fileierskap når flere tråder arbeider parallelt.
+7. Review diff og kjør lokal validering før commit eller PR.
 8. Kjor lokal validering ved behov eller som egen agentoppgave:
    - `./scripts/validate-agent-worktree.sh`
    - `./scripts/run-stack-smoke.sh`
@@ -55,20 +54,20 @@ Dette dokumentet beskriver den praktiske arbeidsflyten for Flyvendebønder med `
 ## Praktisk rollefordeling
 - `GitHub Issues`: backlog, scope, status og prosjektoversikt.
 - `GitHub Milestones`: prioriteringsrekkefølge.
-- `Cline Kanban`: kjore agentoppgaver i worktrees, følge progresjon og reviewe diff.
+- `Codex worktrees`: isolert implementering, validering og diff-review.
 - `GitHub`: endelig PR, checks og merge.
-- Ikke prøv å speile alt mellom gamle Linear-saker, Kanban og GitHub. GitHub er sannhetskilden for nye oppgaver i dette repoet.
+- Ikke prøv å speile alt mellom gamle Linear-/Kanban-flater og GitHub. GitHub er sannhetskilden for nye oppgaver i dette repoet.
 
 ## Historisk Linear-oppsett
 - Linear kan finnes i eldre dokumentasjon eller lokal MCP-konfig, men skal ikke brukes som standard arbeidsflate for Flyvendebønder.
 - Nye oppgaver, prioritering og status skal ligge i GitHub Issues og GitHub Milestones.
 - Bruk bare Linear dersom Henry eksplisitt ber om det for historisk oppslag eller migrering.
 
-## Kanban-regler for dette repoet
-- Ett kort per konkret kodeendring eller reviewbar valideringsjobb.
-- Hold kortene sma nok til at diffen er lett a reviewe.
-- Bruk GitHub issue og milestone som referanse for hvert agentkort.
-- Ikke la Kanban drive deploy direkte; deploy gar fortsatt via vanlig PR til `main` og eksisterende GitHub Actions-flyt.
+## Regler for parallelt Codex-arbeid
+- Én konkret kodeendring eller reviewbar valideringsjobb per branch.
+- Hold diffene små nok til at de er lette å reviewe og rulle tilbake.
+- Bruk GitHub issue og milestone som referanse for arbeidet.
+- Ikke la en arbeidstråd drive deploy direkte; deploy går via PR til `main` og eksisterende GitHub Actions-flyt.
 
 ## Labels
 Anbefalte labels synkes med:

@@ -11,25 +11,27 @@
 - `docs/status/`: samlet status på siste funksjoner/arbeid
 - `GitHub Issues`: backlog, prioritering og prosjektstatus (`https://github.com/henrycmeen/flyvendebonder/issues`)
 - `GitHub Milestones`: rekkefolge og prioritering for arbeid
-- `Cline Kanban`: lokal agentflate for worktrees, diff-review og PR-klargjoring
+- `Codex worktrees`: isolert agentarbeid, diff-review og PR-klargjoring
 - `archive/`: historiske versjoner av tidligere sideoppsett
 - `scripts/`: staging og deploy scripts
 
 ## Agentflyt
-Flyvendebonder bruker na `GitHub Issues` og `GitHub Milestones` for planlegging, prioritering og status. `Cline Kanban` brukes fortsatt som lokal agentflate for worktrees, diff-review og PR-klargjoring.
+Flyvendebonder bruker `GitHub Issues` og `GitHub Milestones` for planlegging,
+prioritering og status. Parallelt Codex-arbeid kjores i egne worktrees og
+leveres gjennom pull requests.
 
-- Start Kanban fra repo-roten:
-  ```bash
-  ./scripts/run-cline-kanban.sh
-  ```
-- Alternativt direkte:
-  ```bash
-  cline --kanban
-  ```
 - Se operativ flyt i `docs/drift/agentarbeid-flyt.md`
-- Se maskin- og MCP-oppsett i `docs/drift/cline-kanban-oppsett.md`
 
 ## Lokal kjøring
+Sjekk verktøy, GitHub-innlogging, arbeidskopi og diskplass først:
+
+```bash
+./scripts/doctor.sh
+```
+
+Repoet forventer Node-versjonen i `.nvmrc` og Python-versjonen i
+`.python-version`. Doctor-kommandoen varsler om avvik uten å blokkere arbeid.
+
 Enklest:
 ```bash
 ./scripts/run-web-app-dev.sh
