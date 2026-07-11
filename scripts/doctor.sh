@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EXPECTED_NODE_MAJOR=22
+MIN_NODE_MAJOR=22
+MIN_NODE_MINOR=13
 EXPECTED_PYTHON_MAJOR=3
 EXPECTED_PYTHON_MINOR=13
 MIN_FREE_GIB="${MIN_FREE_GIB:-30}"
@@ -45,11 +46,11 @@ done
 
 if [[ -n "$(command_path node)" ]]; then
   NODE_VERSION="$(node --version | sed 's/^v//')"
-  NODE_MAJOR="${NODE_VERSION%%.*}"
-  if [[ "$NODE_MAJOR" == "$EXPECTED_NODE_MAJOR" ]]; then
-    pass "Node $NODE_VERSION matcher .nvmrc"
+  IFS=. read -r NODE_MAJOR NODE_MINOR _ <<<"$NODE_VERSION"
+  if ((NODE_MAJOR == MIN_NODE_MAJOR && NODE_MINOR >= MIN_NODE_MINOR)); then
+    pass "Node $NODE_VERSION matcher repoets minimum"
   else
-    warn "Node $NODE_VERSION er aktiv; repoet forventer Node $EXPECTED_NODE_MAJOR"
+    warn "Node $NODE_VERSION er aktiv; repoet forventer minst $MIN_NODE_MAJOR.$MIN_NODE_MINOR"
   fi
 fi
 
