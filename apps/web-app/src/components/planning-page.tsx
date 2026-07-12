@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, CheckCircle2, CircleOff, ClipboardList, Download, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Search, Settings2, TimerReset, Trash2 } from "lucide-react";
+import { Camera, CheckCircle2, CircleOff, ClipboardList, Download, FileText, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Search, Settings2, TimerReset, Trash2 } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -559,6 +559,7 @@ export function PlanningPage({
   const [createBusy, setCreateBusy] = useState(false);
   const [fieldDeleteBusy, setFieldDeleteBusy] = useState(false);
   const [fieldGeometryBusy, setFieldGeometryBusy] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncAllBusy, setSyncAllBusy] = useState(false);
   const [suggestionCreateKey, setSuggestionCreateKey] = useState<string | null>(null);
@@ -747,6 +748,33 @@ export function PlanningPage({
     },
     [onSelectMission, units],
   );
+
+  const handleOpenFieldReport = useCallback(() => {
+    if (!selectedUnit || reportBusy) return;
+    const reportUrl = `/api/v1/fields/${selectedUnit.source_field_plot_id}/report.html`;
+    const reportWindow = window.open("about:blank", "_blank");
+    if (!reportWindow) {
+      setUnitsStatus("Nettleseren blokkerte rapportfanen. Tillat sprettoppvinduer og prøv igjen.");
+      return;
+    }
+    reportWindow.opener = null;
+    setReportBusy(true);
+    void fetch(reportUrl, { cache: "no-store", credentials: "same-origin" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        if (!reportWindow.closed) {
+          reportWindow.location.replace(reportUrl);
+        }
+      })
+      .catch((error) => {
+        reportWindow.close();
+        const message = error instanceof Error ? error.message : "ukjent feil";
+        setUnitsStatus(`Kunne ikke åpne feltrapporten: ${message}`);
+      })
+      .finally(() => setReportBusy(false));
+  }, [reportBusy, selectedUnit]);
 
   const loadProfiles = useCallback(async () => {
     const { data } = await apiGet<DroneProfileListResponse>("/api/v1/drone-profiles", { cache: false, dedupe: false });
@@ -2050,6 +2078,17 @@ export function PlanningPage({
                       Teiggrensen kan korrigeres manuelt i kartet dersom kildegrunnlaget ikke stemmer med faktisk drift.
                     </p>
                   </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    disabled={reportBusy}
+                    onClick={handleOpenFieldReport}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {reportBusy ? "Åpner rapport …" : "Åpne feltrapport"}
+                  </Button>
                   {selectedUnit.latest_duration_status ? (
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <span className={cn("text-xs font-medium", durationTone(selectedUnit.latest_duration_status))}>
