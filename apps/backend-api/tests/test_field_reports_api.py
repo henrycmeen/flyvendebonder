@@ -144,6 +144,7 @@ def test_field_report_html_is_print_ready_and_escapes_authored_content(client):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-security-policy"].startswith("default-src 'self'")
     assert "@media print" in response.text
+    assert "@media (max-width: 480px)" in response.text
     assert "Feltrapport – Pilot &lt;jordet&gt;" in response.text
     assert "Sjekk &lt;script&gt;alert(1)&lt;/script&gt;" in response.text
     assert "Vått område &amp; mulig kjøreskade." in response.text

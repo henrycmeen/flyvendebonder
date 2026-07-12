@@ -126,6 +126,11 @@ def render_field_report_html(report: FieldReportOut) -> str:
     .history {{ padding-left: 1.25rem; }}
     .history li {{ margin-bottom: .75rem; break-inside: avoid; }}
     section {{ margin-top: 2rem; }}
+    @media (max-width: 480px) {{
+      body {{ padding: 1.25rem; }}
+      h1 {{ font-size: 1.75rem; }}
+      .meta {{ overflow-wrap: break-word; }}
+    }}
     @media print {{
       body {{ max-width: none; padding: 0; }}
       .metric, .finding {{ border-color: #999; }}
