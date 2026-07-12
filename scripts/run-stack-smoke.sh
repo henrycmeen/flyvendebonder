@@ -95,6 +95,50 @@ fi
 ensure_port_free "$BACKEND_PORT" "Backend"
 ensure_port_free "$APP_PORT" "Frontend"
 
+echo "Seeding isolated planning fixture ..."
+(
+  cd "$BACKEND_DIR"
+  DATABASE_URL="$DATABASE_URL" \
+  APP_DATA_ROOT="$APP_DATA_ROOT" \
+  "$BACKEND_PYTHON" - <<'PY'
+import json
+
+from sqlalchemy import select
+
+from app.database import SessionLocal, run_migrations
+from app.models import FieldPlot
+from app.services.planning import sync_planning_units
+from app.services.seeding import seed_default_user_and_property
+
+run_migrations()
+with SessionLocal() as db:
+    _, property_obj = seed_default_user_and_property(db)
+    field = db.execute(
+        select(FieldPlot).where(FieldPlot.property_id == property_obj.id).limit(1)
+    ).scalar_one_or_none()
+    if field is None:
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[9.60, 59.20], [9.61, 59.20], [9.61, 59.21], [9.60, 59.21], [9.60, 59.20]]],
+        }
+        db.add(
+            FieldPlot(
+                property_id=property_obj.id,
+                name="Smoke-felt",
+                source="manual",
+                status="confirmed",
+                geometry_json=json.dumps(geometry),
+                area_m2=None,
+                source_provenance_json="{}",
+            )
+        )
+        db.flush()
+
+    sync_planning_units(db, property_obj=property_obj)
+    db.commit()
+PY
+)
+
 echo "Starting backend on $BACKEND_URL ..."
 (
   cd "$BACKEND_DIR"

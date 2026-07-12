@@ -5,7 +5,7 @@ import logging
 import math
 import os
 import time
-from datetime import UTC, timedelta
+from datetime import timedelta, timezone
 from datetime import date as date_type, datetime
 from pathlib import Path
 from typing import Any
@@ -996,7 +996,7 @@ def _build_field_report(db: Session, *, user_id: int, field_id: int) -> FieldRep
 
     return FieldReportOut(
         title=f"Feltrapport – {field_name}",
-        generated_at=datetime.now(UTC),
+        generated_at=datetime.now(timezone.utc),
         property=FieldReportPropertyOut(
             id=property_obj.id,
             label=property_obj.label,
