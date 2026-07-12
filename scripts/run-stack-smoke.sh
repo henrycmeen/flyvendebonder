@@ -31,6 +31,11 @@ ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-test-admin-code}"
 ADMIN_SESSION_SECRET="${ADMIN_SESSION_SECRET:-test-admin-secret}"
 BACKEND_PYTHON="$BACKEND_DIR/.venv/bin/python"
 
+if [[ "$DATABASE_URL" != "sqlite:///$SMOKE_STATE_DIR/"* ]]; then
+  echo "Stack-smoke krever en isolert SQLite-database under SMOKE_STATE_DIR." >&2
+  exit 1
+fi
+
 if [[ ! -x "$BACKEND_PYTHON" ]]; then
   BACKEND_PYTHON="python3"
 fi
