@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Les også `PROJECT_AUTONOMY.md`. Begge filer gjelder; den strengeste regelen vinner.
+
 ## Formål
 Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på kort sikt: hva som er bygget nå, hvordan vi dokumenterer status, og hvordan vi holder utviklingen ryddig.
 
