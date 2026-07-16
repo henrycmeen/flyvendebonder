@@ -95,6 +95,7 @@ def test_scouting_task_can_be_created_listed_and_patched(client, monkeypatch):
             "title": "Sjekk vått hjørne",
             "notes": "Mørkere stripe ved nordenden.",
             "priority": "high",
+            "observed_at": "2026-07-16T10:15:00+02:00",
             "position": {"lat": 59.0004, "lng": 10.0005},
             "photo_ids": ["smoke-2025-07-18-00", "smoke-2025-07-18-00"],
         },
@@ -105,6 +106,8 @@ def test_scouting_task_can_be_created_listed_and_patched(client, monkeypatch):
     assert created["planning_unit_id"] == unit["id"]
     assert created["status"] == "open"
     assert created["priority"] == "high"
+    assert created["observed_at"] == "2026-07-16T08:15:00Z"
+    assert created["observed_at_original_offset"] == "+02:00"
     assert created["position"] == {"lat": 59.0004, "lng": 10.0005}
     assert created["photo_ids"] == ["smoke-2025-07-18-00"]
 
@@ -121,6 +124,7 @@ def test_scouting_task_can_be_created_listed_and_patched(client, monkeypatch):
             "status": "done",
             "priority": "normal",
             "notes": None,
+            "observed_at": "2026-07-16T06:30:00-04:00",
             "position": {"lat": 59.0006, "lng": 10.0007},
         },
     )
@@ -129,7 +133,53 @@ def test_scouting_task_can_be_created_listed_and_patched(client, monkeypatch):
     assert patched["status"] == "done"
     assert patched["priority"] == "normal"
     assert patched["notes"] is None
+    assert patched["observed_at"] == "2026-07-16T10:30:00Z"
+    assert patched["observed_at_original_offset"] == "-04:00"
+    assert patched["updated_at"] > created["updated_at"]
     assert patched["position"] == {"lat": 59.0006, "lng": 10.0007}
+
+    clear_response = client.patch(
+        f"/api/v1/scouting/tasks/{created['id']}",
+        json={"observed_at": None},
+    )
+    assert clear_response.status_code == 200
+    cleared = clear_response.json()
+    assert cleared["observed_at"] is None
+    assert cleared["observed_at_original_offset"] is None
+
+
+def test_scouting_task_keeps_legacy_observation_time_unknown(client):
+    field = _create_field(client, name="Eldre feltfunn")
+
+    response = client.post(
+        "/api/v1/scouting/tasks",
+        json={
+            "field_id": field["id"],
+            "title": "Tidspunkt ikke kjent",
+            "position": {"lat": 59.0004, "lng": 10.0005},
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["observed_at"] is None
+    assert response.json()["observed_at_original_offset"] is None
+
+
+def test_scouting_task_rejects_observation_time_without_offset(client):
+    field = _create_field(client, name="Tidssonefelt")
+
+    response = client.post(
+        "/api/v1/scouting/tasks",
+        json={
+            "field_id": field["id"],
+            "title": "Uklart tidspunkt",
+            "observed_at": "2026-07-16T10:15:00",
+            "position": {"lat": 59.0004, "lng": 10.0005},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "request_validation_error"
 
 
 def test_scouting_task_rejects_missing_photo_id(client, monkeypatch):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta, timezone
 from html import escape
 
 from ..schemas import FieldReportOut
@@ -31,6 +32,28 @@ def _history_summary(entry) -> str:
     return entry.summary
 
 
+def _observed_at_label(finding) -> str:
+    if finding.observed_at is None:
+        return "Ukjent observasjonstid"
+
+    observed_at = finding.observed_at
+    observed_utc = (
+        observed_at.replace(tzinfo=timezone.utc)
+        if observed_at.tzinfo is None
+        else observed_at.astimezone(timezone.utc)
+    )
+    original_offset = finding.observed_at_original_offset or "+00:00"
+    try:
+        sign = 1 if original_offset.startswith("+") else -1
+        hours, minutes = original_offset[1:].split(":", maxsplit=1)
+        offset_minutes = sign * ((int(hours) * 60) + int(minutes))
+    except (AttributeError, TypeError, ValueError):
+        original_offset = "+00:00"
+        offset_minutes = 0
+    observed_local = observed_utc + timedelta(minutes=offset_minutes)
+    return f"Observasjonstid: {observed_local:%Y-%m-%d %H:%M} UTC{original_offset}"
+
+
 def render_field_report_html(report: FieldReportOut) -> str:
     """Render a self-contained, script-free field report for printing."""
     summary = report.summary
@@ -55,6 +78,7 @@ def render_field_report_html(report: FieldReportOut) -> str:
                 f"<h3>{_text(finding.title)}</h3>",
                 f'<p class="meta">Status: {_text(_label(finding.status, {"open": "Åpen", "in_progress": "Pågår", "done": "Ferdig"}))} · '
                 f'Prioritet: {_text(_label(finding.priority, {"low": "Lav", "normal": "Normal", "high": "Høy"}))}</p>',
+                f'<p class="meta">{_text(_observed_at_label(finding))}</p>',
                 f"<p>{_text(finding.notes)}</p>" if finding.notes else "",
                 "</article>",
             )

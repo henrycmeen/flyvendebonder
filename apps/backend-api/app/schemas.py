@@ -374,6 +374,17 @@ ScoutingTaskStatus = Literal["open", "in_progress", "done"]
 ScoutingTaskPriority = Literal["low", "normal", "high"]
 
 
+def _validate_offset_aware_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    offset = value.utcoffset() if value.tzinfo is not None else None
+    if offset is None:
+        raise ValueError("Observasjonstidspunkt må inneholde tidssone-offset")
+    if offset.total_seconds() % 60 != 0:
+        raise ValueError("Observasjonstidspunktets offset må oppgis i hele minutter")
+    return value
+
+
 class ScoutingTaskCreate(BaseModel):
     property_id: int | None = None
     field_id: int = Field(gt=0)
@@ -382,6 +393,7 @@ class ScoutingTaskCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
     status: ScoutingTaskStatus = "open"
     priority: ScoutingTaskPriority = "normal"
+    observed_at: datetime | None = None
     position: GeoPoint
     photo_ids: list[str] = Field(default_factory=list)
 
@@ -401,6 +413,11 @@ class ScoutingTaskCreate(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("observed_at")
+    @classmethod
+    def _validate_observed_at(cls, value: datetime | None) -> datetime | None:
+        return _validate_offset_aware_datetime(value)
+
     @field_validator("photo_ids")
     @classmethod
     def _normalize_photo_ids(cls, value: list[str]) -> list[str]:
@@ -419,6 +436,7 @@ class ScoutingTaskPatch(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
     status: ScoutingTaskStatus | None = None
     priority: ScoutingTaskPriority | None = None
+    observed_at: datetime | None = None
     position: GeoPoint | None = None
     photo_ids: list[str] | None = None
 
@@ -439,6 +457,11 @@ class ScoutingTaskPatch(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("observed_at")
+    @classmethod
+    def _validate_observed_at(cls, value: datetime | None) -> datetime | None:
+        return _validate_offset_aware_datetime(value)
 
     @field_validator("photo_ids")
     @classmethod
@@ -464,6 +487,8 @@ class ScoutingTaskOut(BaseModel):
     notes: str | None = None
     status: ScoutingTaskStatus
     priority: ScoutingTaskPriority
+    observed_at: datetime | None = None
+    observed_at_original_offset: str | None = None
     position: GeoPoint
     photo_ids: list[str] = Field(default_factory=list)
     created_at: datetime

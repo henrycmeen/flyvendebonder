@@ -4,8 +4,10 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
+from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, text
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -39,3 +41,46 @@ def test_migration_graph_has_single_head() -> None:
 
     heads = script.get_heads()
     assert len(heads) == 1, f"Forventet ett hovedhode, fant: {heads}"
+
+
+def test_observed_at_migration_keeps_existing_scouting_tasks_unknown(tmp_path, monkeypatch) -> None:
+    from app.config import get_settings
+
+    database_url = f"sqlite:///{(tmp_path / 'migration.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    cfg = Config(str(_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_ROOT / "alembic"))
+    command.upgrade(cfg, "20260623_15")
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO scouting_tasks (
+                    property_id, field_plot_id, planning_unit_id, title, notes,
+                    status, priority, lat, lng, photo_ids_json, created_at, updated_at
+                ) VALUES (
+                    1, 1, NULL, 'Eldre funn', NULL,
+                    'open', 'normal', 59.0, 10.0, '[]',
+                    '2026-07-15 12:00:00', '2026-07-15 12:00:00'
+                )
+                """
+            )
+        )
+
+    command.upgrade(cfg, "head")
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT observed_at, observed_at_original_offset "
+                "FROM scouting_tasks WHERE title = 'Eldre funn'"
+            )
+        ).one()
+
+    assert row.observed_at is None
+    assert row.observed_at_original_offset is None
+    get_settings.cache_clear()

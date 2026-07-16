@@ -707,6 +707,13 @@ def _scouting_task_out(item: ScoutingTask) -> ScoutingTaskOut:
         photo_ids = json.loads(item.photo_ids_json or "[]")
     except (TypeError, json.JSONDecodeError):
         photo_ids = []
+    observed_at = item.observed_at
+    if observed_at is not None:
+        observed_at = (
+            observed_at.replace(tzinfo=timezone.utc)
+            if observed_at.tzinfo is None
+            else observed_at.astimezone(timezone.utc)
+        )
     return ScoutingTaskOut(
         id=item.id,
         property_id=item.property_id,
@@ -716,11 +723,25 @@ def _scouting_task_out(item: ScoutingTask) -> ScoutingTaskOut:
         notes=item.notes,
         status=item.status,
         priority=item.priority,
+        observed_at=observed_at,
+        observed_at_original_offset=item.observed_at_original_offset,
         position={"lat": item.lat, "lng": item.lng},
         photo_ids=[str(photo_id) for photo_id in photo_ids if str(photo_id).strip()],
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+def _normalize_scouting_observed_at(value: datetime) -> tuple[datetime, str]:
+    offset = value.utcoffset()
+    if offset is None:
+        raise ValueError("Observasjonstidspunkt må inneholde tidssone-offset")
+    offset_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if offset_minutes >= 0 else "-"
+    absolute_minutes = abs(offset_minutes)
+    original_offset = f"{sign}{absolute_minutes // 60:02d}:{absolute_minutes % 60:02d}"
+    normalized_utc = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return normalized_utc, original_offset
 
 
 def _validate_scouting_position(position) -> tuple[float, float]:
@@ -2233,6 +2254,10 @@ def create_scouting_task(
         property_obj=property_obj,
         photo_ids=payload.photo_ids,
     )
+    observed_at: datetime | None = None
+    observed_at_original_offset: str | None = None
+    if payload.observed_at is not None:
+        observed_at, observed_at_original_offset = _normalize_scouting_observed_at(payload.observed_at)
 
     item = ScoutingTask(
         property_id=property_obj.id,
@@ -2242,6 +2267,8 @@ def create_scouting_task(
         notes=payload.notes,
         status=payload.status,
         priority=payload.priority,
+        observed_at=observed_at,
+        observed_at_original_offset=observed_at_original_offset,
         lat=lat,
         lng=lng,
         photo_ids_json=json.dumps(photo_ids, ensure_ascii=False),
@@ -2270,6 +2297,14 @@ def patch_scouting_task(
         item.status = payload.status
     if payload.priority is not None:
         item.priority = payload.priority
+    if "observed_at" in payload.model_fields_set:
+        if payload.observed_at is None:
+            item.observed_at = None
+            item.observed_at_original_offset = None
+        else:
+            item.observed_at, item.observed_at_original_offset = _normalize_scouting_observed_at(
+                payload.observed_at
+            )
     if payload.position is not None:
         lat, lng = _validate_scouting_position(payload.position)
         item.lat = lat
