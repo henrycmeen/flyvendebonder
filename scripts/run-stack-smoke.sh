@@ -181,10 +181,25 @@ WEB_PID=$!
 
 wait_for_url "$APP_URL" "Frontend"
 
-echo "Running API + frontend smoke ..."
+echo "Running read-only API + frontend smoke ..."
+BACKEND_URL="$BACKEND_URL" \
+APP_URL="$APP_URL" \
+ADMIN_ACCESS_CODE="" \
+SMOKE_ALLOW_WRITES=0 \
+"$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
+
+echo "Running authenticated read-only API + frontend smoke ..."
 BACKEND_URL="$BACKEND_URL" \
 APP_URL="$APP_URL" \
 ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
+SMOKE_ALLOW_WRITES=0 \
+"$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
+
+echo "Running authenticated isolated API + frontend smoke ..."
+BACKEND_URL="$BACKEND_URL" \
+APP_URL="$APP_URL" \
+ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
+SMOKE_ALLOW_WRITES=1 \
 "$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
 
 SUCCESS=1

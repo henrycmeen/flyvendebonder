@@ -53,7 +53,7 @@ def _counts():
         )
 
 
-def test_preview_returns_all_candidates_without_writes_or_owner_data(client, monkeypatch):
+def test_anonymous_preview_is_rejected_without_writes(client, monkeypatch):
     import app.api.v1 as v1
 
     async def fake_lookup(**_kwargs):
@@ -68,16 +68,7 @@ def test_preview_returns_all_candidates_without_writes_or_owner_data(client, mon
         json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["count"] == 2
-    assert len({item["candidate_id"] for item in payload["candidates"]}) == 2
-    assert payload["candidates"][0]["property_ref"] == {
-        "komm": "4003", "gnr": 70, "bnr": 28, "fnr": 0, "label": "70/28"
-    }
-    assert payload["candidates"][0]["existing"] is None
-    assert payload["owner_information_available"] is False
-    assert "owner_name" not in payload["candidates"][0]
+    assert response.status_code == 401
     assert _counts() == before
 
 

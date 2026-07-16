@@ -233,10 +233,28 @@ Backendlogger er systemglobale og er derfor et eksplisitt unntak fra vanlig
 tenant-scope. Bare identiteten som er konfigurert som pilotadministrator kan
 lese dem; et annet aktivt eiermedlemskap er ikke tilstrekkelig.
 
-Denne slicen endrer ikke de eksisterende anonyme leserutene. Default-deny,
-offentlig allowlist og rydding av privat frontend-state leveres i neste
-route-slice; dette skillet hindrer at en sikkerhetsendring utilsiktet bryter
-dagens offentlige lesekontrakt.
+### Routekontrakt etter default-deny-slicen
+
+Den offentlige allowlisten er uttømmende:
+
+| Metode | Rute | Formål | Data |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/health` | lastbalanserer og driftssjekk | tjenestestatus og tidspunkt |
+| `GET` | `/api/v1/admin/session` | avklare om innlogging er konfigurert/aktiv | boolsk status og eventuell utløpstid |
+| `POST` | `/api/v1/admin/login` | opprette signert, brukerbundet sesjon | sesjonsstatus; cookie er `HttpOnly` |
+| `POST` | `/api/v1/admin/logout` | slette sesjonscookie | sesjonsstatus |
+
+Alle andre API-ruter, også profil, kartkilder, ortofotoanalyse, gårdsdata,
+felt, bilder, planlegging, rapporter, eksport, assets, import, media og video,
+krever en gyldig sesjon og et aktivt eiermedlemskap. Ressursoppslag bruker
+sesjonsbrukeren i databasespørringen; eksplisitt `user_id` kan ikke overstyre
+sesjonsidentiteten. `/api/v1/logs` har i tillegg pilotadministrator-krav.
+
+Kildeguarden i `test_default_deny_routes.py` gjør nye ruter private som
+standard: en rute uten request-bundet eieravhengighet må legges eksplisitt i
+den korte offentlige listen. Klienten starter ingen privat bootstrap før
+sesjonen er bekreftet, viser en egen innloggingsport og tømmer privat state og
+API-cache ved avvist identitet.
 
 ## Testkontrakt
 
