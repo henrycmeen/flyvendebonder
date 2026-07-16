@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-orthophoto-color-analysis.mjs",
+    "test": "node scripts/test-orthophoto-color-analysis.mjs && node scripts/test-observed-at.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint . && npm run motion:lint",
     "motion:lint": "bash ./scripts/motion-lint.sh",

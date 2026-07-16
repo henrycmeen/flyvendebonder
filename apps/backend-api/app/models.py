@@ -188,6 +188,8 @@ class ScoutingTask(TimestampMixin, Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="open")
     priority: Mapped[str] = mapped_column(String(24), nullable=False, default="normal")
+    observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    observed_at_original_offset: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
     lat: Mapped[float] = mapped_column(Float, nullable=False)
     lng: Mapped[float] = mapped_column(Float, nullable=False)
     photo_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")

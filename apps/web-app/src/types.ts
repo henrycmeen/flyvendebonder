@@ -284,6 +284,8 @@ export interface ScoutingTask {
   priority: ScoutingTaskPriority;
   position: GeoPoint;
   photo_ids: string[];
+  observed_at: string | null;
+  observed_at_original_offset: string | null;
   created_at: string;
   updated_at: string;
 }

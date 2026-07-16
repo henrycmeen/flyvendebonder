@@ -87,6 +87,7 @@ def _create_report_fixture(client) -> tuple[dict, dict]:
             "title": "Sjekk <script>alert(1)</script>",
             "notes": "Vått område & mulig kjøreskade.",
             "priority": "high",
+            "observed_at": "2026-07-16T10:15:00+02:00",
             "position": {"lat": 59.0004, "lng": 10.0005},
             "photo_ids": ["smoke-2025-07-18-00"],
         },
@@ -127,6 +128,8 @@ def test_field_report_contract_collects_real_field_evidence(client):
     }
     assert report["findings"][0]["id"] == finding["id"]
     assert report["findings"][0]["title"] == "Sjekk <script>alert(1)</script>"
+    assert report["findings"][0]["observed_at"] == "2026-07-16T08:15:00Z"
+    assert report["findings"][0]["observed_at_original_offset"] == "+02:00"
     assert report["findings"][0]["photo_ids"] == ["smoke-2025-07-18-00"]
     assert report["key_photos"][0]["id"] == "smoke-2025-07-18-00"
     assert report["key_photos"][0]["thumbnail_url"].startswith("/api/v1/assets/photos/thumb/")
@@ -154,6 +157,7 @@ def test_field_report_html_is_print_ready_and_escapes_authored_content(client):
     assert "Manuelt registrert" in response.text
     assert "Bildeserier" in response.text
     assert "Prioritet: Høy" in response.text
+    assert "Observasjonstid: 2026-07-16 10:15 UTC+02:00" in response.text
     assert " · Bildeserie · " in response.text
     assert "Prosesseringsløp 1" in response.text
     assert "Fullført" in response.text
@@ -195,6 +199,36 @@ def test_field_report_supports_empty_field(client):
     assert report["key_photos"] == []
     assert "Ingen registrerte feltfunn." in html
     assert "Ingen nøkkelbilder er knyttet til funnene." in html
+
+
+def test_field_report_marks_missing_observation_time_as_unknown(client):
+    field_response = client.post(
+        "/api/v1/fields",
+        json={
+            "name": "Felt med eldre funn",
+            "source": "manual",
+            "status": "confirmed",
+            "geometry": _sample_polygon(),
+        },
+    )
+    assert field_response.status_code == 201
+    field = field_response.json()
+    finding_response = client.post(
+        "/api/v1/scouting/tasks",
+        json={
+            "field_id": field["id"],
+            "title": "Eldre funn uten observasjonstid",
+            "position": {"lat": 59.0004, "lng": 10.0005},
+        },
+    )
+    assert finding_response.status_code == 201
+
+    report = client.get(f"/api/v1/fields/{field['id']}/report").json()
+    html = client.get(f"/api/v1/fields/{field['id']}/report.html").text
+
+    assert report["findings"][0]["observed_at"] is None
+    assert report["findings"][0]["observed_at_original_offset"] is None
+    assert "Ukjent observasjonstid" in html
 
 
 def test_field_report_deduplicates_photo_linked_to_multiple_findings(client):

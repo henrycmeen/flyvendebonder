@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, CheckCircle2, CircleOff, ClipboardList, Download, FileText, MapPin, MousePointer2, Pause, PencilLine, Plane, Play, Plus, RefreshCw, Scissors, Search, Settings2, TimerReset, Trash2 } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { currentLocalDateTimeInput, observedAtInputToRfc3339, observedAtToLocalInput } from "@/lib/observed-at";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PlanningMap } from "@/components/planning-map";
@@ -94,6 +95,8 @@ type ScoutingTaskDraft = {
   notes: string;
   lat: string;
   lng: string;
+  observedAt: string;
+  observedAtEdited: boolean;
   priority: ScoutingTaskPriority;
   photoIds: string[];
 };
@@ -148,6 +151,24 @@ function scoutingPriorityTone(priority: ScoutingTaskPriority): string {
   if (priority === "high") return "text-[color:var(--fb-accent-danger)]";
   if (priority === "low") return "text-fb-text-secondary";
   return "text-[color:var(--fb-season-solid)]";
+}
+
+function observedAtOffsetMinutes(value: string | null): number | null {
+  const match = /^([+-])(\d{2}):(\d{2})$/.exec(value ?? "");
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  if (hours > 23 || minutes > 59) return null;
+  return (match[1] === "+" ? 1 : -1) * (hours * 60 + minutes);
+}
+
+function scoutingObservedAtLabel(observedAt: string | null, originalOffset: string | null): string {
+  if (!observedAt) return "Ukjent observasjonstid";
+  const localInput = observedAtToLocalInput(observedAt, observedAtOffsetMinutes(originalOffset));
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/.exec(localInput);
+  if (!match) return "Ukjent observasjonstid";
+  const [, year, month, day, time] = match;
+  return `Observasjonstid: ${day}.${month}.${year} kl. ${time}${originalOffset ? ` UTC${originalOffset}` : " lokal tid"}`;
 }
 
 function photoTitle(photo: PhotoFeature): string {
@@ -534,11 +555,15 @@ export function PlanningPage({
   const [scoutingStatusText, setScoutingStatusText] = useState("");
   const [scoutingBusy, setScoutingBusy] = useState(false);
   const [scoutingPatchBusyId, setScoutingPatchBusyId] = useState<number | null>(null);
+  const [scoutingObservedAtBusyId, setScoutingObservedAtBusyId] = useState<number | null>(null);
+  const [scoutingObservedAtDrafts, setScoutingObservedAtDrafts] = useState<Record<number, string>>({});
   const [scoutingDraft, setScoutingDraft] = useState<ScoutingTaskDraft>({
     title: "",
     notes: "",
     lat: "",
     lng: "",
+    observedAt: currentLocalDateTimeInput(),
+    observedAtEdited: false,
     priority: "normal",
     photoIds: [],
   });
@@ -880,6 +905,7 @@ export function PlanningPage({
   const loadScoutingTasks = useCallback(async () => {
     if (!selectedUnit) {
       setScoutingTasks([]);
+      setScoutingObservedAtDrafts({});
       setScoutingStatusText("");
       return;
     }
@@ -896,12 +922,21 @@ export function PlanningPage({
         (task) => task.planning_unit_id == null || visibleUnitIds.has(task.planning_unit_id),
       );
       setScoutingTasks(nextTasks);
+      setScoutingObservedAtDrafts(
+        Object.fromEntries(
+          nextTasks.map((task) => [
+            task.id,
+            observedAtToLocalInput(task.observed_at, observedAtOffsetMinutes(task.observed_at_original_offset)),
+          ]),
+        ),
+      );
       setScoutingStatusText(
         nextTasks.length === 0 ? "Ingen feltoppgaver for dette området ennå." : `${nextTasks.length} feltoppgave${nextTasks.length === 1 ? "" : "r"} på området.`,
       );
     } catch (error) {
       const apiError = error as ApiError;
       setScoutingTasks([]);
+      setScoutingObservedAtDrafts({});
       setScoutingStatusText(`Kunne ikke laste feltoppgaver: ${apiError.message}`);
     }
   }, [selectedUnit]);
@@ -965,6 +1000,8 @@ export function PlanningPage({
         notes: "",
         lat: "",
         lng: "",
+        observedAt: currentLocalDateTimeInput(),
+        observedAtEdited: false,
         photoIds: [],
       }));
       return;
@@ -975,6 +1012,8 @@ export function PlanningPage({
       notes: "",
       lat: selectedUnitCenter ? selectedUnitCenter.lat.toFixed(6) : "",
       lng: selectedUnitCenter ? selectedUnitCenter.lng.toFixed(6) : "",
+      observedAt: currentLocalDateTimeInput(),
+      observedAtEdited: false,
       photoIds: [],
     }));
   }, [selectedUnitCenter, selectedUnitId]);
@@ -1263,6 +1302,14 @@ export function PlanningPage({
       setScoutingStatusText("Skriv inn gyldig bredde- og lengdegrad for feltfunnet.");
       return;
     }
+    const observedAtInput = scoutingDraft.observedAtEdited
+      ? scoutingDraft.observedAt
+      : currentLocalDateTimeInput();
+    const observedAt = observedAtInputToRfc3339(observedAtInput);
+    if (observedAtInput.trim() && !observedAt) {
+      setScoutingStatusText("Skriv inn et gyldig observasjonstidspunkt.");
+      return;
+    }
     setScoutingBusy(true);
     try {
       const title = scoutingDraft.title.trim() || `Funn i ${selectedUnit.name}`;
@@ -1272,15 +1319,25 @@ export function PlanningPage({
         planning_unit_id: selectedUnit.id,
         title,
         notes: scoutingDraft.notes.trim() || null,
+        observed_at: observedAt,
         priority: scoutingDraft.priority,
         position: { lat, lng },
         photo_ids: scoutingDraft.photoIds,
       });
       setScoutingTasks((current) => [data, ...current.filter((item) => item.id !== data.id)]);
+      setScoutingObservedAtDrafts((current) => ({
+        ...current,
+        [data.id]: observedAtToLocalInput(
+          data.observed_at,
+          observedAtOffsetMinutes(data.observed_at_original_offset),
+        ),
+      }));
       setScoutingDraft((current) => ({
         ...current,
         title: "",
         notes: "",
+        observedAt: currentLocalDateTimeInput(),
+        observedAtEdited: false,
         photoIds: [],
       }));
       setScoutingStatusText(`Lagret feltoppgave: ${data.title}.`);
@@ -1292,9 +1349,48 @@ export function PlanningPage({
     }
   }, [canEdit, scoutingBusy, scoutingDraft, selectedUnit]);
 
+  const handleSaveScoutingTaskObservedAt = useCallback(
+    async (task: ScoutingTask) => {
+      if (!canEdit || scoutingPatchBusyId != null || scoutingObservedAtBusyId != null) return;
+      const originalOffsetMinutes = observedAtOffsetMinutes(task.observed_at_original_offset);
+      const inputValue = scoutingObservedAtDrafts[task.id]
+        ?? observedAtToLocalInput(task.observed_at, originalOffsetMinutes);
+      const observedAt = observedAtInputToRfc3339(inputValue, originalOffsetMinutes ?? undefined);
+      if (inputValue.trim() && !observedAt) {
+        setScoutingStatusText("Skriv inn et gyldig observasjonstidspunkt.");
+        return;
+      }
+      setScoutingObservedAtBusyId(task.id);
+      try {
+        const { data } = await apiPatch<ScoutingTask>(`/api/v1/scouting/tasks/${task.id}`, {
+          observed_at: observedAt,
+        });
+        setScoutingTasks((current) => current.map((item) => (item.id === data.id ? data : item)));
+        setScoutingObservedAtDrafts((current) => ({
+          ...current,
+          [data.id]: observedAtToLocalInput(
+            data.observed_at,
+            observedAtOffsetMinutes(data.observed_at_original_offset),
+          ),
+        }));
+        setScoutingStatusText(
+          data.observed_at
+            ? `Oppdaterte observasjonstidspunktet for ${data.title}.`
+            : `Fjernet observasjonstidspunktet for ${data.title}.`,
+        );
+      } catch (error) {
+        const apiError = error as ApiError;
+        setScoutingStatusText(`Kunne ikke oppdatere observasjonstidspunktet: ${apiError.message}`);
+      } finally {
+        setScoutingObservedAtBusyId(null);
+      }
+    },
+    [canEdit, scoutingObservedAtBusyId, scoutingObservedAtDrafts, scoutingPatchBusyId],
+  );
+
   const handlePatchScoutingTaskStatus = useCallback(
     async (task: ScoutingTask, status: ScoutingTaskStatus) => {
-      if (!canEdit || scoutingPatchBusyId != null) return;
+      if (!canEdit || scoutingPatchBusyId != null || scoutingObservedAtBusyId != null) return;
       setScoutingPatchBusyId(task.id);
       try {
         const { data } = await apiPatch<ScoutingTask>(`/api/v1/scouting/tasks/${task.id}`, { status });
@@ -1307,7 +1403,7 @@ export function PlanningPage({
         setScoutingPatchBusyId(null);
       }
     },
-    [canEdit, scoutingPatchBusyId],
+    [canEdit, scoutingObservedAtBusyId, scoutingPatchBusyId],
   );
 
   const handleResolvePoint = useCallback(
@@ -2145,12 +2241,54 @@ export function PlanningPage({
                                 onClick={() => void handlePatchScoutingTaskStatus(task, task.status === "done" ? "open" : "done")}
                                 loading={scoutingPatchBusyId === task.id}
                                 loadingLabel="Oppdaterer"
-                                disabled={!canEdit}
+                                disabled={!canEdit || scoutingObservedAtBusyId != null}
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                 {task.status === "done" ? "Åpne" : "Ferdig"}
                               </Button>
                             </div>
+                            <p className="mt-2 text-xs leading-5 text-fb-text-secondary">
+                              {scoutingObservedAtLabel(task.observed_at, task.observed_at_original_offset)}
+                            </p>
+                            {canEdit ? (
+                              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                                <label className="min-w-0 flex-1">
+                                  <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">
+                                    Endre observasjonstid
+                                  </span>
+                                  <input
+                                    type="datetime-local"
+                                    value={
+                                      scoutingObservedAtDrafts[task.id]
+                                      ?? observedAtToLocalInput(
+                                        task.observed_at,
+                                        observedAtOffsetMinutes(task.observed_at_original_offset),
+                                      )
+                                    }
+                                    disabled={scoutingObservedAtBusyId === task.id}
+                                    onChange={(event) =>
+                                      setScoutingObservedAtDrafts((current) => ({
+                                        ...current,
+                                        [task.id]: event.target.value,
+                                      }))
+                                    }
+                                    className="w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                                  />
+                                </label>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="min-h-10 w-full sm:w-auto"
+                                  onClick={() => void handleSaveScoutingTaskObservedAt(task)}
+                                  loading={scoutingObservedAtBusyId === task.id}
+                                  loadingLabel="Lagrer tidspunkt"
+                                  disabled={scoutingPatchBusyId != null}
+                                >
+                                  Lagre tidspunkt
+                                </Button>
+                              </div>
+                            ) : null}
                             {task.notes ? <p className="mt-2 text-xs leading-5 text-fb-text-secondary">{task.notes}</p> : null}
                             {task.photo_ids.length > 0 ? (
                               <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/60 px-2 py-1.5">
@@ -2220,6 +2358,33 @@ export function PlanningPage({
                         placeholder="Kort notat, for eksempel ugras, kjørespor, vann eller behov for nytt bilde."
                         className="min-h-[4.5rem] w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors placeholder:text-fb-text-secondary focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
                       />
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">
+                          Observasjonstid
+                        </span>
+                        <input
+                          type="datetime-local"
+                          value={scoutingDraft.observedAt}
+                          onFocus={() => {
+                            if (scoutingDraft.observedAtEdited) return;
+                            setScoutingDraft((current) => ({
+                              ...current,
+                              observedAt: currentLocalDateTimeInput(),
+                            }));
+                          }}
+                          onChange={(event) =>
+                            setScoutingDraft((current) => ({
+                              ...current,
+                              observedAt: event.target.value,
+                              observedAtEdited: true,
+                            }))
+                          }
+                          className="w-full rounded-xl bg-white/75 px-3 py-2 text-sm text-fb-text-primary outline-none transition-colors focus:bg-white focus:ring-1 focus:ring-fb-border-strong"
+                        />
+                        <span className="mt-1 block text-[11px] leading-4 text-fb-text-secondary">
+                          Tømm feltet dersom tidspunktet er ukjent.
+                        </span>
+                      </label>
                       <div className="space-y-2 rounded-xl bg-white/55 px-2.5 py-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Bilder</span>
