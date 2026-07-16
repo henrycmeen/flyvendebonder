@@ -8,6 +8,7 @@
 - `docs/backend-processing-v0.md` – første processing-arkitektur for flight captures, jobs og artefakter
 - `docs/drift/stac-contract-v1.md` – første STAC-kontrakt for collections og items over processing-runs
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
+- `docs/drift/compliance-retention-v1.md` – operativ sjekkliste og retention-policy for geodata, media, logger og debug-artefakter
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `docs/drift/planlegging-workspace-v1.md` – første kontrakt for den nye planleggingsarbeidsflaten
 - `docs/drift/orthophoto-color-analysis-v1.md` – avgrensing og videre backend/COG-spor for fargeanalyse i ortofoto
@@ -27,6 +28,7 @@
 - `docs/drift/agentarbeid-flyt.md` – operativ arbeidsflyt for agentarbeid
 - `docs/status/2026-02-17.md` – nåværende oppsummering av gjennomført arbeid
 - `docs/drift/video-job-contract-v1.md` – minimal backend-kontrakt for videoflyten
+- `docs/drift/compliance-retention-v1.md` – hva nye dataflyter må avklare, og hvordan midlertidige drifts- og mediaartefakter håndteres
 - `docs/drift/geojson-contract-v1.md` – første versjonerte GeoJSON-kontrakt for eksport/import av vektordata
 - `docs/drift/planlegging-workspace-v1.md` – hvordan planenheter, splitting og flytidsestimat fungerer
 - `docs/drift/orthophoto-color-analysis-v1.md` – hva fargeanalyse v1 beregner og hva den ikke skal tolkes som

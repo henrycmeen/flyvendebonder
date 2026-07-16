@@ -43,6 +43,24 @@ require_200() {
   rm -f "$response"
 }
 
+require_200_with_cookie() {
+  local url="$1"
+  local label="$2"
+  local cookie_jar="$3"
+  local output_file="${4:-/dev/null}"
+  local response
+  local code
+
+  response="$(mktemp)"
+  code="$(curl -sS -w "%{http_code}" -b "$cookie_jar" -o "$response" "$url")"
+  if [[ "$code" != "200" ]]; then
+    rm -f "$response"
+    fail "$label ($code): $url"
+  fi
+  cat "$response" >"$output_file"
+  rm -f "$response"
+}
+
 require_json_field() {
   local label="$1"
   local url="$2"
@@ -135,12 +153,6 @@ print((photos[0] or {}).get("thumbnail_url", ""))
 PY
 )"
 
-if [[ -n "$THUMB_URL" ]]; then
-  require_200 "$BACKEND_URL$THUMB_URL" "Photo thumbnail"
-else
-  echo "Advarsel: Fotoresponsen inneholder ingen thumbnail_url."
-fi
-
 if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
   require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and 'authenticated' in obj"
 else
@@ -160,6 +172,12 @@ PY
   LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
   if [[ "$LOGIN_CODE" != "200" ]]; then
     fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
+  fi
+
+  if [[ -n "$THUMB_URL" ]]; then
+    require_200_with_cookie "$BACKEND_URL$THUMB_URL" "Photo thumbnail" "$COOKIE_JAR"
+  else
+    echo "Advarsel: Fotoresponsen inneholder ingen thumbnail_url."
   fi
 
   LOGS_FILE="$(new_tmp)"
@@ -347,7 +365,7 @@ PY
     fail "Kunne ikke rydde opp testoppdrag etter eksport ($DELETE_CODE)"
   fi
 else
-  echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet logs-sjekk."
+  echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet asset- og logs-sjekk."
 fi
 
 echo "[7/7] App side"

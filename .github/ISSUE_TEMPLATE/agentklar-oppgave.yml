@@ -55,6 +55,19 @@ body:
     validations:
       required: false
 
+  - type: textarea
+    id: compliance
+    attributes:
+      label: Data og compliance
+      description: Beskriv vurderingen, eller skriv «Ingen nye dataflyter» med begrunnelse.
+      placeholder: |
+        Dataminimering: Hvilke data er nødvendige, og hva lagres ikke?
+        Lagringstid: Når slettes eller revurderes data og avledede artefakter?
+        Tilgang: Hvem kan lese, endre, eksportere eller slette dataene?
+        Sporbarhet: Hvilke hendelser må logges uten å logge rådata eller hemmeligheter?
+    validations:
+      required: true
+
   - type: checkboxes
     id: agent_ready
     attributes:
@@ -65,4 +78,6 @@ body:
         - label: Oppgaven krever ikke nye secrets eller ny infrastruktur.
           required: true
         - label: Akseptansekriteriene over er konkrete nok til at en agent eller utvikler kan validere dem.
+          required: true
+        - label: Dataflyt, dataminimering, lagringstid, tilgang og nødvendig sporbarhet er vurdert.
           required: true

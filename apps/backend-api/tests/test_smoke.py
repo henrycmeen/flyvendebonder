@@ -536,7 +536,7 @@ def test_assets_and_logs_smoke(client):
 
     asset = client.get(photo["thumbnail_url"])
     assert asset.status_code == 200
-    assert asset.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+    assert asset.headers["Cache-Control"] == "private, max-age=31536000, immutable"
 
     missing = client.get("/api/v1/assets/photos/thumb/does-not-exist.jpg")
     assert missing.status_code == 404
@@ -553,3 +553,15 @@ def test_assets_and_logs_smoke(client):
 
     invalid_level = client.get("/api/v1/logs", params={"level": "NOT_A_LEVEL"})
     assert invalid_level.status_code == 400
+
+    from app.config import get_settings
+
+    staged_file = get_settings().app_data_root / "media-staging" / "leak-check" / "payload.json"
+    staged_file.parent.mkdir(parents=True, exist_ok=True)
+    staged_file.write_text('{"secret": true}', encoding="utf-8")
+    assert client.get("/api/v1/assets/media-staging/leak-check/payload.json").status_code == 404
+    encoded_bypass = "/api/v1/assets/photos/thumb/%2e%2e/%2e%2e/media-staging/leak-check/payload.json"
+    assert client.get(encoded_bypass).status_code == 404
+
+    client.cookies.clear()
+    assert client.get(photo["thumbnail_url"]).status_code == 401

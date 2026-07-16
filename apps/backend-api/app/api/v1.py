@@ -4005,25 +4005,39 @@ def get_video_job_artifact(
 
 
 @router.get("/assets/{asset_path:path}")
-def get_asset(asset_path: str, request: Request) -> Response:
+def get_asset(
+    asset_path: str,
+    request: Request,
+    _admin_session=Depends(require_admin_session),
+) -> Response:
     root = settings.app_data_root.resolve()
     target = (root / asset_path).resolve()
 
     if root != target and root not in target.parents:
         raise HTTPException(status_code=403, detail="Ugyldig filsti")
+
+    normalized = asset_path.strip("/")
+    allowed_roots = {
+        "thumb": (root / "photos" / "thumb").resolve(),
+        "web": (root / "photos" / "web").resolve(),
+        "original": (root / "photos" / "original").resolve(),
+    }
+    asset_kind = next(
+        (kind for kind in allowed_roots if normalized.startswith(f"photos/{kind}/")),
+        None,
+    )
+    if asset_kind is None:
+        raise HTTPException(status_code=404, detail="Fant ikke fil")
+    allowed_root = allowed_roots[asset_kind]
+    if allowed_root not in target.parents:
+        raise HTTPException(status_code=404, detail="Fant ikke fil")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Fant ikke fil")
 
-    normalized = asset_path.strip("/")
-    if normalized.startswith("photos/thumb/") or normalized.startswith("photos/web/"):
-        cache_control = "public, max-age=31536000, immutable"
-        asset_kind = "thumb" if normalized.startswith("photos/thumb/") else "web"
-    elif normalized.startswith("photos/original/"):
-        cache_control = "public, max-age=3600"
-        asset_kind = "original"
+    if asset_kind in {"thumb", "web"}:
+        cache_control = "private, max-age=31536000, immutable"
     else:
-        cache_control = "public, max-age=3600"
-        asset_kind = "other"
+        cache_control = "private, max-age=3600"
 
     started = time.perf_counter()
     stat_result = os.stat(target)
