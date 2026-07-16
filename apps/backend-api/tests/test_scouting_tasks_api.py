@@ -41,14 +41,18 @@ def _sync_first_unit(client) -> dict:
 
 def _create_foreign_property_photo(photo_id: str) -> None:
     from app.database import SessionLocal
-    from app.models import Photo, Property, User
+    from app.models import FarmMembership, Photo, Property, User
     from sqlalchemy import select
 
     with SessionLocal() as db:
         user = db.execute(select(User).order_by(User.id)).scalars().first()
         assert user is not None
+        farm_id = db.execute(
+            select(FarmMembership.farm_id).where(FarmMembership.user_id == user.id)
+        ).scalar_one()
         property_obj = Property(
             user_id=user.id,
+            farm_id=farm_id,
             komm="3901",
             gnr=99,
             bnr=99,
