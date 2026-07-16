@@ -165,7 +165,7 @@ class Photo(TimestampMixin, Base):
     oblique_correction_applied: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
-    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source_ref: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
@@ -176,6 +176,7 @@ class Photo(TimestampMixin, Base):
     assets: Mapped[list[PhotoAsset]] = relationship(back_populates="photo", cascade="all, delete-orphan")
 
     __table_args__ = (
+        UniqueConstraint("user_id", "source_hash", name="uq_photos_user_source_hash"),
         Index("idx_photo_secondary_dedupe", "source_filename", "captured_at", "lat", "lng"),
         Index("idx_photos_user_captured_at_id", "user_id", "captured_at", "id"),
     )

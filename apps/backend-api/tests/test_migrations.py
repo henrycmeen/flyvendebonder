@@ -161,7 +161,15 @@ def _insert_ingest_run(connection, *, run_id: int) -> None:
     )
 
 
-def _insert_photo(connection, *, photo_id: str, user_id: int, property_id: int, run_id: int) -> None:
+def _insert_photo(
+    connection,
+    *,
+    photo_id: str,
+    user_id: int,
+    property_id: int,
+    run_id: int | None,
+    source_hash: str | None = None,
+) -> None:
     connection.execute(
         text(
             "INSERT INTO photos ("
@@ -178,7 +186,7 @@ def _insert_photo(connection, *, photo_id: str, user_id: int, property_id: int, 
             "property_id": property_id,
             "run_id": run_id,
             "filename": f"{photo_id}.jpg",
-            "source_hash": f"hash-{photo_id}",
+            "source_hash": source_hash or f"hash-{photo_id}",
         },
     )
 
@@ -201,7 +209,7 @@ def test_ingest_run_ownership_migration_backfills_and_downgrades(tmp_path, monke
         _insert_ingest_run(connection, run_id=2)
         _insert_photo(connection, photo_id="photo-owned", user_id=1, property_id=1, run_id=1)
 
-    command.upgrade(cfg, "20260716_19")
+    command.upgrade(cfg, "head")
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT id, user_id FROM ingest_runs ORDER BY id")
@@ -217,6 +225,56 @@ def test_ingest_run_ownership_migration_backfills_and_downgrades(tmp_path, monke
             row.name for row in connection.execute(text("PRAGMA table_info(ingest_runs)"))
         }
         assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    get_settings.cache_clear()
+
+
+def test_photo_hash_ownership_migration_blocks_unsafe_downgrade(tmp_path, monkeypatch) -> None:
+    from app.config import get_settings
+
+    database_url = f"sqlite:///{(tmp_path / 'photo-hash-ownership.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    cfg = _migration_config(database_url)
+    command.upgrade(cfg, "20260716_17")
+    engine = create_engine(database_url)
+
+    with engine.begin() as connection:
+        _insert_owner_before_farm_migration(connection, user_id=1, property_id=1)
+        _insert_owner_before_farm_migration(connection, user_id=2, property_id=2)
+    command.upgrade(cfg, "head")
+
+    with engine.begin() as connection:
+        _insert_photo(
+            connection,
+            photo_id="shared-user-1",
+            user_id=1,
+            property_id=1,
+            run_id=None,
+            source_hash="shared-source-hash",
+        )
+        _insert_photo(
+            connection,
+            photo_id="shared-user-2",
+            user_id=2,
+            property_id=2,
+            run_id=None,
+            source_hash="shared-source-hash",
+        )
+
+    for _attempt in range(2):
+        try:
+            command.downgrade(cfg, "20260716_19")
+        except RuntimeError as exc:
+            assert "flere brukere" in str(exc)
+        else:
+            raise AssertionError("Utrygg hash-downgrade skulle ha blitt stoppet")
+
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260716_20"
+            assert connection.execute(
+                text("SELECT COUNT(*) FROM photos WHERE source_hash = 'shared-source-hash'")
+            ).scalar_one() == 2
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
     get_settings.cache_clear()
 
 

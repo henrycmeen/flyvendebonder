@@ -5,6 +5,8 @@ from io import BytesIO
 
 from PIL import Image
 
+from tests.test_admin_access import _create_secondary_owner, _set_bound_admin_session
+
 
 def _jpeg_bytes() -> bytes:
     buffer = BytesIO()
@@ -251,6 +253,47 @@ def test_media_staging_job_finalize_is_idempotent_for_simple_retry(client, monke
     jobs_response = client.get("/api/v1/video-jobs?limit=10")
     assert jobs_response.status_code == 200
     assert len([item for item in jobs_response.json()["jobs"] if item["filename"] == "felt-02.mp4"]) == 1
+
+
+def test_same_image_is_imported_as_a_separate_photo_for_each_owner(client, monkeypatch):
+    from app.database import SessionLocal
+    from app.models import Photo
+
+    _install_fake_image_metadata(monkeypatch)
+    image_bytes = _jpeg_bytes()
+
+    primary_staging = client.post(
+        "/api/v1/media-staging-jobs",
+        files=[("files", ("shared.jpg", image_bytes, "image/jpeg"))],
+    )
+    assert primary_staging.status_code == 201
+    primary_result = client.post(
+        f"/api/v1/media-staging-jobs/{primary_staging.json()['job']['job_id']}/finalize"
+    )
+    assert primary_result.status_code == 200
+    primary_photo_id = primary_result.json()["result"]["items"][0]["photo_id"]
+    assert primary_photo_id is not None
+
+    secondary_user_id, _membership_id = _create_secondary_owner()
+    _set_bound_admin_session(client, secondary_user_id)
+    secondary_staging = client.post(
+        "/api/v1/media-staging-jobs",
+        files=[("files", ("shared.jpg", image_bytes, "image/jpeg"))],
+    )
+    assert secondary_staging.status_code == 201
+    secondary_result = client.post(
+        f"/api/v1/media-staging-jobs/{secondary_staging.json()['job']['job_id']}/finalize"
+    )
+    assert secondary_result.status_code == 200
+    item = secondary_result.json()["result"]["items"][0]
+    assert item["status"] == "imported"
+    assert item["photo_id"] is not None
+    assert item["photo_id"] != primary_photo_id
+
+    with SessionLocal() as db:
+        secondary_photo = db.get(Photo, item["photo_id"])
+        assert secondary_photo is not None
+        assert secondary_photo.user_id == secondary_user_id
 
 
 def test_media_staging_finalize_is_scoped_to_current_user(client):

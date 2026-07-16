@@ -136,6 +136,28 @@ def test_bound_owner_cannot_mutate_another_users_fields(client) -> None:
     assert [feature["properties"]["field_id"] for feature in export.json()["features"]] == [own_field_id]
 
 
+def test_backend_logs_are_reserved_for_the_configured_pilot_admin(client, monkeypatch) -> None:
+    from app.api import v1
+    from app.database import SessionLocal
+    from app.models import User
+    from sqlalchemy import select
+
+    with SessionLocal() as db:
+        primary_user_id = db.execute(select(User.id).order_by(User.id)).scalars().first()
+    assert primary_user_id is not None
+
+    def _primary_pilot_owner(db):
+        return db.get(User, primary_user_id)
+
+    monkeypatch.setattr(v1, "resolve_pilot_owner", _primary_pilot_owner)
+    secondary_user_id, _secondary_property_id = _secondary_user_and_property()
+    _set_bound_admin_session(client, secondary_user_id)
+
+    response = client.get("/api/v1/logs", params={"limit": 5})
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Backendlogger krever pilotadministrator"
+
+
 def test_bound_owner_cannot_mutate_or_fetch_another_users_photo(client) -> None:
     from app.database import SessionLocal
     from app.models import Photo, PhotoAsset

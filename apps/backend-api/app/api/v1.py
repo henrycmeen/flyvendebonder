@@ -310,6 +310,12 @@ def _pilot_owner_for_login(db: Session) -> User:
     return user
 
 
+def _require_pilot_admin_identity(db: Session, user: User) -> None:
+    pilot_user = _pilot_owner_for_login(db)
+    if pilot_user.id != user.id:
+        raise HTTPException(status_code=403, detail="Backendlogger krever pilotadministrator")
+
+
 def _current_property(db: Session, user_id: int) -> Property | None:
     properties = _active_properties(db, user_id)
     return properties[0] if properties else None
@@ -1866,8 +1872,10 @@ def get_orthophoto_color_sample(
 def get_logs(
     limit: int = Query(default=200, ge=1, le=1000),
     level: str | None = Query(default=None),
-    _user: User = Depends(_request_owner_user),
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
 ) -> BackendLogsResponse:
+    _require_pilot_admin_identity(db, user)
     if level and level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         raise HTTPException(status_code=400, detail="Nyttig nivå: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 
