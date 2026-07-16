@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 from tests.test_admin_access import _create_secondary_owner, _set_bound_admin_session
 
 
@@ -90,6 +92,155 @@ def _secondary_user_and_property() -> tuple[int, int]:
             select(Property.id).where(Property.user_id == user_id)
         ).scalar_one()
     return user_id, property_id
+
+
+def _add_target_farm_for_user(
+    user_id: int,
+    *,
+    role: str | None,
+    membership_status: str = "active",
+) -> tuple[int, int]:
+    from app.database import SessionLocal
+    from app.models import Farm, FarmMembership, Property, User
+
+    with SessionLocal() as db:
+        farm = Farm(name=f"Capability-gård {role or 'uten medlemskap'}")
+        legacy_owner = User(full_name="Eier av capability-gård")
+        db.add_all([farm, legacy_owner])
+        db.flush()
+        db.add(
+            FarmMembership(
+                farm_id=farm.id,
+                user_id=legacy_owner.id,
+                role="owner",
+                status="active",
+            )
+        )
+        if role is not None:
+            db.add(
+                FarmMembership(
+                    farm_id=farm.id,
+                    user_id=user_id,
+                    role=role,
+                    status=membership_status,
+                )
+            )
+        property_obj = Property(
+            user_id=legacy_owner.id,
+            farm_id=farm.id,
+            komm="4003",
+            gnr=89,
+            bnr=farm.id,
+            fnr=0,
+            label="Capability-eiendom",
+        )
+        db.add(property_obj)
+        db.commit()
+        return farm.id, property_obj.id
+
+
+def _current_session_user_id() -> int:
+    from app.database import SessionLocal
+    from app.models import User
+    from sqlalchemy import select
+
+    with SessionLocal() as db:
+        user_id = db.execute(select(User.id).order_by(User.id)).scalars().first()
+    assert user_id is not None
+    return user_id
+
+
+def _insert_field(property_id: int, *, name: str = "Uendret navn") -> int:
+    from app.database import SessionLocal
+    from app.models import FieldPlot
+
+    with SessionLocal() as db:
+        field = FieldPlot(
+            property_id=property_id,
+            name=name,
+            source="manual",
+            status="draft",
+            geometry_json='{"type":"Polygon","coordinates":[[[10.0,59.0],[10.0012,59.0],[10.0012,59.0009],[10.0,59.0]]]}',
+            area_m2=1000,
+            source_provenance_json="{}",
+        )
+        db.add(field)
+        db.commit()
+        return field.id
+
+
+def test_active_operator_can_create_and_patch_field_in_target_farm(client) -> None:
+    user_id = _current_session_user_id()
+    _farm_id, property_id = _add_target_farm_for_user(user_id, role="operator")
+
+    created = client.post(
+        "/api/v1/fields",
+        json={"property_id": property_id, "geometry": _sample_polygon(0.03)},
+    )
+    assert created.status_code == 201
+
+    patched = client.patch(
+        f"/api/v1/fields/{created.json()['id']}",
+        json={"name": "Operatørjordet"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["name"] == "Operatørjordet"
+
+
+@pytest.mark.parametrize(
+    ("role", "membership_status"),
+    [
+        (None, "active"),
+        ("advisor", "active"),
+        ("viewer", "active"),
+        ("operator", "revoked"),
+        ("operator", "expired"),
+    ],
+)
+def test_field_write_requires_capability_in_target_farm_without_leaking_existence(
+    client,
+    role: str | None,
+    membership_status: str,
+) -> None:
+    from app.database import SessionLocal
+    from app.models import FieldPlot
+
+    user_id = _current_session_user_id()
+    _farm_id, property_id = _add_target_farm_for_user(
+        user_id,
+        role=role,
+        membership_status=membership_status,
+    )
+    field_id = _insert_field(property_id)
+
+    create_response = client.post(
+        "/api/v1/fields",
+        json={"property_id": property_id, "geometry": _sample_polygon(0.04)},
+    )
+    unknown_create = client.post(
+        "/api/v1/fields",
+        json={"property_id": 999999, "geometry": _sample_polygon(0.05)},
+    )
+    unknown_patch = client.patch("/api/v1/fields/999999", json={"name": "Skal ikke finnes"})
+    forbidden_patch = client.patch(
+        f"/api/v1/fields/{field_id}",
+        json={"name": "Skal ikke endres"},
+    )
+
+    assert create_response.status_code == 404
+    assert create_response.json()["detail"] == "Fant ikke aktiv eiendom"
+    assert unknown_create.status_code == 404
+    assert unknown_create.json()["status"] == create_response.json()["status"]
+    assert unknown_create.json()["detail"] == create_response.json()["detail"]
+    assert unknown_patch.status_code == 404
+    assert forbidden_patch.status_code == 404
+    assert forbidden_patch.json()["status"] == unknown_patch.json()["status"]
+    assert forbidden_patch.json()["detail"] == unknown_patch.json()["detail"]
+
+    with SessionLocal() as db:
+        persisted = db.get(FieldPlot, field_id)
+        assert persisted is not None
+        assert persisted.name == "Uendret navn"
 
 
 def test_bound_owner_cannot_mutate_another_users_fields(client) -> None:
