@@ -2172,10 +2172,16 @@ async def sync_property_planning_units(
             extra={"property_id": property_obj.id, "error": str(exc)},
         )
         raise HTTPException(status_code=502, detail=f"Kunne ikke hente jorder fra Geonorge: {exc}") from exc
-    sync_fields_from_candidates(db, property_obj=property_obj, candidates=candidates, status="draft")
-
-    units, created_count = sync_planning_units(db, property_obj=property_obj)
-    db.commit()
+    try:
+        sync_fields_from_candidates(db, property_obj=property_obj, candidates=candidates, status="draft")
+        units, created_count = sync_planning_units(db, property_obj=property_obj)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Jordene eller planområdene ble nettopp oppdatert. Prøv synkroniseringen på nytt.",
+        ) from exc
     response = _planning_unit_list_response(db, property_obj=property_obj, units=units)
     return PlanningUnitSyncResponse(property_id=response.property_id, count=response.count, units=response.units, created_count=created_count)
 

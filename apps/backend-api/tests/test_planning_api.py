@@ -200,6 +200,27 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
     )
 
 
+def test_planning_sync_returns_409_for_concurrent_source_key_insert(client, monkeypatch):
+    import app.api.v1 as v1
+    from sqlalchemy.exc import IntegrityError
+
+    async def fake_candidates(_property_obj):
+        return []
+
+    def concurrent_insert(*_args, **_kwargs):
+        raise IntegrityError("field_plots insert", {}, RuntimeError("unique race"))
+
+    monkeypatch.setattr(v1, "list_field_candidates_for_property", fake_candidates)
+    monkeypatch.setattr(v1, "sync_fields_from_candidates", concurrent_insert)
+
+    response = client.post("/api/v1/planning/properties/1/sync")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Jordene eller planområdene ble nettopp oppdatert. Prøv synkroniseringen på nytt."
+    )
+
+
 def test_deleting_field_also_removes_planning_units(client, monkeypatch):
     _disable_candidate_import(monkeypatch)
     created = _create_field(client, name="Slettejord", status="confirmed")
