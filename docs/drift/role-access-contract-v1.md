@@ -24,6 +24,10 @@ Tilgang skal være `default deny`, og alle arbeidsobjekter skal tilhøre nøyakt
 
 Dagens globale admin-kode er bare en midlertidig pilotmekanisme. Den er ikke en
 rollemodell og skal ikke brukes som identitet når flerbrukertilgangen bygges.
+Den private pilotinstallasjonen kan eksplisitt bruke `ADMIN_ACCESS_OPEN=true`;
+da bindes alle requests til den konfigurerte piloteieren uten passord. Dette er
+et driftsunntak for en enkeltbrukerinstallasjon, ikke anonym deling i rollemodellen,
+og skal ikke aktiveres i en delt eller flerbrukerinstallasjon.
 
 ## Roller
 

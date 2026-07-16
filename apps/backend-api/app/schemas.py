@@ -77,11 +77,12 @@ class ProfilePatchRequest(BaseModel):
 
 
 class AdminLoginRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=256)
+    code: str = Field(default="", max_length=256)
 
 
 class AdminSessionStatusResponse(BaseModel):
     configured: bool
+    open_access: bool
     authenticated: bool
     expires_at: datetime | None = None
 

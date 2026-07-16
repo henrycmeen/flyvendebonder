@@ -674,14 +674,16 @@ export function SettingsDialog({
               <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-primary">
                 {adminStatus === null
                   ? "Sjekker admin-status ..."
-                  : !adminStatus.configured
+                  : adminStatus.open_access
+                    ? "Åpen tilgang er aktiv. Appen krever ikke passord eller innlogging."
+                    : !adminStatus.configured
                     ? "Admin-kode er ikke konfigurert i backend ennå. Sett ADMIN_ACCESS_CODE før skriveoperasjoner åpnes."
                     : adminStatus.authenticated
                       ? `Admin er aktiv${adminExpiryLabel ? ` til ${adminExpiryLabel}` : ""}. Import og andre skriveoperasjoner er åpnet.`
                       : "Logg inn med admin-kode for å åpne import og andre skriveoperasjoner."}
               </div>
 
-              {adminStatus?.configured ? (
+              {adminStatus?.configured && !adminStatus.open_access ? (
                 adminStatus.authenticated ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                     <div>

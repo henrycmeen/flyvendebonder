@@ -35,6 +35,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PHOTO_AR5_WFS_LAYERS", "")
     monkeypatch.setenv("PHOTO_SOIL_WFS_URL", "")
     monkeypatch.setenv("PHOTO_SOIL_WFS_LAYERS", "")
+    monkeypatch.setenv("ADMIN_ACCESS_OPEN", "false")
     monkeypatch.setenv("ADMIN_ACCESS_CODE", "test-admin-code")
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-admin-secret")
 

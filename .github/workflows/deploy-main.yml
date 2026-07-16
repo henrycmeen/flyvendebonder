@@ -76,8 +76,17 @@ jobs:
       - name: Verify live health and app
         env:
           LIVE_BASE_URL: https://xn--flyvendebnder-jnb.no
+          EXPECT_OPEN_ACCESS: "true"
+          DEPLOY_REF: ${{ inputs.ref || '' }}
         run: |
           HEALTH_PAYLOAD="$(curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/api/v1/health")"
           python3 -c 'import json, sys; payload=json.loads(sys.argv[1]); assert payload.get("status") == "ok", payload' "$HEALTH_PAYLOAD"
+          if [[ -z "$DEPLOY_REF" || "$DEPLOY_REF" == "main" ]]; then
+            SESSION_PAYLOAD="$(curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/api/v1/admin/session")"
+            python3 -c 'import json, os, sys; payload=json.loads(sys.argv[1]); expected=os.environ["EXPECT_OPEN_ACCESS"] == "true"; assert payload.get("configured") is True and payload.get("open_access") is expected and payload.get("authenticated") is expected and payload.get("expires_at") is None, payload' "$SESSION_PAYLOAD"
+            curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/api/v1/profile/current" >/dev/null
+          else
+            echo "Eksplisitt rollback-ref: hopper over open-access-kontrakten for eldre builds."
+          fi
           curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/app/" >/dev/null
           curl --fail --silent --show-error --retry 5 --retry-delay 2 "$LIVE_BASE_URL/deployment.json" >/dev/null

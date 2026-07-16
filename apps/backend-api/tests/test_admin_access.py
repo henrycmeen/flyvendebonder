@@ -76,8 +76,44 @@ def test_admin_session_status_reflects_login_state(client):
     assert status.status_code == 200
     payload = status.json()
     assert payload["configured"] is True
+    assert payload["open_access"] is False
     assert payload["authenticated"] is True
     assert payload["expires_at"] is not None
+
+
+def test_open_access_needs_no_cookie_and_cannot_be_logged_out(client, monkeypatch):
+    from app.config import get_settings
+
+    client.cookies.clear()
+    monkeypatch.setenv("ADMIN_ACCESS_OPEN", "true")
+    get_settings.cache_clear()
+    try:
+        status = client.get("/api/v1/admin/session")
+        assert status.status_code == 200
+        assert status.json() == {
+            "configured": True,
+            "open_access": True,
+            "authenticated": True,
+            "expires_at": None,
+        }
+
+        private_profile = client.get("/api/v1/profile/current")
+        assert private_profile.status_code == 200
+
+        login_without_code = client.post("/api/v1/admin/login", json={})
+        assert login_without_code.status_code == 200
+        assert login_without_code.json()["open_access"] is True
+        assert login_without_code.json()["authenticated"] is True
+
+        logout = client.post("/api/v1/admin/logout")
+        assert logout.status_code == 200
+        assert logout.json()["open_access"] is True
+        assert logout.json()["authenticated"] is True
+
+        private_profile_after_logout = client.get("/api/v1/profile/current")
+        assert private_profile_after_logout.status_code == 200
+    finally:
+        get_settings.cache_clear()
 
 
 def test_admin_login_binds_cookie_to_pilot_owner(client):

@@ -33,6 +33,7 @@ export interface ProfileResponse {
 
 export interface AdminSessionStatus {
   configured: boolean;
+  open_access: boolean;
   authenticated: boolean;
   expires_at: string | null;
 }
