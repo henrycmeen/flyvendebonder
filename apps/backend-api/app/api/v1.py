@@ -20,6 +20,7 @@ from ..config import get_settings
 from ..database import get_db
 from ..logging_utils import read_recent_logs, request_id_ctx
 from ..models import (
+    FarmMembership,
     FieldPlot,
     FlightCapture,
     FlightMission,
@@ -285,6 +286,22 @@ def _active_property_by_id(db: Session, user_id: int, property_id: int) -> Prope
     return next((item for item in properties if item.id == property_id), None)
 
 
+def _active_farm_id_for_user(db: Session, user_id: int) -> int:
+    farm_id = (
+        db.execute(
+            select(FarmMembership.farm_id)
+            .where(FarmMembership.user_id == user_id)
+            .where(FarmMembership.status == "active")
+            .order_by(FarmMembership.id)
+        )
+        .scalars()
+        .first()
+    )
+    if farm_id is None:
+        raise HTTPException(status_code=500, detail="Brukeren mangler aktivt gårdsmedlemskap")
+    return farm_id
+
+
 def _ensure_user_property(
     db: Session,
     *,
@@ -325,6 +342,7 @@ def _ensure_user_property(
 
     item = Property(
         user_id=user_id,
+        farm_id=_active_farm_id_for_user(db, user_id),
         komm=komm,
         gnr=gnr,
         bnr=bnr,
@@ -1900,6 +1918,11 @@ def patch_profile_current(
 
                 property_item = Property(
                     user_id=user.id,
+                    farm_id=(
+                        property_obj.farm_id
+                        if property_obj is not None
+                        else _active_farm_id_for_user(db, user.id)
+                    ),
                     komm=str(normalized["komm"]),
                     gnr=int(normalized["gnr"]),
                     bnr=int(normalized["bnr"]),

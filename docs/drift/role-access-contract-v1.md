@@ -164,6 +164,25 @@ Hvert steg skal være deploybart, beholde default-deny og ha negative tester.
 Offentlige lenker, SSO, organisasjonskatalog og avansert delegering krever egne
 produkt- og sikkerhetsbeslutninger senere.
 
+### Medlemskapsgrunnlag og bootstrap
+
+Første schema-slice under #250 innfører `Farm`, `FarmMembership` og en obligatorisk
+`farm_id` på eksisterende eiendommer, men beholder `Property.user_id` og dagens
+ruteadferd inntil request-identitet og tenant-scope er klare.
+
+Migreringen oppretter én gård per eksisterende property-eier, legger alle denne
+eierens properties i samme gård og oppretter ett aktivt `owner`-medlemskap.
+Brukere uten properties får ikke en tom gård av backfillen. Startup-seeding
+oppretter manglende pilotmedlemskap idempotent, men må aldri reaktivere eller
+oppgradere et medlemskap som er eksplisitt tilbakekalt eller endret senere.
+
+Før produksjonsdeploy skal dagens SQLite-database få en konsistent, tidsstemplet
+backup. Teknisk rollback er kode-rollback sammen med Alembic-downgrade til
+`20260716_17`; downgraden fjerner bare det nye medlemskapsgrunnlaget og beholder
+de eksisterende property-radene og deres `user_id`. Etter at senere slicer har
+begynt å håndheve medlemskap i rutene, skal schemaet ikke nedgraderes uten en
+samordnet rollback av kode og en verifisert databasebackup.
+
 ## Testkontrakt
 
 Implementasjonen skal minst bevise:

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -43,6 +44,9 @@ class User(TimestampMixin, Base):
     municipality_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     properties: Mapped[list[Property]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    farm_memberships: Mapped[list[FarmMembership]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     photos: Mapped[list[Photo]] = relationship(back_populates="user", cascade="all, delete-orphan")
     flight_captures: Mapped[list[FlightCapture]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -53,11 +57,49 @@ class User(TimestampMixin, Base):
     video_jobs: Mapped[list[VideoJob]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
+class Farm(TimestampMixin, Base):
+    __tablename__ = "farms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    memberships: Mapped[list[FarmMembership]] = relationship(
+        back_populates="farm", cascade="all, delete-orphan"
+    )
+    properties: Mapped[list[Property]] = relationship(back_populates="farm", cascade="all, delete-orphan")
+
+
+class FarmMembership(TimestampMixin, Base):
+    __tablename__ = "farm_memberships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+
+    farm: Mapped[Farm] = relationship(back_populates="memberships")
+    user: Mapped[User] = relationship(back_populates="farm_memberships")
+
+    __table_args__ = (
+        UniqueConstraint("farm_id", "user_id", name="uq_farm_membership_user"),
+        CheckConstraint(
+            "role IN ('owner', 'operator', 'advisor', 'viewer')",
+            name="ck_farm_membership_role",
+        ),
+        CheckConstraint(
+            "status IN ('invited', 'active', 'revoked', 'expired')",
+            name="ck_farm_membership_status",
+        ),
+    )
+
+
 class Property(TimestampMixin, Base):
     __tablename__ = "properties"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), index=True)
 
     komm: Mapped[str] = mapped_column(String(8), nullable=False)
     gnr: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -72,6 +114,7 @@ class Property(TimestampMixin, Base):
     operating_relation_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="properties")
+    farm: Mapped[Farm] = relationship(back_populates="properties")
     photos: Mapped[list[Photo]] = relationship(back_populates="property")
     job_cache: Mapped[list[GardskartJobCache]] = relationship(back_populates="property")
     field_plots: Mapped[list[FieldPlot]] = relationship(back_populates="property", cascade="all, delete-orphan")
@@ -92,6 +135,7 @@ class Property(TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "komm", "gnr", "bnr", "fnr", name="uq_property_owner"),
+        UniqueConstraint("farm_id", "komm", "gnr", "bnr", "fnr", name="uq_property_farm"),
     )
 
 

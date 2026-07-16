@@ -227,7 +227,7 @@ def test_confirm_selected_candidate_not_first_and_supports_all_relations(client,
 def test_preview_never_exposes_another_users_existing_connection(client, monkeypatch):
     import app.api.v1 as v1
     from app.database import SessionLocal
-    from app.models import FieldPlot, Property, User
+    from app.models import Farm, FarmMembership, FieldPlot, Property, User
     from app.services.operating_areas import candidate_source_key
     import json
 
@@ -236,8 +236,20 @@ def test_preview_never_exposes_another_users_existing_connection(client, monkeyp
         other = User(full_name="Annen bonde")
         db.add(other)
         db.flush()
+        other_farm = Farm(name="Annen gård")
+        db.add(other_farm)
+        db.flush()
+        db.add(
+            FarmMembership(
+                farm_id=other_farm.id,
+                user_id=other.id,
+                role="owner",
+                status="active",
+            )
+        )
         other_property = Property(
             user_id=other.id,
+            farm_id=other_farm.id,
             komm="4003",
             gnr=70,
             bnr=28,
@@ -314,14 +326,24 @@ def test_legacy_imported_field_is_matched_by_provenance_when_geometry_changed(cl
 
     import app.api.v1 as v1
     from app.database import SessionLocal
-    from app.models import FieldPlot, Property, User
+    from app.models import FarmMembership, FieldPlot, Property, User
     from app.services.planning import ensure_active_planning_unit_for_field
     from sqlalchemy import select
 
     candidate = _candidate()
     with SessionLocal() as db:
         user = db.execute(select(User).order_by(User.id)).scalars().first()
-        property_obj = Property(user_id=user.id, komm="4003", gnr=70, bnr=28, fnr=0)
+        farm_id = db.execute(
+            select(FarmMembership.farm_id).where(FarmMembership.user_id == user.id)
+        ).scalar_one()
+        property_obj = Property(
+            user_id=user.id,
+            farm_id=farm_id,
+            komm="4003",
+            gnr=70,
+            bnr=28,
+            fnr=0,
+        )
         db.add(property_obj)
         db.flush()
         legacy_field = FieldPlot(
