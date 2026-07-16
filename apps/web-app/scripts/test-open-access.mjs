@@ -31,5 +31,7 @@ assert.match(confirmedSessionFailure, /confirmedSession\.open_access/, "Profile 
 assert.match(smokeScript, /EXPECT_OPEN_ACCESS/, "Smoke must support an explicit open-access expectation");
 assert.match(deployWorkflow, /EXPECT_OPEN_ACCESS:\s*["']?true["']?/, "Production deploy must require open access");
 assert.match(deployWorkflow, /profile\/current/, "Production deploy must verify a private route without a cookie");
+assert.match(deployWorkflow, /DEPLOY_REF/, "Production verification must distinguish normal deploys from explicit rollback refs");
+assert.match(deployWorkflow, /DEPLOY_REF[\s\S]*admin\/session/, "Rollback compatibility must guard the strict open-access assertion");
 
 console.log("open access tests passed");
