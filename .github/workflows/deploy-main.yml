@@ -34,6 +34,23 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
 
+      - name: Set up production-compatible Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: apps/backend-api/requirements.txt
+
+      - name: Install backend dependencies for compatibility gate
+        working-directory: apps/backend-api
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Gate deployment on production Python
+        working-directory: apps/backend-api
+        run: python -m pytest -q
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
