@@ -26,6 +26,10 @@ interface MapCanvasProps {
   orthophotoFocusToken: number;
   colorAnalysisActive: boolean;
   onColorAnalysisActiveChange: (next: boolean) => void;
+  operatingAreaToolActive: boolean;
+  operatingAreaPreviewGeometry: GeoJSONPolygon | null;
+  operatingAreaCenterInspectToken: number;
+  onRequestOperatingAreaAt: (point: GeoPoint) => void;
   properties: Property[];
   jobs: GardskartJob[];
   videoMapArtifacts: VideoMapArtifact[];
@@ -511,6 +515,10 @@ export function MapCanvas({
   orthophotoFocusToken,
   colorAnalysisActive,
   onColorAnalysisActiveChange,
+  operatingAreaToolActive,
+  operatingAreaPreviewGeometry,
+  operatingAreaCenterInspectToken,
+  onRequestOperatingAreaAt,
   properties,
   jobs,
   videoMapArtifacts,
@@ -556,6 +564,8 @@ export function MapCanvas({
   const orthophotoLayerRef = useRef<L.LayerGroup | null>(null);
   const renderedOrthophotosRef = useRef<RenderedOrthophotoCandidate[]>([]);
   const colorAnalysisRequestIdRef = useRef(0);
+  const operatingAreaPreviewLayerRef = useRef<L.LayerGroup | null>(null);
+  const operatingAreaCenterInspectTokenRef = useRef(0);
   const forestLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
   const fieldLayerRef = useRef<L.LayerGroup | null>(null);
@@ -665,6 +675,13 @@ export function MapCanvas({
       missionPane.style.pointerEvents = "none";
     }
 
+    map.createPane("operatingAreaPreviewPane");
+    const operatingAreaPreviewPane = map.getPane("operatingAreaPreviewPane");
+    if (operatingAreaPreviewPane) {
+      operatingAreaPreviewPane.style.zIndex = "610";
+      operatingAreaPreviewPane.style.pointerEvents = "none";
+    }
+
     map.createPane("fieldHandlePane");
     const fieldHandlePane = map.getPane("fieldHandlePane");
     if (fieldHandlePane) {
@@ -752,6 +769,10 @@ export function MapCanvas({
       if (missionLayerRef.current) {
         missionLayerRef.current.remove();
         missionLayerRef.current = null;
+      }
+      if (operatingAreaPreviewLayerRef.current) {
+        operatingAreaPreviewLayerRef.current.remove();
+        operatingAreaPreviewLayerRef.current = null;
       }
       if (viewLayerRef.current) {
         viewLayerRef.current.remove();
@@ -973,6 +994,16 @@ export function MapCanvas({
   }, [colorAnalysisActive]);
 
   useEffect(() => {
+    const container = mapRef.current?.getContainer();
+    if (!container) return;
+
+    container.classList.toggle("fb-map-operating-area-mode", operatingAreaToolActive);
+    return () => {
+      container.classList.remove("fb-map-operating-area-mode");
+    };
+  }, [operatingAreaToolActive]);
+
+  useEffect(() => {
     if (!colorAnalysisActive) return undefined;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1009,6 +1040,53 @@ export function MapCanvas({
       map.off("click", handleMapClick);
     };
   }, [fieldCreateMode, onRequestFieldCreateAt]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !operatingAreaToolActive) return undefined;
+    const handleMapClick = (event: L.LeafletMouseEvent) => {
+      onRequestOperatingAreaAt({ lat: event.latlng.lat, lng: event.latlng.lng });
+    };
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [onRequestOperatingAreaAt, operatingAreaToolActive]);
+
+  useEffect(() => {
+    if (!operatingAreaToolActive || operatingAreaCenterInspectToken <= 0) return;
+    if (operatingAreaCenterInspectTokenRef.current === operatingAreaCenterInspectToken) return;
+    operatingAreaCenterInspectTokenRef.current = operatingAreaCenterInspectToken;
+    const center = mapRef.current?.getCenter();
+    if (center) onRequestOperatingAreaAt({ lat: center.lat, lng: center.lng });
+  }, [onRequestOperatingAreaAt, operatingAreaCenterInspectToken, operatingAreaToolActive]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    operatingAreaPreviewLayerRef.current?.remove();
+    operatingAreaPreviewLayerRef.current = null;
+    if (!operatingAreaPreviewGeometry) return;
+    const latLngs = toPolygonLatLngs(operatingAreaPreviewGeometry.coordinates);
+    if (latLngs.length < 4) return;
+    const group = L.layerGroup();
+    L.polygon(latLngs, {
+      color: "var(--fb-season-solid)",
+      fillColor: "var(--fb-season-solid)",
+      fillOpacity: 0.2,
+      weight: 3,
+      opacity: 0.98,
+      dashArray: "7 5",
+      pane: "operatingAreaPreviewPane",
+      interactive: false,
+    }).addTo(group);
+    group.addTo(map);
+    operatingAreaPreviewLayerRef.current = group;
+    return () => {
+      group.remove();
+      if (operatingAreaPreviewLayerRef.current === group) operatingAreaPreviewLayerRef.current = null;
+    };
+  }, [operatingAreaPreviewGeometry]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1079,10 +1157,11 @@ export function MapCanvas({
         opacity: 0.84,
         pane: "fieldPane",
         interactive: true,
-        bubblingMouseEvents: false,
+        bubblingMouseEvents: operatingAreaToolActive,
       });
       polygon.bindTooltip(createPlainTextContent(field.name ?? `Jord ${field.id}`));
       polygon.on("click", () => {
+        if (operatingAreaToolActive) return;
         onSelectField(field.id);
       });
       fieldGroup.addLayer(polygon);
@@ -1113,7 +1192,7 @@ export function MapCanvas({
           opacity: 0.96,
           pane: "fieldPane",
           interactive: true,
-          bubblingMouseEvents: false,
+          bubblingMouseEvents: operatingAreaToolActive,
         });
         activePolygon.bindTooltip(createPlainTextContent(activeFieldDraft.name?.trim() || "Aktivt jordutkast"), {
           permanent: true,
@@ -1170,7 +1249,7 @@ export function MapCanvas({
         mapRef.current.removeLayer(handleGroup);
       }
     };
-  }, [activeFieldDraft, fieldPlots, onFieldGeometryChange, onSelectField]);
+  }, [activeFieldDraft, fieldPlots, onFieldGeometryChange, onSelectField, operatingAreaToolActive]);
 
   useEffect(() => {
     if (!mapRef.current || !missionLayerRef.current) return;
@@ -1391,6 +1470,7 @@ export function MapCanvas({
       const mediaKind = inferMediaKind(photo);
       const marker = L.marker(point, {
         icon: mapMediaPinIcon(mediaKind, false, photo),
+        bubblingMouseEvents: operatingAreaToolActive,
       });
       (marker as L.Marker & { _fbSeason?: MarkerSeason })._fbSeason = resolvePhotoSeason(photo);
 
@@ -1404,7 +1484,7 @@ export function MapCanvas({
       });
 
       marker.on("click", () => {
-        if (colorAnalysisActive) {
+        if (colorAnalysisActive || operatingAreaToolActive) {
           marker.closePopup();
           return;
         }
@@ -1453,7 +1533,7 @@ export function MapCanvas({
     if (photos.length === 0) {
       hasFitRef.current = false;
     }
-  }, [colorAnalysisActive, onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, photos]);
+  }, [colorAnalysisActive, onHoverPhoto, onOpenPhotoFullscreen, onSelectPhoto, operatingAreaToolActive, photos]);
 
   useEffect(() => {
     const hoverCapable = supportsHoverPointer();

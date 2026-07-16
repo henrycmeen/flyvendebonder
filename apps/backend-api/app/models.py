@@ -67,6 +67,9 @@ class Property(TimestampMixin, Base):
 
     active_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     active_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    operating_relation: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    operating_relation_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    operating_relation_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="properties")
     photos: Mapped[list[Photo]] = relationship(back_populates="property")
@@ -146,10 +149,15 @@ class FieldPlot(TimestampMixin, Base):
     geometry_json: Mapped[str] = mapped_column(Text, nullable=False)
     area_m2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     source_provenance_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    source_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     property: Mapped[Property] = relationship(back_populates="field_plots")
     planning_units: Mapped[list[PlanningUnit]] = relationship(back_populates="source_field_plot")
     scouting_tasks: Mapped[list[ScoutingTask]] = relationship(back_populates="field_plot")
+
+    __table_args__ = (
+        UniqueConstraint("property_id", "source", "source_key", name="uq_field_plot_source_key"),
+    )
 
 
 class PlanningUnit(TimestampMixin, Base):

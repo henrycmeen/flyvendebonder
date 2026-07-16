@@ -20,6 +20,9 @@ export interface Property {
   bnr: number;
   fnr: number;
   label: string | null;
+  operating_relation: OperatingRelation;
+  operating_relation_source: string | null;
+  operating_relation_confirmed_at: string | null;
 }
 
 export interface ProfileResponse {
@@ -81,6 +84,58 @@ export interface GeoJSONPolygon {
 export interface GeoJSONLineString {
   type: "LineString";
   coordinates: number[][];
+}
+
+export type OperatingRelation = "owned" | "leased" | "unknown";
+
+export interface OperatingAreaPropertyRef {
+  komm: string;
+  gnr: number;
+  bnr: number;
+  fnr: number;
+  label: string | null;
+}
+
+export interface OperatingAreaExistingConnection {
+  property_id: number;
+  field_id: number | null;
+  planning_unit_ids: number[];
+  operating_relation: OperatingRelation;
+}
+
+export interface OperatingAreaCandidate {
+  candidate_id: string;
+  source: string;
+  source_endpoint: string | null;
+  source_fetched_at: string | null;
+  source_updated_at: string | null;
+  name: string | null;
+  matrikkelnummer: string | null;
+  property_ref: OperatingAreaPropertyRef;
+  local_id: number | string | null;
+  object_type: string | null;
+  accuracy_class: string | null;
+  distance_m: number | null;
+  geometry: GeoJSONPolygon;
+  area_m2: number | null;
+  area_ha: number | null;
+  existing: OperatingAreaExistingConnection | null;
+}
+
+export interface OperatingAreaPreviewResponse {
+  count: number;
+  candidates: OperatingAreaCandidate[];
+  owner_information_available: boolean;
+  owner_information_message: string;
+}
+
+export interface OperatingAreaConfirmResponse {
+  property: Property;
+  field: FieldPlot;
+  planning_units: PlanningUnit[];
+  property_created: boolean;
+  field_created: boolean;
+  planning_units_created: number;
 }
 
 export type FieldPlotStatus = "draft" | "confirmed";

@@ -58,6 +58,27 @@ def test_observed_at_migration_keeps_existing_scouting_tasks_unknown(tmp_path, m
     with engine.begin() as connection:
         connection.execute(
             text(
+                "INSERT INTO users (id, full_name, created_at, updated_at) "
+                "VALUES (1, 'Eldre bruker', '2026-01-01', '2026-01-01')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO properties (id, user_id, komm, gnr, bnr, fnr, created_at, updated_at) "
+                "VALUES (1, 1, '4003', 70, 17, 0, '2026-01-01', '2026-01-01')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO field_plots ("
+                "id, property_id, source, status, geometry_json, source_provenance_json, created_at, updated_at"
+                ") VALUES ("
+                "1, 1, 'manual', 'draft', '{\"type\":\"Polygon\",\"coordinates\":[]}', '{}', "
+                "'2026-01-01', '2026-01-01')"
+            )
+        )
+        connection.execute(
+            text(
                 """
                 INSERT INTO scouting_tasks (
                     property_id, field_plot_id, planning_unit_id, title, notes,
@@ -80,7 +101,20 @@ def test_observed_at_migration_keeps_existing_scouting_tasks_unknown(tmp_path, m
                 "FROM scouting_tasks WHERE title = 'Eldre funn'"
             )
         ).one()
+        property_row = connection.execute(
+            text(
+                "SELECT operating_relation, operating_relation_source, "
+                "operating_relation_confirmed_at FROM properties WHERE id = 1"
+            )
+        ).one()
+        field_source_key = connection.execute(
+            text("SELECT source_key FROM field_plots WHERE id = 1")
+        ).scalar_one()
 
     assert row.observed_at is None
     assert row.observed_at_original_offset is None
+    assert property_row.operating_relation == "unknown"
+    assert property_row.operating_relation_source is None
+    assert property_row.operating_relation_confirmed_at is None
+    assert field_source_key is None
     get_settings.cache_clear()

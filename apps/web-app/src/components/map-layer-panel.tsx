@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Filter, Map, Mountain, Pipette, Satellite } from "lucide-react";
+import { Filter, Map, MapPinned, Mountain, Pipette, Satellite } from "lucide-react";
 
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
@@ -66,6 +66,8 @@ interface MapLayerPanelProps {
   colorAnalysisAvailable: boolean;
   colorAnalysisStatus: string;
   onToggleColorAnalysis: (next: boolean) => void;
+  operatingAreaToolActive: boolean;
+  onToggleOperatingAreaTool: (next: boolean) => void;
   baseMapStyle: BaseMapStyle;
   onChangeQuickBaseMap: (style: BaseMapStyle) => void;
 }
@@ -85,6 +87,8 @@ export function MapLayerPanel({
   colorAnalysisAvailable,
   colorAnalysisStatus,
   onToggleColorAnalysis,
+  operatingAreaToolActive,
+  onToggleOperatingAreaTool,
   baseMapStyle,
   onChangeQuickBaseMap,
 }: MapLayerPanelProps) {
@@ -166,6 +170,21 @@ export function MapLayerPanel({
 
       <button
         type="button"
+        onClick={() => onToggleOperatingAreaTool(!operatingAreaToolActive)}
+        aria-pressed={operatingAreaToolActive}
+        className={cn(
+          "fb-map-overlay-trigger pointer-events-auto inline-flex h-10 items-center gap-2 rounded-xl bg-fb-surface-page px-2.5 text-sm font-medium text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid sm:px-3",
+          operatingAreaToolActive && "bg-fb-surface-ghost text-fb-text-primary ring-2 ring-fb-season-solid/55",
+        )}
+        aria-label={operatingAreaToolActive ? "Avslutt jordeverktøy" : "Undersøk og legg til et jorde"}
+        title="Trykk på et jorde, se teigdata og legg det til"
+      >
+        <MapPinned className="h-4 w-4" />
+        <span className="hidden sm:inline">Jorde</span>
+      </button>
+
+      <button
+        type="button"
         onClick={() => onToggleColorAnalysis(!colorAnalysisActive)}
         disabled={!colorAnalysisAvailable}
         aria-pressed={colorAnalysisActive}
@@ -215,6 +234,13 @@ export function MapLayerPanel({
                 accentClassName="bg-[color:var(--fb-season-solid)]"
                 onToggle={onTogglePropertyLayer}
                 disabled={!hasProperties}
+              />
+              <LayerToggle
+                active={operatingAreaToolActive}
+                label="Undersøk jorde"
+                status="Trykk på et jorde for teigdata og tilknytning."
+                accentClassName="bg-[color:var(--fb-season-solid)]"
+                onToggle={onToggleOperatingAreaTool}
               />
               <LayerToggle
                 active={showSoilLayer}

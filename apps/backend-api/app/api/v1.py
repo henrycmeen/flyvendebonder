@@ -101,6 +101,10 @@ from ..schemas import (
     PlanningUnitSyncResponse,
     PlanningPointResolveIn,
     PlanningPointResolveOut,
+    OperatingAreaConfirmIn,
+    OperatingAreaConfirmOut,
+    OperatingAreaPointIn,
+    OperatingAreaPreviewOut,
     ScoutingTaskCreate,
     ScoutingTaskListResponse,
     ScoutingTaskOut,
@@ -131,6 +135,10 @@ from ..services.admin_access import (
     reset_login_attempts,
     verify_admin_access_code,
 )
+from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
+from ..services.operating_area_identity import candidate_id as operating_area_candidate_id
+from ..services.operating_area_identity import candidate_source_key as operating_area_source_key
+from ..services.operating_area_identity import candidate_with_property_identity
 from ..services.gardskart import get_job_id
 from ..services.geonorge_teiger import (
     list_field_candidates_for_property,
@@ -167,13 +175,17 @@ from ..services.planning import (
     create_field_from_candidate,
     ensure_active_planning_unit_for_field,
     field_source_provenance,
+    find_field_for_candidate,
     find_field_plot_for_geometry,
     get_drone_profile,
     list_drone_profiles,
     normalize_source_provenance,
     planning_unit_field_name,
+    source_provenance_from_candidate,
     planning_unit_payload_from_field,
     planning_unit_payload_from_unit,
+    refresh_imported_field_from_candidate,
+    refresh_root_planning_unit_from_field,
     split_planning_unit,
     sync_fields_from_candidates,
     sync_planning_units,
@@ -2160,10 +2172,16 @@ async def sync_property_planning_units(
             extra={"property_id": property_obj.id, "error": str(exc)},
         )
         raise HTTPException(status_code=502, detail=f"Kunne ikke hente jorder fra Geonorge: {exc}") from exc
-    sync_fields_from_candidates(db, property_obj=property_obj, candidates=candidates, status="draft")
-
-    units, created_count = sync_planning_units(db, property_obj=property_obj)
-    db.commit()
+    try:
+        sync_fields_from_candidates(db, property_obj=property_obj, candidates=candidates, status="draft")
+        units, created_count = sync_planning_units(db, property_obj=property_obj)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Jordene eller planområdene ble nettopp oppdatert. Prøv synkroniseringen på nytt.",
+        ) from exc
     response = _planning_unit_list_response(db, property_obj=property_obj, units=units)
     return PlanningUnitSyncResponse(property_id=response.property_id, count=response.count, units=response.units, created_count=created_count)
 
@@ -2392,6 +2410,229 @@ def split_property_planning_unit(
     )
 
 
+async def _lookup_operating_area_candidates(payload: OperatingAreaPointIn) -> list[dict[str, Any]]:
+    try:
+        candidates = await lookup_field_candidates_by_point_any(
+            lat=payload.lat,
+            lng=payload.lng,
+            radius_m=payload.radius_m,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Geonorge punktoppslag feilet for driftsareal")
+        raise HTTPException(
+            status_code=502,
+            detail="Eiendomsoppslaget er midlertidig utilgjengelig. Prøv igjen.",
+        ) from exc
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Fant ingen teig på dette punktet")
+    return candidates
+
+
+@router.post("/operating-area-previews", response_model=OperatingAreaPreviewOut)
+async def preview_operating_area(
+    payload: OperatingAreaPointIn = Body(...),
+    db: Session = Depends(get_db),
+) -> OperatingAreaPreviewOut:
+    user = _current_user(db)
+    candidates = await _lookup_operating_area_candidates(payload)
+    items = []
+    for candidate in candidates:
+        try:
+            items.append(operating_area_candidate_payload(db, user_id=user.id, candidate=candidate))
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Geonorge returnerte ugyldig driftsarealkandidat", extra={"error": str(exc)})
+    if not items:
+        raise HTTPException(
+            status_code=502,
+            detail="Eiendomsoppslaget returnerte ufullstendige data. Prøv et annet punkt.",
+        )
+    return OperatingAreaPreviewOut(
+        count=len(items),
+        candidates=items,
+        owner_information_available=False,
+        owner_information_message=(
+            "Eiernavn er ikke tilgjengelig i denne versjonen. "
+            "Matrikkelnummer og teigdata kan fortsatt brukes."
+        ),
+    )
+
+
+@router.put("/operating-areas/{candidate_id}", response_model=OperatingAreaConfirmOut)
+async def confirm_operating_area(
+    candidate_id: str,
+    payload: OperatingAreaConfirmIn = Body(...),
+    _admin_session=Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> OperatingAreaConfirmOut:
+    if len(candidate_id) != 64 or any(char not in "0123456789abcdef" for char in candidate_id):
+        raise HTTPException(status_code=409, detail="Teigvalget er ikke lenger gyldig. Trykk i kartet på nytt.")
+    user = _current_user(db)
+    candidates = await _lookup_operating_area_candidates(payload)
+    selected: dict[str, Any] | None = None
+    for candidate in candidates:
+        try:
+            if operating_area_candidate_id(candidate) == candidate_id:
+                selected = candidate
+                break
+        except (KeyError, TypeError, ValueError):
+            continue
+    if selected is None:
+        raise HTTPException(status_code=409, detail="Teigen er endret eller borte. Trykk i kartet på nytt.")
+
+    property_ref = selected.get("property_ref")
+    geometry = selected.get("geometry")
+    if not isinstance(property_ref, dict) or not isinstance(geometry, dict):
+        raise HTTPException(status_code=502, detail="Eiendomsoppslaget returnerte ufullstendige data.")
+    try:
+        property_obj, property_created = _ensure_user_property(
+            db,
+            user_id=user.id,
+            komm=str(property_ref["komm"]),
+            gnr=int(property_ref["gnr"]),
+            bnr=int(property_ref["bnr"]),
+            fnr=int(property_ref.get("fnr") or 0),
+            label=str(property_ref.get("label") or "").strip() or None,
+        )
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Eiendommen ble nettopp lagt til. Prøv bekreftelsen på nytt."
+        ) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Eiendomsoppslaget mangler gyldig matrikkeldata.") from exc
+
+    source_key = operating_area_source_key(selected)
+    selected = {**selected, "candidate_id": candidate_id, "source_key": source_key}
+    try:
+        field = find_field_for_candidate(
+            db,
+            property_obj=property_obj,
+            candidate=selected,
+            source_key=source_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Eiendomsoppslaget returnerte ugyldig geometri.") from exc
+    field_created = field is None
+    if field is None:
+        try:
+            field = create_field_from_candidate(
+                db, property_obj=property_obj, candidate=selected, status="draft"
+            )
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="Teigen ble nettopp lagt til. Prøv bekreftelsen på nytt."
+            ) from exc
+    refresh_imported_field_from_candidate(field, selected)
+
+    active_units = list(
+        db.execute(
+            select(PlanningUnit)
+            .where(
+                PlanningUnit.property_id == property_obj.id,
+                PlanningUnit.source_field_plot_id == field.id,
+                PlanningUnit.status == "active",
+            )
+            .order_by(PlanningUnit.id)
+        ).scalars()
+    )
+    planning_units_created = 0
+    if not active_units:
+        try:
+            unit, created = ensure_active_planning_unit_for_field(
+                db, property_obj=property_obj, field=field
+            )
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="Planområdet ble nettopp oppdatert. Last kartet på nytt."
+            ) from exc
+        active_units = [unit]
+        planning_units_created = int(created)
+    elif len(active_units) == 1:
+        refresh_root_planning_unit_from_field(active_units[0], field)
+
+    if property_obj.operating_relation != payload.operating_relation:
+        property_obj.operating_relation = payload.operating_relation
+        property_obj.operating_relation_source = "map_confirmation"
+        property_obj.operating_relation_confirmed_at = datetime.utcnow()
+    elif property_obj.operating_relation_source is None:
+        property_obj.operating_relation_source = "map_confirmation"
+        property_obj.operating_relation_confirmed_at = datetime.utcnow()
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Teigen ble nettopp lagt til. Last kartet på nytt.") from exc
+    db.refresh(property_obj)
+    db.refresh(field)
+    for unit in active_units:
+        db.refresh(unit)
+
+    provenance = field_source_provenance(field)
+    return OperatingAreaConfirmOut(
+        property=PropertyOut.model_validate(property_obj),
+        field=_field_plot_out(field),
+        planning_units=[
+            _planning_unit_out(
+                unit,
+                source_field_name=planning_unit_field_name(field),
+                source_field_source=field.source,
+                source_field_status=field.status,
+                source_field_provenance=provenance,
+            )
+            for unit in active_units
+        ],
+        property_created=property_created,
+        field_created=field_created,
+        planning_units_created=planning_units_created,
+    )
+
+
+def _resolve_planning_candidate(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidate: dict[str, Any],
+) -> tuple[FieldPlot, PlanningUnit, bool, bool]:
+    try:
+        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+        candidate = {**candidate, "source_key": source_key}
+        field = find_field_for_candidate(
+            db, property_obj=property_obj, candidate=candidate, source_key=source_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
+
+    imported_field = field is None
+    try:
+        if field is None:
+            field = create_field_from_candidate(
+                db, property_obj=property_obj, candidate=candidate, status="draft"
+            )
+        refresh_imported_field_from_candidate(field, candidate)
+        unit, created_unit = ensure_active_planning_unit_for_field(
+            db, property_obj=property_obj, field=field
+        )
+        if not created_unit:
+            refresh_root_planning_unit_from_field(unit, field)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Teigen eller planområdet ble nettopp oppdatert. Prøv oppslaget på nytt.",
+        ) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri") from exc
+
+    db.refresh(unit)
+    db.refresh(field)
+    return field, unit, imported_field, created_unit
+
+
 @router.post("/planning/resolve-point", response_model=PlanningPointResolveOut)
 async def resolve_owned_planning_point(
     payload: PlanningPointResolveIn = Body(...),
@@ -2439,15 +2680,9 @@ async def resolve_owned_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
-    imported_field = field is None
-    if field is None:
-        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
-
-    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
-    db.commit()
-    db.refresh(unit)
-    db.refresh(field)
+    field, unit, imported_field, created_unit = _resolve_planning_candidate(
+        db, property_obj=property_obj, candidate=candidate
+    )
 
     return PlanningPointResolveOut(
         property_id=property_obj.id,
@@ -2500,15 +2735,9 @@ async def resolve_property_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
-    imported_field = field is None
-    if field is None:
-        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
-
-    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
-    db.commit()
-    db.refresh(unit)
-    db.refresh(field)
+    field, unit, imported_field, created_unit = _resolve_planning_candidate(
+        db, property_obj=property_obj, candidate=candidate
+    )
 
     return PlanningPointResolveOut(
         property_id=property_obj.id,
