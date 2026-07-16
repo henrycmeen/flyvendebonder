@@ -287,6 +287,98 @@ def test_membership_status_cannot_be_omitted(client) -> None:
             db.commit()
 
 
+def test_writable_farm_selection_ignores_read_limited_memberships(client) -> None:
+    from app.api.v1 import _active_writable_farm_id_for_user
+    from app.database import SessionLocal
+    from app.models import Farm, FarmMembership, User
+
+    with SessionLocal() as db:
+        user = User(full_name="Bruker med flere gårder")
+        read_limited_farm = Farm(name="Rådgivergård")
+        writable_farm = Farm(name="Driftsgård")
+        db.add_all([user, read_limited_farm, writable_farm])
+        db.flush()
+        db.add(
+            FarmMembership(
+                farm_id=read_limited_farm.id,
+                user_id=user.id,
+                role="viewer",
+                status="active",
+            )
+        )
+        db.flush()
+        db.add(
+            FarmMembership(
+                farm_id=writable_farm.id,
+                user_id=user.id,
+                role="operator",
+                status="active",
+            )
+        )
+        db.commit()
+
+        assert _active_writable_farm_id_for_user(db, user.id) == writable_farm.id
+
+
+def test_profile_cannot_add_property_through_read_limited_primary_farm(client) -> None:
+    from app.database import SessionLocal
+    from app.models import Farm, FarmMembership, Property, User
+    from sqlalchemy import func, select
+
+    with SessionLocal() as db:
+        user = db.execute(select(User).where(User.full_name == "Roar Meen")).scalar_one()
+        primary_property = db.execute(
+            select(Property).where(Property.user_id == user.id).order_by(Property.id)
+        ).scalars().first()
+        assert primary_property is not None
+        primary_membership = db.execute(
+            select(FarmMembership).where(
+                FarmMembership.user_id == user.id,
+                FarmMembership.farm_id == primary_property.farm_id,
+            )
+        ).scalar_one()
+        primary_membership.role = "viewer"
+        writable_farm = Farm(name="Annen skrivbar gård")
+        db.add(writable_farm)
+        db.flush()
+        db.add(
+            FarmMembership(
+                farm_id=writable_farm.id,
+                user_id=user.id,
+                role="operator",
+                status="active",
+            )
+        )
+        user_id = user.id
+        property_count_before = db.scalar(
+            select(func.count()).select_from(Property).where(Property.user_id == user_id)
+        )
+        db.commit()
+
+    response = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "additional_properties": [
+                {
+                    "label": "Skal avvises",
+                    "komm": "4003",
+                    "gnr": 77,
+                    "bnr": 7,
+                    "fnr": 0,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Brukeren mangler skrivbart gårdsmedlemskap"
+    with SessionLocal() as db:
+        property_count_after = db.scalar(
+            select(func.count()).select_from(Property).where(Property.user_id == user_id)
+        )
+    assert property_count_after == property_count_before
+
+
 @pytest.mark.parametrize(
     ("role", "status"),
     [
