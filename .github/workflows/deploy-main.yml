@@ -28,28 +28,25 @@ jobs:
     timeout-minutes: 20
     env:
       DEST: /Users/henrymeen/srv/www/flyvendebonder/
+      PYTHON39_BIN: /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.sha }}
 
-      - name: Set up production-compatible Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.9"
-          cache: pip
-          cache-dependency-path: apps/backend-api/requirements.txt
-
-      - name: Install backend dependencies for compatibility gate
-        working-directory: apps/backend-api
+      - name: Create isolated production-compatible Python environment
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          "$PYTHON39_BIN" -c 'import sys; assert sys.version_info[:2] == (3, 9), sys.version'
+          rm -rf "$RUNNER_TEMP/flyvendebonder-python39"
+          "$PYTHON39_BIN" -m venv "$RUNNER_TEMP/flyvendebonder-python39"
+          "$RUNNER_TEMP/flyvendebonder-python39/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/flyvendebonder-python39/bin/python" -m pip install -r apps/backend-api/requirements.txt
 
       - name: Gate deployment on production Python
         working-directory: apps/backend-api
-        run: python -m pytest -q
+        run: |
+          "$RUNNER_TEMP/flyvendebonder-python39/bin/python" -m pytest -q
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
