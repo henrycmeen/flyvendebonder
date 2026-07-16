@@ -23,6 +23,7 @@ import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
 import { selectVisibleOrthophotoOverlays } from "@/lib/orthophoto-overlay-selection";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
+import { useOperatingAreaTool } from "@/hooks/use-operating-area-tool";
 import { AlbumPage } from "@/components/album-page";
 import { OrthophotoPage } from "@/components/orthophoto-page";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -30,6 +31,7 @@ import { FilterPanel } from "@/components/filter-panel";
 import { MapLayerPanel } from "@/components/map-layer-panel";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
+import { OperatingAreaInspector } from "@/components/operating-area-inspector";
 import { PlanningPage } from "@/components/planning-page";
 import { PhotoInspector } from "@/components/photo-inspector";
 import { SkogbrukPage } from "@/components/skogbruk-page";
@@ -397,6 +399,7 @@ export default function App() {
   const [focusedOrthophotoId, setFocusedOrthophotoId] = useState<string | null>(null);
   const [orthophotoFocusToken, setOrthophotoFocusToken] = useState(0);
   const [colorAnalysisActive, setColorAnalysisActive] = useState(false);
+  const [operatingAreaCenterInspectToken, setOperatingAreaCenterInspectToken] = useState(0);
   const [soilRefreshToken, setSoilRefreshToken] = useState(0);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
@@ -802,6 +805,20 @@ export default function App() {
       return data;
     });
   }, [addLog, trackRequest]);
+
+  const handleOperatingAreaConfirmed = useCallback(
+    async () => {
+      await loadProfile();
+      addLog("info", "Jorde lagt til fra kartverktøy");
+    },
+    [addLog, loadProfile],
+  );
+  const operatingAreaTool = useOperatingAreaTool({ onConfirmed: handleOperatingAreaConfirmed });
+  const deactivateOperatingAreaTool = operatingAreaTool.deactivate;
+
+  useEffect(() => {
+    if (activeView !== "map") deactivateOperatingAreaTool();
+  }, [activeView, deactivateOperatingAreaTool]);
 
   const loadTimeline = useCallback(async (options?: { signal?: AbortSignal }): Promise<TimelineResponse> => {
     const seq = ++timelineLoadSeqRef.current;
@@ -2850,8 +2867,17 @@ export default function App() {
                   colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
                   colorAnalysisStatus={colorAnalysisStatus}
                   onToggleColorAnalysis={(next) => {
+                    if (operatingAreaTool.state.phase === "confirming") return;
+                    if (next) operatingAreaTool.deactivate();
                     setColorAnalysisActive(next);
                     addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
+                  }}
+                  operatingAreaToolActive={operatingAreaTool.state.active}
+                  onToggleOperatingAreaTool={(next) => {
+                    if (operatingAreaTool.state.phase === "confirming") return;
+                    if (next) setColorAnalysisActive(false);
+                    operatingAreaTool.toggle(next);
+                    addLog("info", next ? "Jordeverktøy skrudd på" : "Jordeverktøy skrudd av");
                   }}
                   baseMapStyle={baseMapStyle}
                   onChangeQuickBaseMap={(nextStyle) => {
@@ -2866,7 +2892,8 @@ export default function App() {
               ) : null}
 
               {activeView === "map" ? (
-                <MapCanvas
+                <>
+                  <MapCanvas
                   photos={photos}
                   selectedPhotoId={selectedPhotoId}
                   hoveredPhotoId={hoverPreviewPhotoId}
@@ -2876,7 +2903,14 @@ export default function App() {
                   focusedOrthophotoId={focusedOrthophotoId}
                   orthophotoFocusToken={orthophotoFocusToken}
                   colorAnalysisActive={colorAnalysisActive}
-                  onColorAnalysisActiveChange={setColorAnalysisActive}
+                  onColorAnalysisActiveChange={(next) => {
+                    if (next) operatingAreaTool.deactivate();
+                    setColorAnalysisActive(next);
+                  }}
+                  operatingAreaToolActive={operatingAreaTool.state.active}
+                  operatingAreaPreviewGeometry={operatingAreaTool.selectedCandidate?.geometry ?? null}
+                  operatingAreaCenterInspectToken={operatingAreaCenterInspectToken}
+                  onRequestOperatingAreaAt={operatingAreaTool.inspectPoint}
                   properties={activeProperties}
                   jobs={propertyJobs}
                   videoMapArtifacts={activeVideoMapArtifacts}
@@ -2906,7 +2940,23 @@ export default function App() {
                   onPropertyTileError={handlePropertyTileError}
                   onBaseMapTileError={handleBaseMapTileError}
                   onDropMissingVideoArtifact={handleDropMissingVideoArtifact}
-                />
+                  />
+                  <OperatingAreaInspector
+                    state={operatingAreaTool.state}
+                    selectedCandidate={operatingAreaTool.selectedCandidate}
+                    confirmation={operatingAreaTool.confirmation}
+                    canConfirm={isAdminAuthenticated}
+                    onSelectCandidate={operatingAreaTool.selectCandidate}
+                    onConfirm={(relation) => void operatingAreaTool.confirm(relation)}
+                    onInspectMapCenter={() => setOperatingAreaCenterInspectToken((value) => value + 1)}
+                    onCancel={operatingAreaTool.deactivate}
+                    onOpenPlanning={() => {
+                      operatingAreaTool.deactivate();
+                      setActiveView("planning");
+                      addLog("info", "Planlegging åpnet fra jordeverktøy");
+                    }}
+                  />
+                </>
               ) : activeView === "planning" ? (
                 <PlanningPage
                   properties={activeProperties}

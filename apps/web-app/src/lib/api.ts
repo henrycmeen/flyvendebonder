@@ -444,6 +444,21 @@ export function apiPost<T>(
   });
 }
 
+export function apiPut<T>(
+  path: string,
+  body?: unknown,
+  options: Omit<ApiRequestOptions, "method" | "body"> = {},
+): Promise<ApiResponse<T>> {
+  return requestJson<T>(path, {
+    retries: 0,
+    ...options,
+    method: "PUT",
+    body,
+    dedupe: false,
+    cache: false,
+  });
+}
+
 export function apiPatch<T>(
   path: string,
   body?: unknown,

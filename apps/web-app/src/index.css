@@ -311,6 +311,10 @@ body {
   cursor: crosshair;
 }
 
+.fb-map-operating-area-mode {
+  cursor: crosshair;
+}
+
 .fb-field-label-shell,
 .fb-field-handle-shell {
   background: transparent;
