@@ -183,6 +183,29 @@ de eksisterende property-radene og deres `user_id`. Etter at senere slicer har
 begynt å håndheve medlemskap i rutene, skal schemaet ikke nedgraderes uten en
 samordnet rollback av kode og en verifisert databasebackup.
 
+### Sesjonsbundet pilotidentitet
+
+Første identitetsslice etter medlemskapsgrunnlaget binder nye signerte
+adminsesjoner til én intern `user_id`. Access code, navn, kontaktdata og andre
+personopplysninger skal ikke ligge i cookien. Innloggingen er fortsatt en
+single-admin pilotflyt: identiteten må være en aktiv `owner`, ellers avvises
+innloggingen som feilkonfigurert. `ADMIN_USER_ID` kan binde piloten eksplisitt
+til en stabil intern ID. Uten denne innstillingen
+brukes den eneste aktive eieren; flere aktive eiere krever eksplisitt ID.
+Visningsnavnet kan endres uten at identiteten eller seeding flyttes til en ny
+bruker. Automatisk bootstrap er bare tillatt i en tom brukerdatabase. Hvis
+brukere finnes uten aktiv eier, feiler seeding lukket slik at tilbakekalt
+tilgang ikke kan gjenoppstå som en ny standardbruker.
+
+Cookieformat v1 manglet brukeridentitet og godtas derfor ikke etter overgangen;
+eksisterende nettlesere må logge inn på nytt. Dette krever ingen datamigrering.
+Privat profilvisning og profilendringer bruker den sesjonsbundne brukeren og
+avvises hvis brukeren mangler eller owner-medlemskapet er tilbakekalt. Andre
+domener flyttes fra global pilotbruker til request-identitet i senere, egne
+slicer under #250; denne overgangen skal ikke tolkes som full route-isolasjon.
+Hvis admin-tilgang deaktiveres, ignoreres og slettes eksisterende cookies også
+for leseruter, slik at privat profilinformasjon ikke forblir tilgjengelig.
+
 ## Testkontrakt
 
 Implementasjonen skal minst bevise:

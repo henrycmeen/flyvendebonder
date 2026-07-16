@@ -126,6 +126,7 @@ from ..schemas import (
     VideoJobReviewOut,
 )
 from ..services.admin_access import (
+    AdminSession,
     admin_access_is_configured,
     clear_admin_session,
     enforce_login_rate_limit,
@@ -136,6 +137,7 @@ from ..services.admin_access import (
     reset_login_attempts,
     verify_admin_access_code,
 )
+from ..services.pilot_identity import PilotIdentityConfigurationError, resolve_pilot_owner
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
 from ..services.operating_area_identity import candidate_id as operating_area_candidate_id
 from ..services.operating_area_identity import candidate_source_key as operating_area_source_key
@@ -258,6 +260,47 @@ def _current_user(db: Session) -> User:
     user = db.execute(select(User).order_by(User.id)).scalars().first()
     if user is None:
         raise HTTPException(status_code=404, detail="Ingen bruker registrert")
+    return user
+
+
+def _owner_user_for_session(db: Session, session: AdminSession) -> User:
+    user = db.get(User, session.user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sesjonen tilhører en ukjent bruker")
+
+    active_owner = (
+        db.execute(
+            select(FarmMembership.id)
+            .where(FarmMembership.user_id == user.id)
+            .where(FarmMembership.role == "owner")
+            .where(FarmMembership.status == "active")
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if active_owner is None:
+        raise HTTPException(status_code=403, detail="Aktivt eiermedlemskap kreves")
+    return user
+
+
+def _request_owner_user(
+    session: AdminSession = Depends(require_admin_session),
+    db: Session = Depends(get_db),
+) -> User:
+    return _owner_user_for_session(db, session)
+
+
+def _pilot_owner_for_login(db: Session) -> User:
+    try:
+        user = resolve_pilot_owner(db)
+    except PilotIdentityConfigurationError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+    if user is None:
+        raise HTTPException(status_code=503, detail="Pilotinnlogging krever en aktiv eier")
     return user
 
 
@@ -1844,8 +1887,17 @@ def get_logs(
 
 
 @router.get("/admin/session", response_model=AdminSessionStatusResponse)
-def get_admin_session_status(request: Request, response: Response) -> AdminSessionStatusResponse:
+def get_admin_session_status(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> AdminSessionStatusResponse:
     session = get_admin_session(request)
+    if session is not None:
+        try:
+            _owner_user_for_session(db, session)
+        except HTTPException:
+            session = None
     if request.cookies.get(settings.admin_session_cookie_name) and session is None:
         clear_admin_session(response)
 
@@ -1861,6 +1913,7 @@ def login_admin(
     payload: AdminLoginRequest,
     request: Request,
     response: Response,
+    db: Session = Depends(get_db),
 ) -> AdminSessionStatusResponse:
     if not admin_access_is_configured():
         raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
@@ -1871,7 +1924,8 @@ def login_admin(
         raise HTTPException(status_code=401, detail="Ugyldig admin-kode")
 
     reset_login_attempts(request)
-    session = issue_admin_session(response, request)
+    user = _pilot_owner_for_login(db)
+    session = issue_admin_session(response, request, user_id=user.id)
     return AdminSessionStatusResponse(configured=True, authenticated=True, expires_at=session.expires_at)
 
 
@@ -1883,18 +1937,20 @@ def logout_admin(response: Response) -> AdminSessionStatusResponse:
 
 @router.get("/profile/current", response_model=ProfileOut)
 def get_profile_current(request: Request, response: Response, db: Session = Depends(get_db)) -> ProfileOut:
-    user = _current_user(db)
+    session = get_admin_session(request)
+    if request.cookies.get(settings.admin_session_cookie_name) and session is None:
+        clear_admin_session(response)
+    user = _owner_user_for_session(db, session) if session is not None else _current_user(db)
     response.headers["Cache-Control"] = "no-store"
-    return _profile_out(db, user, include_private_contact=get_admin_session(request) is not None)
+    return _profile_out(db, user, include_private_contact=session is not None)
 
 
 @router.patch("/profile/current", response_model=ProfileOut)
 def patch_profile_current(
     payload: ProfilePatchRequest = Body(default_factory=ProfilePatchRequest),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ProfileOut:
-    user = _current_user(db)
     active_properties = _active_properties(db, user.id)
     property_obj = active_properties[0] if active_properties else None
 

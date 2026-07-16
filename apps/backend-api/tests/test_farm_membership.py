@@ -219,8 +219,9 @@ def test_seeded_farm_membership_is_idempotent(client) -> None:
 def test_seeding_does_not_reactivate_revoked_membership(client) -> None:
     from app.database import SessionLocal
     from app.models import FarmMembership, User
+    from app.services.pilot_identity import PilotIdentityConfigurationError
     from app.services.seeding import run_seeding
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     with SessionLocal() as db:
         user = db.execute(select(User).where(User.full_name == "Roar Meen")).scalar_one()
@@ -230,11 +231,14 @@ def test_seeding_does_not_reactivate_revoked_membership(client) -> None:
         membership.status = "revoked"
         db.commit()
 
-        run_seeding(db)
+        with pytest.raises(PilotIdentityConfigurationError):
+            run_seeding(db)
         db.refresh(membership)
 
         assert membership.role == "owner"
         assert membership.status == "revoked"
+        assert db.scalar(select(func.count()).select_from(User)) == 1
+        assert db.scalar(select(func.count()).select_from(FarmMembership)) == 1
 
 
 def test_sqlite_rejects_orphaned_tenant_references(client) -> None:
@@ -371,7 +375,7 @@ def test_profile_cannot_add_property_through_read_limited_primary_farm(client) -
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Brukeren mangler skrivbart gårdsmedlemskap"
+    assert response.json()["detail"] == "Aktivt eiermedlemskap kreves"
     with SessionLocal() as db:
         property_count_after = db.scalar(
             select(func.count()).select_from(Property).where(Property.user_id == user_id)
