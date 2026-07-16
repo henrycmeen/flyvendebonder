@@ -34,6 +34,9 @@ class PropertyOut(BaseModel):
     label: str | None = None
     active_from: date | None = None
     active_to: date | None = None
+    operating_relation: Literal["owned", "leased", "unknown"] = "unknown"
+    operating_relation_source: str | None = None
+    operating_relation_confirmed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -368,6 +371,69 @@ class PlanningPointResolveOut(BaseModel):
     candidate_name: str | None = None
     matrikkelnummer: str | None = None
     distance_m: int | None = None
+
+
+OperatingRelation = Literal["owned", "leased", "unknown"]
+
+
+class OperatingAreaPointIn(BaseModel):
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    radius_m: int | None = Field(default=None, ge=1, le=3000)
+
+
+class OperatingAreaConfirmIn(OperatingAreaPointIn):
+    operating_relation: OperatingRelation
+
+
+class OperatingAreaPropertyRefOut(BaseModel):
+    komm: str
+    gnr: int
+    bnr: int
+    fnr: int = 0
+    label: str | None = None
+
+
+class OperatingAreaExistingOut(BaseModel):
+    property_id: int
+    field_id: int | None = None
+    planning_unit_ids: list[int] = Field(default_factory=list)
+    operating_relation: OperatingRelation
+
+
+class OperatingAreaCandidateOut(BaseModel):
+    candidate_id: str
+    source: str
+    source_endpoint: str | None = None
+    source_fetched_at: datetime | None = None
+    source_updated_at: datetime | None = None
+    name: str | None = None
+    matrikkelnummer: str | None = None
+    property_ref: OperatingAreaPropertyRefOut
+    local_id: int | str | None = None
+    object_type: str | None = None
+    accuracy_class: str | None = None
+    distance_m: int | None = None
+    geometry: GeoJSONPolygon
+    area_m2: float | None = None
+    area_ha: float | None = None
+    existing: OperatingAreaExistingOut | None = None
+
+
+class OperatingAreaPreviewOut(BaseModel):
+    count: int
+    candidates: list[OperatingAreaCandidateOut]
+    owner_information_available: bool = False
+    owner_information_message: str
+
+
+class OperatingAreaConfirmOut(BaseModel):
+    property: PropertyOut
+    field: FieldPlotOut
+    planning_units: list[PlanningUnitOut]
+    property_created: bool = False
+    field_created: bool = False
+    planning_units_created: int = 0
 
 
 ScoutingTaskStatus = Literal["open", "in_progress", "done"]

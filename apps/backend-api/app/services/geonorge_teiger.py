@@ -172,14 +172,20 @@ def _feature_to_candidate(
     if geometry.get("type") != "Polygon":
         logger.info(
             "Skipping unsupported Geonorge geometry",
-            extra={"geometry_type": geometry.get("type"), "property_id": property_obj.id},
+            extra={
+                "geometry_type": geometry.get("type"),
+                "property_id": property_obj.id if property_obj is not None else None,
+            },
         )
         return None
 
     try:
         normalized_coordinates = normalize_polygon_coordinates(geometry.get("coordinates") or [])
     except ValueError:
-        logger.info("Skipping invalid Geonorge polygon", extra={"property_id": property_obj.id})
+        logger.info(
+            "Skipping invalid Geonorge polygon",
+            extra={"property_id": property_obj.id if property_obj is not None else None},
+        )
         return None
 
     area_m2 = polygon_area_m2(normalized_coordinates)

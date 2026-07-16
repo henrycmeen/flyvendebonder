@@ -254,6 +254,8 @@ def source_provenance_from_candidate(candidate: dict[str, Any]) -> dict[str, Any
             "object_type": candidate.get("object_type"),
             "land_use_kind": candidate.get("land_use_kind"),
             "land_use_label": candidate.get("land_use_label"),
+            "candidate_id": candidate.get("candidate_id"),
+            "property_ref": candidate.get("property_ref"),
         }
     )
 
@@ -342,6 +344,7 @@ def create_field_from_candidate(
         geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
         area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
         source_provenance_json=json.dumps(source_provenance_from_candidate(candidate), ensure_ascii=False),
+        source_key=str(candidate.get("candidate_id") or "").strip() or None,
     )
     db.add(item)
     db.flush()
