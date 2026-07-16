@@ -11,23 +11,53 @@ from ..models import FieldPlot, PlanningUnit, Property
 from .planning import find_field_plot_for_geometry
 
 
-def candidate_id(candidate: dict[str, Any]) -> str:
+def candidate_source_key(candidate: dict[str, Any]) -> str:
     property_ref = candidate.get("property_ref")
-    geometry = candidate.get("geometry")
-    if not isinstance(property_ref, dict) or not isinstance(geometry, dict):
-        raise ValueError("Kandidaten mangler matrikkeldata eller geometri")
+    if not isinstance(property_ref, dict):
+        raise ValueError("Kandidaten mangler matrikkeldata")
+    local_id = candidate.get("local_id")
+    source_feature = (
+        {"local_id": local_id}
+        if local_id is not None
+        else {
+            "matrikkelnummer": candidate.get("matrikkelnummer"),
+            "object_type": candidate.get("object_type"),
+            "is_main_area": bool(candidate.get("is_main_area")),
+            "name": candidate.get("name"),
+            # Geonorge has no stable identity in this branch. Geometry avoids
+            # collapsing two distinct sub-parcels into one persisted field.
+            "geometry": candidate.get("geometry"),
+        }
+    )
     identity = {
         "source": candidate.get("source"),
         "komm": str(property_ref.get("komm") or "").strip(),
         "gnr": property_ref.get("gnr"),
         "bnr": property_ref.get("bnr"),
         "fnr": property_ref.get("fnr") or 0,
-        "local_id": candidate.get("local_id"),
-        "geometry": geometry,
+        "source_feature": source_feature,
     }
-    if not identity["source"] or not identity["komm"] or identity["gnr"] is None or identity["bnr"] is None:
+    if (
+        not identity["source"]
+        or not identity["komm"]
+        or identity["gnr"] is None
+        or identity["bnr"] is None
+    ):
         raise ValueError("Kandidaten mangler gyldig identitet")
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def candidate_id(candidate: dict[str, Any]) -> str:
+    geometry = candidate.get("geometry")
+    if not isinstance(geometry, dict):
+        raise ValueError("Kandidaten mangler geometri")
+    version = {
+        "source_key": candidate_source_key(candidate),
+        "geometry": geometry,
+        "source_updated_at": str(candidate.get("source_updated_at") or ""),
+    }
+    encoded = json.dumps(version, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -67,6 +97,8 @@ def existing_connection(
     )
     if field is None:
         field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=candidate["geometry"])
+    if field is None:
+        return None
     unit_ids = []
     if field is not None:
         unit_ids = list(
@@ -93,6 +125,7 @@ def candidate_payload(
     candidate: dict[str, Any],
 ) -> dict[str, Any]:
     key = candidate_id(candidate)
+    source_key = candidate_source_key(candidate)
     allowed = {
         name: candidate.get(name)
         for name in (
@@ -113,5 +146,7 @@ def candidate_payload(
     }
     allowed["candidate_id"] = key
     allowed["property_ref"] = candidate["property_ref"]
-    allowed["existing"] = existing_connection(db, user_id=user_id, candidate=candidate, source_key=key)
+    allowed["existing"] = existing_connection(
+        db, user_id=user_id, candidate=candidate, source_key=source_key
+    )
     return allowed

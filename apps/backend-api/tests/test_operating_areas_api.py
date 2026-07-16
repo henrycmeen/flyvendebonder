@@ -187,6 +187,91 @@ def test_confirm_selected_candidate_not_first_and_supports_all_relations(client,
     assert unknown.json()["property"]["operating_relation"] == "unknown"
 
 
+def test_preview_never_exposes_another_users_existing_connection(client, monkeypatch):
+    import app.api.v1 as v1
+    from app.database import SessionLocal
+    from app.models import FieldPlot, Property, User
+    from app.services.operating_areas import candidate_source_key
+    import json
+
+    candidate = _candidate()
+    with SessionLocal() as db:
+        other = User(full_name="Annen bonde")
+        db.add(other)
+        db.flush()
+        other_property = Property(
+            user_id=other.id,
+            komm="4003",
+            gnr=70,
+            bnr=28,
+            fnr=0,
+            operating_relation="leased",
+        )
+        db.add(other_property)
+        db.flush()
+        db.add(
+            FieldPlot(
+                property_id=other_property.id,
+                name="Annen brukers teig",
+                source="imported",
+                source_key=candidate_source_key(candidate),
+                status="draft",
+                geometry_json=json.dumps(candidate["geometry"]),
+                source_provenance_json="{}",
+            )
+        )
+        db.commit()
+
+    async def fake_lookup(**_kwargs):
+        return [candidate]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+    response = client.post(
+        "/api/v1/operating-area-previews",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+    assert response.status_code == 200
+    assert response.json()["candidates"][0]["existing"] is None
+
+
+def test_updated_upstream_geometry_reuses_stable_field_without_resetting_planning(client, monkeypatch):
+    import app.api.v1 as v1
+
+    current = _candidate()
+
+    async def fake_lookup(**_kwargs):
+        return [current]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+    request = {"lat": 59.0, "lng": 10.0, "radius_m": 60}
+    first_preview = client.post("/api/v1/operating-area-previews", json=request).json()
+    first = client.put(
+        f"/api/v1/operating-areas/{first_preview['candidates'][0]['candidate_id']}",
+        json={**request, "operating_relation": "leased"},
+    ).json()
+
+    current = {**current, "geometry": _polygon(0.051)}
+    changed_preview = client.post("/api/v1/operating-area-previews", json=request).json()
+    assert changed_preview["candidates"][0]["candidate_id"] != first_preview["candidates"][0]["candidate_id"]
+    assert changed_preview["candidates"][0]["existing"]["field_id"] == first["field"]["id"]
+
+    changed = client.put(
+        f"/api/v1/operating-areas/{changed_preview['candidates'][0]['candidate_id']}",
+        json={**request, "operating_relation": "leased"},
+    )
+    assert changed.status_code == 200
+    changed_payload = changed.json()
+    assert changed_payload["field"]["id"] == first["field"]["id"]
+    assert changed_payload["field"]["geometry"]["coordinates"][0][0] == current["geometry"]["coordinates"][0][0]
+    assert changed_payload["planning_units"][0]["geometry"] == changed_payload["field"]["geometry"]
+    assert [unit["id"] for unit in changed_payload["planning_units"]] == [
+        unit["id"] for unit in first["planning_units"]
+    ]
+    assert changed_payload["field_created"] is False
+    assert changed_payload["planning_units_created"] == 0
+    assert _counts()[1:] == (1, 1)
+
+
 def test_preview_and_confirm_fail_cleanly_for_no_match_and_upstream_error(client, monkeypatch):
     import app.api.v1 as v1
 
@@ -213,3 +298,58 @@ def test_preview_and_confirm_fail_cleanly_for_no_match_and_upstream_error(client
     assert response.status_code == 502
     assert "secret" not in response.text.lower()
     assert _counts() == before
+
+
+def test_candidate_without_local_id_uses_consistent_fallback_identity(client, monkeypatch):
+    import app.api.v1 as v1
+
+    candidate = {**_candidate(), "local_id": None, "is_main_area": False}
+
+    async def fake_lookup(**_kwargs):
+        return [candidate]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+    request = {"lat": 59.0, "lng": 10.0, "radius_m": 60}
+    preview = client.post("/api/v1/operating-area-previews", json=request)
+    assert preview.status_code == 200
+    candidate_id = preview.json()["candidates"][0]["candidate_id"]
+
+    confirmed = client.put(
+        f"/api/v1/operating-areas/{candidate_id}",
+        json={**request, "operating_relation": "unknown"},
+    )
+    assert confirmed.status_code == 200
+    repeated = client.put(
+        f"/api/v1/operating-areas/{candidate_id}",
+        json={**request, "operating_relation": "unknown"},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["field"]["id"] == confirmed.json()["field"]["id"]
+
+
+def test_distinct_candidates_without_local_ids_do_not_collapse(client, monkeypatch):
+    import app.api.v1 as v1
+
+    candidates = [
+        {**_candidate(), "local_id": None, "is_main_area": False},
+        {**_candidate(offset=0.08), "local_id": None, "is_main_area": False},
+    ]
+
+    async def fake_lookup(**_kwargs):
+        return candidates
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+    request = {"lat": 59.0, "lng": 10.0, "radius_m": 60}
+    preview = client.post("/api/v1/operating-area-previews", json=request).json()
+    assert len({item["candidate_id"] for item in preview["candidates"]}) == 2
+
+    first = client.put(
+        f"/api/v1/operating-areas/{preview['candidates'][0]['candidate_id']}",
+        json={**request, "operating_relation": "leased"},
+    ).json()
+    second = client.put(
+        f"/api/v1/operating-areas/{preview['candidates'][1]['candidate_id']}",
+        json={**request, "operating_relation": "leased"},
+    ).json()
+    assert first["field"]["id"] != second["field"]["id"]
+    assert _counts()[1:] == (2, 2)

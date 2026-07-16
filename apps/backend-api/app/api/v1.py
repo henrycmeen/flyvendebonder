@@ -136,6 +136,7 @@ from ..services.admin_access import (
     verify_admin_access_code,
 )
 from ..services.operating_areas import candidate_id as operating_area_candidate_id
+from ..services.operating_areas import candidate_source_key as operating_area_source_key
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
 from ..services.gardskart import get_job_id
 from ..services.geonorge_teiger import (
@@ -2482,16 +2483,22 @@ async def confirm_operating_area(
             fnr=int(property_ref.get("fnr") or 0),
             label=str(property_ref.get("label") or "").strip() or None,
         )
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Eiendommen ble nettopp lagt til. Prøv bekreftelsen på nytt."
+        ) from exc
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=502, detail="Eiendomsoppslaget mangler gyldig matrikkeldata.") from exc
 
-    selected = {**selected, "candidate_id": candidate_id}
+    source_key = operating_area_source_key(selected)
+    selected = {**selected, "candidate_id": candidate_id, "source_key": source_key}
     field = (
         db.execute(
             select(FieldPlot).where(
                 FieldPlot.property_id == property_obj.id,
                 FieldPlot.source == "imported",
-                FieldPlot.source_key == candidate_id,
+                FieldPlot.source_key == source_key,
             )
         )
         .scalars()
@@ -2504,10 +2511,27 @@ async def confirm_operating_area(
             raise HTTPException(status_code=502, detail="Eiendomsoppslaget returnerte ugyldig geometri.") from exc
     field_created = field is None
     if field is None:
-        field = create_field_from_candidate(db, property_obj=property_obj, candidate=selected, status="draft")
+        try:
+            field = create_field_from_candidate(
+                db, property_obj=property_obj, candidate=selected, status="draft"
+            )
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="Teigen ble nettopp lagt til. Prøv bekreftelsen på nytt."
+            ) from exc
     elif field.source == "imported" and field.source_key is None:
-        field.source_key = candidate_id
+        field.source_key = source_key
     if field.source == "imported":
+        normalized_geometry = {
+            "type": "Polygon",
+            "coordinates": normalize_polygon_coordinates(geometry.get("coordinates") or []),
+        }
+        field.geometry_json = json.dumps(normalized_geometry, ensure_ascii=False)
+        field.area_m2 = round(
+            float(selected.get("area_m2") or polygon_area_m2(normalized_geometry["coordinates"])),
+            2,
+        )
         field.source_provenance_json = json.dumps(
             source_provenance_from_candidate(selected), ensure_ascii=False
         )
@@ -2525,9 +2549,20 @@ async def confirm_operating_area(
     )
     planning_units_created = 0
     if not active_units:
-        unit, created = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
+        try:
+            unit, created = ensure_active_planning_unit_for_field(
+                db, property_obj=property_obj, field=field
+            )
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="Planområdet ble nettopp oppdatert. Last kartet på nytt."
+            ) from exc
         active_units = [unit]
         planning_units_created = int(created)
+    elif len(active_units) == 1 and active_units[0].parent_unit_id is None and field.source == "imported":
+        active_units[0].geometry_json = field.geometry_json
+        active_units[0].area_m2 = field.area_m2
 
     if property_obj.operating_relation != payload.operating_relation:
         property_obj.operating_relation = payload.operating_relation
