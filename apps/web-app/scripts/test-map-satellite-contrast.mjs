@@ -44,11 +44,23 @@ const surface = parseRgba(satelliteBlock.match(/--fb-map-control-surface:\s*([^;
 const ringDark = parseRgba(satelliteBlock.match(/--fb-map-control-ring-dark:\s*([^;]+);/)?.[1] ?? "");
 const primary = parseHex(satelliteBlock.match(/--fb-map-control-primary:\s*(#[0-9a-f]{6});/i)?.[1] ?? "");
 const secondary = parseHex(satelliteBlock.match(/--fb-map-control-secondary:\s*(#[0-9a-f]{6});/i)?.[1] ?? "");
+const optionSurface = parseRgba(satelliteBlock.match(/--fb-map-overlay-option-surface:\s*([^;]+);/)?.[1] ?? "");
+const selectedOptionSurface = parseRgba(satelliteBlock.match(/--fb-map-overlay-option-selected-surface:\s*([^;]+);/)?.[1] ?? "");
+const successSurface = parseRgba(satelliteBlock.match(/--fb-map-overlay-success-surface:\s*([^;]+);/)?.[1] ?? "");
 
 for (const background of [[0, 0, 0], [255, 255, 255]]) {
   const effectiveSurface = composite(surface, background);
+  const effectiveOptionSurface = composite(optionSurface, effectiveSurface);
+  const effectiveSelectedOptionSurface = composite(selectedOptionSurface, effectiveSurface);
+  const effectiveSuccessSurface = composite(successSurface, effectiveSurface);
   assert.ok(contrast(primary, effectiveSurface) >= 4.5, "Primary satellite text must meet WCAG AA");
   assert.ok(contrast(secondary, effectiveSurface) >= 4.5, "Secondary satellite text must meet WCAG AA");
+  assert.ok(contrast(primary, effectiveOptionSurface) >= 4.5, "Candidate-row text must meet WCAG AA on satellite imagery");
+  assert.ok(contrast(secondary, effectiveOptionSurface) >= 4.5, "Candidate-row metadata must meet WCAG AA on satellite imagery");
+  assert.ok(contrast(primary, effectiveSelectedOptionSurface) >= 4.5, "Selected candidate text must meet WCAG AA on satellite imagery");
+  assert.ok(contrast(secondary, effectiveSelectedOptionSurface) >= 4.5, "Selected candidate metadata must meet WCAG AA on satellite imagery");
+  assert.ok(contrast(primary, effectiveSuccessSurface) >= 4.5, "Success-card text must meet WCAG AA on satellite imagery");
+  assert.ok(contrast(secondary, effectiveSuccessSurface) >= 4.5, "Success-card metadata must meet WCAG AA on satellite imagery");
   assert.ok(
     Math.max(contrast(primary, background), contrast(composite(ringDark, background), background)) >= 3,
     "At least one hover-ring edge must remain visible over light and dark imagery",
@@ -62,6 +74,8 @@ for (const selector of [
   ".map-ui-satellite .fb-map-layer-toggle:disabled",
   ".map-ui-satellite .fb-map-overlay-trigger:focus-visible",
   ".map-ui-satellite .fb-map-overlay-panel",
+  ".map-ui-satellite .fb-map-overlay-option",
+  ".map-ui-satellite .fb-map-overlay-success",
 ]) {
   assert.ok(css.includes(selector), `Missing satellite-only selector: ${selector}`);
 }
@@ -77,6 +91,8 @@ for (const className of [
   assert.ok(panel.includes(className), `Map layer panel is missing ${className}`);
 }
 assert.ok(inspector.includes("fb-map-overlay-panel"), "Operating-area status panel must use the shared overlay surface");
+assert.ok(inspector.includes("fb-map-overlay-option"), "Operating-area candidates must use the satellite-safe option surface");
+assert.ok(inspector.includes("fb-map-overlay-success"), "Operating-area success state must use the satellite-safe success surface");
 assert.ok(mapCanvas.includes("fb-map-overlay-alert"), "Color-analysis instruction must use the shared alert surface");
 assert.ok(colorAnalysisPopup.includes("fb-map-overlay-panel"), "Color-analysis result must use the shared overlay surface");
 assert.match(

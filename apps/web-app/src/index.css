@@ -308,6 +308,9 @@ body {
   --fb-map-control-border-strong: rgba(255, 255, 255, 0.68);
   --fb-map-control-ring-dark: rgba(15, 23, 32, 0.96);
   --fb-map-control-shadow: 0 14px 36px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --fb-map-overlay-option-surface: rgba(255, 255, 255, 0.1);
+  --fb-map-overlay-option-selected-surface: rgba(255, 255, 255, 0.16);
+  --fb-map-overlay-success-surface: rgba(20, 70, 56, 0.96);
 }
 
 .map-ui-satellite .fb-map-overlay-trigger {
@@ -403,6 +406,23 @@ body {
 .map-ui-satellite .fb-map-layer-toggle__status,
 .map-ui-satellite .fb-map-overlay-panel .bg-fb-surface-ghost {
   background: rgba(255, 255, 255, 0.12) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-option {
+  border-color: var(--fb-map-control-border) !important;
+  background: var(--fb-map-overlay-option-surface) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-option[aria-pressed="true"] {
+  border-color: var(--fb-map-control-border-strong) !important;
+  background: var(--fb-map-overlay-option-selected-surface) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-success {
+  border-color: rgba(110, 231, 183, 0.58) !important;
+  background: var(--fb-map-overlay-success-surface) !important;
   color: var(--fb-map-control-primary) !important;
 }
 
