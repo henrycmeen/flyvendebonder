@@ -145,6 +145,7 @@ def test_patch_field_updates_active_root_planning_unit_geometry_without_resync(c
 def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client, monkeypatch):
     import app.api.v1 as v1
     fetched_at = datetime(2026, 6, 21, 9, 0, 0)
+    current_geometry = _sample_polygon()
 
     async def fake_list_field_candidates_for_property(property_obj):
         return [
@@ -159,7 +160,7 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
                 "accuracy_class": "Gult",
                 "is_main_area": True,
                 "distance_m": None,
-                "geometry": _sample_polygon(),
+                "geometry": current_geometry,
                 "area_m2": 2400.0,
                 "area_ha": 0.24,
                 "source_updated_at": datetime(2024, 1, 1, 0, 0, 0),
@@ -186,7 +187,17 @@ def test_planning_sync_imports_owned_fields_from_geonorge_when_none_exist(client
     assert fields_payload["fields"][0]["source"] == "imported"
     assert fields_payload["fields"][0]["status"] == "draft"
     assert fields_payload["fields"][0]["source_provenance"]["matrikkelnummer"] == "70/17"
+    assert fields_payload["fields"][0]["source_provenance"]["source_key"]
     assert payload["units"][0]["source_field_status"] == "draft"
+
+    current_geometry = _sample_polygon(0.005)
+    repeated = client.post("/api/v1/planning/properties/1/sync")
+    assert repeated.status_code == 200
+    assert repeated.json()["created_count"] == 0
+    assert repeated.json()["count"] == 1
+    assert repeated.json()["units"][0]["geometry"]["coordinates"][0][:-1] == (
+        current_geometry["coordinates"][0]
+    )
 
 
 def test_deleting_field_also_removes_planning_units(client, monkeypatch):
@@ -261,6 +272,44 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
     assert second_payload["imported_field"] is False
     assert second_payload["created_unit"] is False
     assert second_payload["unit"]["id"] == first_payload["unit"]["id"]
+    assert second_payload["unit"]["geometry"]["coordinates"][0][:-1] == (
+        current_geometry["coordinates"][0]
+    )
+
+
+def test_planning_resolve_point_returns_409_for_concurrent_source_key_insert(client, monkeypatch):
+    import app.api.v1 as v1
+    from sqlalchemy.exc import IntegrityError
+
+    async def fake_lookup_field_candidates_by_point(property_obj, **_kwargs):
+        return [
+            {
+                "source": "geonorge",
+                "name": f"{property_obj.gnr}/{property_obj.bnr} · teig 99",
+                "local_id": 99,
+                "matrikkelnummer": f"{property_obj.gnr}/{property_obj.bnr}",
+                "object_type": "Teig",
+                "is_main_area": False,
+                "geometry": _sample_polygon(0.099),
+                "area_m2": 2500.0,
+            }
+        ]
+
+    def concurrent_insert(*_args, **_kwargs):
+        raise IntegrityError("field_plots insert", {}, RuntimeError("unique race"))
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point", fake_lookup_field_candidates_by_point)
+    monkeypatch.setattr(v1, "create_field_from_candidate", concurrent_insert)
+
+    response = client.post(
+        "/api/v1/planning/properties/1/resolve-point",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Teigen eller planområdet ble nettopp oppdatert. Prøv oppslaget på nytt."
+    )
 
 
 def test_planning_resolve_point_across_all_owned_properties(client, monkeypatch):

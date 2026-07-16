@@ -135,11 +135,10 @@ from ..services.admin_access import (
     reset_login_attempts,
     verify_admin_access_code,
 )
-from ..services.operating_areas import candidate_id as operating_area_candidate_id
-from ..services.operating_areas import candidate_source_key as operating_area_source_key
-from ..services.operating_areas import candidate_with_property_identity
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
-from ..services.operating_areas import find_field_for_candidate
+from ..services.operating_area_identity import candidate_id as operating_area_candidate_id
+from ..services.operating_area_identity import candidate_source_key as operating_area_source_key
+from ..services.operating_area_identity import candidate_with_property_identity
 from ..services.gardskart import get_job_id
 from ..services.geonorge_teiger import (
     list_field_candidates_for_property,
@@ -176,6 +175,7 @@ from ..services.planning import (
     create_field_from_candidate,
     ensure_active_planning_unit_for_field,
     field_source_provenance,
+    find_field_for_candidate,
     find_field_plot_for_geometry,
     get_drone_profile,
     list_drone_profiles,
@@ -184,6 +184,8 @@ from ..services.planning import (
     source_provenance_from_candidate,
     planning_unit_payload_from_field,
     planning_unit_payload_from_unit,
+    refresh_imported_field_from_candidate,
+    refresh_root_planning_unit_from_field,
     split_planning_unit,
     sync_fields_from_candidates,
     sync_planning_units,
@@ -2515,21 +2517,7 @@ async def confirm_operating_area(
             raise HTTPException(
                 status_code=409, detail="Teigen ble nettopp lagt til. Prøv bekreftelsen på nytt."
             ) from exc
-    elif field.source == "imported" and field.source_key is None:
-        field.source_key = source_key
-    if field.source == "imported":
-        normalized_geometry = {
-            "type": "Polygon",
-            "coordinates": normalize_polygon_coordinates(geometry.get("coordinates") or []),
-        }
-        field.geometry_json = json.dumps(normalized_geometry, ensure_ascii=False)
-        field.area_m2 = round(
-            float(selected.get("area_m2") or polygon_area_m2(normalized_geometry["coordinates"])),
-            2,
-        )
-        field.source_provenance_json = json.dumps(
-            source_provenance_from_candidate(selected), ensure_ascii=False
-        )
+    refresh_imported_field_from_candidate(field, selected)
 
     active_units = list(
         db.execute(
@@ -2555,9 +2543,8 @@ async def confirm_operating_area(
             ) from exc
         active_units = [unit]
         planning_units_created = int(created)
-    elif len(active_units) == 1 and active_units[0].parent_unit_id is None and field.source == "imported":
-        active_units[0].geometry_json = field.geometry_json
-        active_units[0].area_m2 = field.area_m2
+    elif len(active_units) == 1:
+        refresh_root_planning_unit_from_field(active_units[0], field)
 
     if property_obj.operating_relation != payload.operating_relation:
         property_obj.operating_relation = payload.operating_relation
@@ -2595,6 +2582,49 @@ async def confirm_operating_area(
         field_created=field_created,
         planning_units_created=planning_units_created,
     )
+
+
+def _resolve_planning_candidate(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidate: dict[str, Any],
+) -> tuple[FieldPlot, PlanningUnit, bool, bool]:
+    try:
+        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+        candidate = {**candidate, "source_key": source_key}
+        field = find_field_for_candidate(
+            db, property_obj=property_obj, candidate=candidate, source_key=source_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
+
+    imported_field = field is None
+    try:
+        if field is None:
+            field = create_field_from_candidate(
+                db, property_obj=property_obj, candidate=candidate, status="draft"
+            )
+        refresh_imported_field_from_candidate(field, candidate)
+        unit, created_unit = ensure_active_planning_unit_for_field(
+            db, property_obj=property_obj, field=field
+        )
+        if not created_unit:
+            refresh_root_planning_unit_from_field(unit, field)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Teigen eller planområdet ble nettopp oppdatert. Prøv oppslaget på nytt.",
+        ) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri") from exc
+
+    db.refresh(unit)
+    db.refresh(field)
+    return field, unit, imported_field, created_unit
 
 
 @router.post("/planning/resolve-point", response_model=PlanningPointResolveOut)
@@ -2644,24 +2674,9 @@ async def resolve_owned_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    try:
-        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
-        candidate = {**candidate, "source_key": source_key}
-        field = find_field_for_candidate(
-            db, property_obj=property_obj, candidate=candidate, source_key=source_key
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
-    imported_field = field is None
-    if field is None:
-        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
-    elif field.source == "imported" and field.source_key is None:
-        field.source_key = source_key
-
-    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
-    db.commit()
-    db.refresh(unit)
-    db.refresh(field)
+    field, unit, imported_field, created_unit = _resolve_planning_candidate(
+        db, property_obj=property_obj, candidate=candidate
+    )
 
     return PlanningPointResolveOut(
         property_id=property_obj.id,
@@ -2714,24 +2729,9 @@ async def resolve_property_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    try:
-        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
-        candidate = {**candidate, "source_key": source_key}
-        field = find_field_for_candidate(
-            db, property_obj=property_obj, candidate=candidate, source_key=source_key
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
-    imported_field = field is None
-    if field is None:
-        field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
-    elif field.source == "imported" and field.source_key is None:
-        field.source_key = source_key
-
-    unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
-    db.commit()
-    db.refresh(unit)
-    db.refresh(field)
+    field, unit, imported_field, created_unit = _resolve_planning_candidate(
+        db, property_obj=property_obj, candidate=candidate
+    )
 
     return PlanningPointResolveOut(
         property_id=property_obj.id,

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..models import FieldPlot, PlanningUnit, Property
 from .field_plots import normalize_polygon_coordinates, polygon_area_m2
+from .operating_area_identity import candidate_with_property_identity
 
 PLANNING_UNIT_STATUS_ACTIVE = "active"
 PLANNING_UNIT_STATUS_ARCHIVED = "archived"
@@ -319,6 +320,54 @@ def find_field_plot_for_geometry(
     return None
 
 
+def find_field_for_candidate(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidate: dict[str, Any],
+    source_key: str,
+) -> FieldPlot | None:
+    field = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.source == "imported",
+                FieldPlot.source_key == source_key,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if field is not None:
+        return field
+
+    legacy_fields = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.source == "imported",
+                FieldPlot.source_key.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for legacy_field in legacy_fields:
+        provenance = field_source_provenance(legacy_field)
+        # Older imports persisted Geonorge's local feature id but not the new
+        # source key. Without that id, geometry remains the only safe match.
+        if provenance.get("local_id") is None:
+            continue
+        try:
+            _, legacy_key = candidate_with_property_identity(provenance, property_obj)
+        except (TypeError, ValueError):
+            continue
+        if legacy_key == source_key:
+            return legacy_field
+
+    return find_field_plot_for_geometry(db, property_obj=property_obj, geometry=candidate["geometry"])
+
+
 def create_field_from_candidate(
     db: Session,
     *,
@@ -337,6 +386,13 @@ def create_field_from_candidate(
     if area_m2 is None:
         area_m2 = polygon_area_m2(coordinates)
 
+    source_key = str(candidate.get("source_key") or candidate.get("candidate_id") or "").strip()
+    if not source_key:
+        try:
+            candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+        except (TypeError, ValueError):
+            source_key = ""
+
     item = FieldPlot(
         property_id=property_obj.id,
         name=str(candidate.get("name") or "").strip() or None,
@@ -345,11 +401,46 @@ def create_field_from_candidate(
         geometry_json=json.dumps({"type": "Polygon", "coordinates": coordinates}, ensure_ascii=False),
         area_m2=round(float(area_m2), 2) if area_m2 is not None else None,
         source_provenance_json=json.dumps(source_provenance_from_candidate(candidate), ensure_ascii=False),
-        source_key=str(candidate.get("source_key") or candidate.get("candidate_id") or "").strip() or None,
+        source_key=source_key or None,
     )
     db.add(item)
     db.flush()
     return item
+
+
+def refresh_imported_field_from_candidate(field: FieldPlot, candidate: dict[str, Any]) -> None:
+    if field.source != "imported":
+        return
+    geometry = candidate.get("geometry")
+    if not isinstance(geometry, dict) or geometry.get("type") != "Polygon":
+        raise ValueError("Kandidaten mangler gyldig polygon-geometri")
+    normalized_geometry = {
+        "type": "Polygon",
+        "coordinates": normalize_polygon_coordinates(geometry.get("coordinates") or []),
+    }
+    field.geometry_json = json.dumps(normalized_geometry, ensure_ascii=False)
+    field.area_m2 = round(
+        float(candidate.get("area_m2") or polygon_area_m2(normalized_geometry["coordinates"])),
+        2,
+    )
+    field.source_provenance_json = json.dumps(
+        source_provenance_from_candidate(candidate), ensure_ascii=False
+    )
+    source_key = str(candidate.get("source_key") or "").strip()
+    if source_key:
+        field.source_key = source_key
+
+
+def refresh_root_planning_unit_from_field(unit: PlanningUnit, field: FieldPlot) -> None:
+    if unit.parent_unit_id is not None or field.source != "imported":
+        return
+    unit.name = planning_unit_field_name(field)
+    unit.geometry_json = field.geometry_json
+    unit.area_m2 = round(
+        field.area_m2
+        or polygon_area_m2(normalize_polygon_coordinates(shape_to_coordinates(field.geometry_json))),
+        2,
+    )
 
 
 def ensure_active_planning_unit_for_field(
@@ -405,7 +496,19 @@ def sync_fields_from_candidates(
         if geometry.get("type") != "Polygon":
             continue
 
-        if find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry) is not None:
+        try:
+            candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+            candidate = {**candidate, "source_key": source_key}
+            field = find_field_for_candidate(
+                db,
+                property_obj=property_obj,
+                candidate=candidate,
+                source_key=source_key,
+            )
+        except (TypeError, ValueError):
+            field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
+        if field is not None:
+            refresh_imported_field_from_candidate(field, candidate)
             continue
 
         create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status=status)
