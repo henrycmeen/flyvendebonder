@@ -21,12 +21,12 @@ handle @flyvendebonder {
   @info_no_slash path /info
   redir @info_no_slash /info/ 301
 
-  # Asset cache policy (same policy as backend for clear ops documentation).
+  # Protected photo assets must remain private at both proxy and backend layers.
   @asset_immutable path /api/v1/assets/photos/thumb/* /api/v1/assets/photos/web/*
-  header @asset_immutable Cache-Control "public, max-age=31536000, immutable"
+  header @asset_immutable Cache-Control "private, max-age=31536000, immutable"
 
   @asset_original path /api/v1/assets/photos/original/*
-  header @asset_original Cache-Control "public, max-age=3600"
+  header @asset_original Cache-Control "private, max-age=3600"
 
   @api path /api/*
   reverse_proxy @api 127.0.0.1:8787
