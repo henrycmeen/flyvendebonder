@@ -256,6 +256,22 @@ den korte offentlige listen. Klienten starter ingen privat bootstrap før
 sesjonen er bekreftet, viser en egen innloggingsport og tømmer privat state og
 API-cache ved avvist identitet.
 
+### Kjørbar capability-policy
+
+Rolle-/capability-matrisen er implementert sentralt i
+`app/services/access_control.py`. Policyen skiller mellom gårdsomfattende
+tilgang og tilgang som krever en eksplisitt objektdeling. Ukjente roller,
+ukjente capabilities og alle medlemskap uten status `active` avvises
+fail-closed. En delingsavhengig capability er alltid avvist når kalleren ikke
+gir en eksplisitt, matchende grant.
+
+Første integrasjon erstatter den lokale `owner`/`operator`-listen ved valg av
+skrivbar gård med policyoppslaget for `field.write`. Kildeguarden i
+`test_access_control.py` hindrer nye flerrolle-matriser i API-laget. Dette er
+policygrunnlaget; full gårdsscoping av eksisterende bruker-eide ruter og
+persistente objektdelinger leveres som egne slicer før `advisor` og `viewer`
+kan få produktmessig tilgang.
+
 ## Testkontrakt
 
 Implementasjonen skal minst bevise:

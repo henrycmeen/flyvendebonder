@@ -137,6 +137,7 @@ from ..services.admin_access import (
     reset_login_attempts,
     verify_admin_access_code,
 )
+from ..services.access_control import roles_with_farm_capability
 from ..services.pilot_identity import PilotIdentityConfigurationError, resolve_pilot_owner
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
 from ..services.operating_area_identity import candidate_id as operating_area_candidate_id
@@ -340,11 +341,12 @@ def _active_writable_farm_id_for_user(
     *,
     farm_id: int | None = None,
 ) -> int:
+    writable_roles = roles_with_farm_capability("field.write")
     statement = (
         select(FarmMembership.farm_id)
         .where(FarmMembership.user_id == user_id)
         .where(FarmMembership.status == "active")
-        .where(FarmMembership.role.in_(("owner", "operator")))
+        .where(FarmMembership.role.in_(writable_roles))
         .order_by(FarmMembership.id)
     )
     if farm_id is not None:
