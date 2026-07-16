@@ -309,6 +309,78 @@ def test_updated_upstream_geometry_reuses_stable_field_without_resetting_plannin
     assert _counts()[1:] == (1, 1)
 
 
+def test_legacy_imported_field_is_matched_by_provenance_when_geometry_changed(client, monkeypatch):
+    import json
+
+    import app.api.v1 as v1
+    from app.database import SessionLocal
+    from app.models import FieldPlot, Property, User
+    from app.services.planning import ensure_active_planning_unit_for_field
+    from sqlalchemy import select
+
+    candidate = _candidate()
+    with SessionLocal() as db:
+        user = db.execute(select(User).order_by(User.id)).scalars().first()
+        property_obj = Property(user_id=user.id, komm="4003", gnr=70, bnr=28, fnr=0)
+        db.add(property_obj)
+        db.flush()
+        legacy_field = FieldPlot(
+            property_id=property_obj.id,
+            name="Eldre Geonorge-teig",
+            source="imported",
+            status="draft",
+            geometry_json=json.dumps(_polygon(0.051)),
+            area_m2=5100.0,
+            source_provenance_json=json.dumps(
+                {
+                    "source": "geonorge",
+                    "local_id": candidate["local_id"],
+                    "matrikkelnummer": candidate["matrikkelnummer"],
+                    "object_type": candidate["object_type"],
+                }
+            ),
+            source_key=None,
+        )
+        db.add(legacy_field)
+        db.flush()
+        legacy_unit, _ = ensure_active_planning_unit_for_field(
+            db, property_obj=property_obj, field=legacy_field
+        )
+        legacy_field_id = legacy_field.id
+        legacy_unit_id = legacy_unit.id
+        db.commit()
+
+    async def fake_lookup(**_kwargs):
+        return [candidate]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+    request = {"lat": 59.0, "lng": 10.0, "radius_m": 60}
+    preview = client.post("/api/v1/operating-area-previews", json=request)
+
+    assert preview.status_code == 200
+    assert preview.json()["candidates"][0]["existing"]["field_id"] == legacy_field_id
+
+    confirmed = client.put(
+        f"/api/v1/operating-areas/{preview.json()['candidates'][0]['candidate_id']}",
+        json={**request, "operating_relation": "leased"},
+    )
+
+    assert confirmed.status_code == 200
+    payload = confirmed.json()
+    assert payload["field"]["id"] == legacy_field_id
+    assert payload["planning_units"][0]["id"] == legacy_unit_id
+    assert payload["field_created"] is False
+    assert payload["planning_units_created"] == 0
+    assert _counts()[1:] == (1, 1)
+
+    with SessionLocal() as db:
+        adopted = db.get(FieldPlot, legacy_field_id)
+        assert adopted.source_key
+        assert json.loads(adopted.geometry_json)["coordinates"][0][0] == (
+            candidate["geometry"]["coordinates"][0][0]
+        )
+
+
 def test_preview_and_confirm_fail_cleanly_for_no_match_and_upstream_error(client, monkeypatch):
     import app.api.v1 as v1
 

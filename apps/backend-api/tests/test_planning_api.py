@@ -208,6 +208,7 @@ def test_deleting_field_also_removes_planning_units(client, monkeypatch):
 def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypatch):
     import app.api.v1 as v1
     fetched_at = datetime(2026, 6, 21, 9, 5, 0)
+    current_geometry = _sample_polygon(0.02)
 
     async def fake_lookup_field_candidates_by_point(property_obj, *, lat, lng, radius_m):
         assert lat == 59.0
@@ -225,7 +226,7 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
                 "accuracy_class": "Gult",
                 "is_main_area": False,
                 "distance_m": 4,
-                "geometry": _sample_polygon(0.02),
+                "geometry": current_geometry,
                 "area_m2": 2400.0,
                 "area_ha": 0.24,
                 "source_updated_at": datetime(2024, 1, 2, 0, 0, 0),
@@ -247,6 +248,9 @@ def test_planning_resolve_point_imports_and_reuses_owned_field(client, monkeypat
     assert first_payload["unit"]["source_field_status"] == "draft"
     assert first_payload["unit"]["source_field_provenance"]["source"] == "geonorge"
     assert first_payload["unit"]["source_field_provenance"]["source_endpoint"] == "/punkt/omrader"
+    assert first_payload["unit"]["source_field_provenance"]["source_key"]
+
+    current_geometry = _sample_polygon(0.021)
 
     second = client.post(
         "/api/v1/planning/properties/1/resolve-point",

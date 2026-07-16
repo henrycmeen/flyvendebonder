@@ -137,7 +137,9 @@ from ..services.admin_access import (
 )
 from ..services.operating_areas import candidate_id as operating_area_candidate_id
 from ..services.operating_areas import candidate_source_key as operating_area_source_key
+from ..services.operating_areas import candidate_with_property_identity
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
+from ..services.operating_areas import find_field_for_candidate
 from ..services.gardskart import get_job_id
 from ..services.geonorge_teiger import (
     list_field_candidates_for_property,
@@ -2493,22 +2495,15 @@ async def confirm_operating_area(
 
     source_key = operating_area_source_key(selected)
     selected = {**selected, "candidate_id": candidate_id, "source_key": source_key}
-    field = (
-        db.execute(
-            select(FieldPlot).where(
-                FieldPlot.property_id == property_obj.id,
-                FieldPlot.source == "imported",
-                FieldPlot.source_key == source_key,
-            )
+    try:
+        field = find_field_for_candidate(
+            db,
+            property_obj=property_obj,
+            candidate=selected,
+            source_key=source_key,
         )
-        .scalars()
-        .first()
-    )
-    if field is None:
-        try:
-            field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
-        except ValueError as exc:
-            raise HTTPException(status_code=502, detail="Eiendomsoppslaget returnerte ugyldig geometri.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Eiendomsoppslaget returnerte ugyldig geometri.") from exc
     field_created = field is None
     if field is None:
         try:
@@ -2649,10 +2644,19 @@ async def resolve_owned_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
+    try:
+        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+        candidate = {**candidate, "source_key": source_key}
+        field = find_field_for_candidate(
+            db, property_obj=property_obj, candidate=candidate, source_key=source_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
     imported_field = field is None
     if field is None:
         field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
+    elif field.source == "imported" and field.source_key is None:
+        field.source_key = source_key
 
     unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
     db.commit()
@@ -2710,10 +2714,19 @@ async def resolve_property_planning_point(
     if not isinstance(geometry, dict):
         raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig geometri")
 
-    field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=geometry)
+    try:
+        candidate, source_key = candidate_with_property_identity(candidate, property_obj)
+        candidate = {**candidate, "source_key": source_key}
+        field = find_field_for_candidate(
+            db, property_obj=property_obj, candidate=candidate, source_key=source_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Kandidaten mangler gyldig kildeidentitet") from exc
     imported_field = field is None
     if field is None:
         field = create_field_from_candidate(db, property_obj=property_obj, candidate=candidate, status="draft")
+    elif field.source == "imported" and field.source_key is None:
+        field.source_key = source_key
 
     unit, created_unit = ensure_active_planning_unit_for_field(db, property_obj=property_obj, field=field)
     db.commit()

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import FieldPlot, PlanningUnit, Property
-from .planning import find_field_plot_for_geometry
+from .planning import field_source_provenance, find_field_plot_for_geometry
 
 
 def candidate_source_key(candidate: dict[str, Any]) -> str:
@@ -61,6 +61,71 @@ def candidate_id(candidate: dict[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def candidate_with_property_identity(
+    candidate: dict[str, Any], property_obj: Property
+) -> tuple[dict[str, Any], str]:
+    enriched = {
+        **candidate,
+        "property_ref": candidate.get("property_ref")
+        or {
+            "komm": property_obj.komm,
+            "gnr": property_obj.gnr,
+            "bnr": property_obj.bnr,
+            "fnr": property_obj.fnr,
+            "label": property_obj.label,
+        },
+    }
+    return enriched, candidate_source_key(enriched)
+
+
+def find_field_for_candidate(
+    db: Session,
+    *,
+    property_obj: Property,
+    candidate: dict[str, Any],
+    source_key: str,
+) -> FieldPlot | None:
+    field = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.source == "imported",
+                FieldPlot.source_key == source_key,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if field is not None:
+        return field
+
+    legacy_fields = (
+        db.execute(
+            select(FieldPlot).where(
+                FieldPlot.property_id == property_obj.id,
+                FieldPlot.source == "imported",
+                FieldPlot.source_key.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for legacy_field in legacy_fields:
+        provenance = field_source_provenance(legacy_field)
+        # Older imports persisted Geonorge's local feature id but not the new
+        # source key. Without that id, geometry remains the only safe match.
+        if provenance.get("local_id") is None:
+            continue
+        try:
+            _, legacy_key = candidate_with_property_identity(provenance, property_obj)
+        except (TypeError, ValueError):
+            continue
+        if legacy_key == source_key:
+            return legacy_field
+
+    return find_field_plot_for_geometry(db, property_obj=property_obj, geometry=candidate["geometry"])
+
+
 def existing_connection(
     db: Session,
     *,
@@ -84,19 +149,12 @@ def existing_connection(
     )
     if property_obj is None:
         return None
-    field = (
-        db.execute(
-            select(FieldPlot).where(
-                FieldPlot.property_id == property_obj.id,
-                FieldPlot.source == "imported",
-                FieldPlot.source_key == source_key,
-            )
-        )
-        .scalars()
-        .first()
+    field = find_field_for_candidate(
+        db,
+        property_obj=property_obj,
+        candidate=candidate,
+        source_key=source_key,
     )
-    if field is None:
-        field = find_field_plot_for_geometry(db, property_obj=property_obj, geometry=candidate["geometry"])
     if field is None:
         return None
     unit_ids = []
