@@ -23,6 +23,7 @@ interface ApiRequestOptions {
   dedupe?: boolean;
   cache?: boolean;
   cacheTtlMs?: number;
+  notifyAuthFailure?: boolean;
 }
 
 interface ErrorPayload {
@@ -332,7 +333,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
           }
 
           const apiError = await parseApiError(response, parsed);
-          if (responseRejectsAuthentication(response.status, apiError.detail)) {
+          if (options.notifyAuthFailure !== false && responseRejectsAuthentication(response.status, apiError.detail)) {
             notifyAuthRejected(response.status);
           }
           if (RETRIABLE_STATUS.has(response.status) && attempt < maxRetries) {

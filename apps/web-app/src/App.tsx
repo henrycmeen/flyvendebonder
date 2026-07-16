@@ -1001,6 +1001,12 @@ export default function App() {
 
       clearPrivateApplicationState();
       if (confirmedSession) {
+        if (confirmedSession.open_access) {
+          setAdminSession(confirmedSession);
+          setStatusText("Åpen tilgang er aktiv, men gårdsdata kunne ikke lastes.");
+          addLog("warn", "Åpen tilgang bekreftet, men profilen kunne ikke lastes", apiError.requestId, apiError.detail);
+          return confirmedSession;
+        }
         const lockedSession: AdminSessionStatus = {
           configured: confirmedSession.configured,
           open_access: confirmedSession.open_access,
@@ -1615,6 +1621,33 @@ export default function App() {
   useEffect(() => {
     const handleAuthRejected = (event: Event) => {
       const status = event instanceof CustomEvent ? Number(event.detail?.status) : 401;
+      if (adminSession?.open_access) {
+        clearPrivateApplicationState();
+        setStatusText(
+          status === 403
+            ? "Handlingen ble avvist. Sjekker fortsatt åpen tilgang …"
+            : "Gårdsdata kunne ikke lastes. Sjekker fortsatt åpen tilgang …",
+        );
+        void apiGet<AdminSessionStatus>("/api/v1/admin/session", {
+          cache: false,
+          dedupe: false,
+          notifyAuthFailure: false,
+        })
+          .then(({ data }) => {
+            setAdminSession(data);
+            setStatusText(
+              data.open_access && data.authenticated
+                ? "Åpen tilgang er aktiv, men forespørselen ble avvist."
+                : "Tilgangsmodus er endret. Logg inn for å åpne gårdsdata.",
+            );
+          })
+          .catch((error) => {
+            const apiError = error as ApiError;
+            setStatusText("Kunne ikke kontrollere tilgangsmodus. Prøv igjen.");
+            addLog("warn", "Kunne ikke kontrollere tilgangsmodus", apiError.requestId, apiError.detail);
+          });
+        return;
+      }
       clearPrivateApplicationState();
       setAdminSession((current) => ({
         configured: current?.configured ?? true,
@@ -1633,7 +1666,7 @@ export default function App() {
     return () => {
       window.removeEventListener(AUTH_REJECTED_EVENT, handleAuthRejected);
     };
-  }, [clearPrivateApplicationState]);
+  }, [addLog, adminSession?.open_access, clearPrivateApplicationState]);
 
   useEffect(() => {
     if (!adminSession?.authenticated) return;
@@ -2885,8 +2918,23 @@ export default function App() {
     }
   }, [activeView]);
 
+  if (adminSession === null) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10" data-testid="access-check">
+        <section className="flex items-center gap-3 rounded-3xl border border-fb-border-subtle bg-fb-surface-page px-6 py-5 shadow-xl">
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-fb-surface-raised">
+            <img src={`${import.meta.env.BASE_URL}flyvendebonder-logo.svg`} alt="" className="h-8 w-8" />
+          </span>
+          <div>
+            <p className="text-sm text-fb-text-secondary">Flyvendebønder</p>
+            <p className="text-sm font-medium text-fb-text-primary" role="status">Åpner gårdsdata …</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (!isAdminAuthenticated) {
-    const sessionCheckPending = adminSession === null;
     const loginConfigured = adminSession?.configured === true;
     return (
       <main className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10" data-testid="login-gate">
@@ -2901,9 +2949,7 @@ export default function App() {
             </div>
           </div>
 
-          {sessionCheckPending ? (
-            <p className="text-sm text-fb-text-secondary">Sjekker tilgang …</p>
-          ) : loginConfigured ? (
+          {loginConfigured ? (
             <form
               className="space-y-4"
               onSubmit={(event) => {

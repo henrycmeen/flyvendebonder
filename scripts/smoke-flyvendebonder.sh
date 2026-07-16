@@ -5,6 +5,7 @@ BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 APP_URL="${APP_URL:-http://127.0.0.1:5173/app/}"
 ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
 SMOKE_ALLOW_WRITES="${SMOKE_ALLOW_WRITES:-0}"
+EXPECT_OPEN_ACCESS="${EXPECT_OPEN_ACCESS:-}"
 AUTH_COOKIE_JAR=""
 MISSION_ID=""
 
@@ -41,6 +42,10 @@ fail() {
   echo "SMOKE FAIL: $1" >&2
   exit 1
 }
+
+if [[ -n "$EXPECT_OPEN_ACCESS" && "$EXPECT_OPEN_ACCESS" != "true" && "$EXPECT_OPEN_ACCESS" != "false" ]]; then
+  fail "EXPECT_OPEN_ACCESS må være true, false eller tom."
+fi
 
 require_200() {
   local url="$1"
@@ -150,6 +155,9 @@ require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('statu
 
 ADMIN_CONFIGURED="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('configured') is True else 'false'")"
 OPEN_ACCESS="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('open_access') is True else 'false'")"
+if [[ -n "$EXPECT_OPEN_ACCESS" && "$OPEN_ACCESS" != "$EXPECT_OPEN_ACCESS" ]]; then
+  fail "Forventet open_access=$EXPECT_OPEN_ACCESS, fikk $OPEN_ACCESS"
+fi
 if [[ "$OPEN_ACCESS" == "true" ]]; then
   require_json_field "Open admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and obj.get('open_access') is True and obj.get('authenticated') is True"
 else
