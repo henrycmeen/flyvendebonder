@@ -106,7 +106,7 @@ def run_photo_ingest(
         raise FileNotFoundError(f"Katalog finnes ikke: {source_path}")
 
     user, property_obj = _default_targets(db, user_id=user_id, property_id=property_id)
-    run = IngestRun(source_path=str(source_path), started_at=datetime.utcnow())
+    run = IngestRun(user_id=user.id, source_path=str(source_path), started_at=datetime.utcnow())
     db.add(run)
     db.commit()
     db.refresh(run)
