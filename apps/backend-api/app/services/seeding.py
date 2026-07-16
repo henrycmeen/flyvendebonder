@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Farm, FarmMembership, Photo, PhotoAsset, Property, User
 from .image_derivatives import write_derivatives
+from .pilot_identity import resolve_pilot_owner
 
 settings = get_settings()
 
@@ -92,7 +93,7 @@ def _ensure_owner_farm(
 
 
 def seed_default_user_and_property(db: Session) -> tuple[User, Property]:
-    user = db.execute(select(User).where(User.full_name == settings.default_user_name)).scalar_one_or_none()
+    user = resolve_pilot_owner(db)
     if user is None:
         user = User(
             full_name=settings.default_user_name,
