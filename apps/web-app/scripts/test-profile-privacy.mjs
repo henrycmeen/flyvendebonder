@@ -53,6 +53,11 @@ assert.match(
   /catch[\s\S]*clearPrivateProfileState\(\)/,
   "An unknown session state must fail closed without retaining private profile data",
 );
+assert.match(
+  loadAdminSession,
+  /let confirmedSession:[\s\S]*catch[\s\S]*configured:\s*confirmedSession\.configured/,
+  "A profile reload failure must preserve a successfully confirmed backend configuration state",
+);
 const authenticatedSessionBranch = loadAdminSession.match(/} else \{[\s\S]*?\n      }/)?.[0] ?? "";
 assert.ok(
   authenticatedSessionBranch.indexOf("await loadProfile") < authenticatedSessionBranch.indexOf("setAdminSession(data)"),

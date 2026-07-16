@@ -914,6 +914,7 @@ export default function App() {
 
   const loadAdminSession = useCallback(async (options?: { signal?: AbortSignal; silent?: boolean }): Promise<AdminSessionStatus | null> => {
     const seq = ++adminSessionLoadSeqRef.current;
+    let confirmedSession: AdminSessionStatus | null = null;
     const requestController = options?.signal
       ? null
       : (() => {
@@ -931,6 +932,7 @@ export default function App() {
           dedupe: false,
         }),
       );
+      confirmedSession = data;
 
       if (seq !== adminSessionLoadSeqRef.current) return data;
 
@@ -954,16 +956,35 @@ export default function App() {
       if (seq !== adminSessionLoadSeqRef.current) return null;
       if (isRequestAborted(apiError)) return null;
 
+      clearPrivateProfileState();
+      if (confirmedSession) {
+        const lockedSession: AdminSessionStatus = {
+          configured: confirmedSession.configured,
+          authenticated: false,
+          expires_at: null,
+        };
+        setAdminSession(lockedSession);
+        if (confirmedSession.authenticated) {
+          try {
+            await logoutAdminAndLoadPublicProfile();
+          } catch (logoutError) {
+            const logoutApiError = logoutError as ApiError;
+            addLog("warn", "Kunne ikke rydde admin-sesjon etter profilfeil", logoutApiError.requestId, logoutApiError.detail);
+          }
+        }
+        addLog("warn", "Admin-status bekreftet, men profilen kunne ikke lastes", apiError.requestId, apiError.detail);
+        return lockedSession;
+      }
+
       setAdminSession({
         configured: false,
         authenticated: false,
         expires_at: null,
       });
-      clearPrivateProfileState();
       addLog("warn", "Kunne ikke hente admin-status", apiError.requestId, apiError.detail);
       return null;
     }
-  }, [addLog, clearPrivateProfileState, loadProfile, trackRequest]);
+  }, [addLog, clearPrivateProfileState, loadProfile, logoutAdminAndLoadPublicProfile, trackRequest]);
 
   const loadBackendLogs = useCallback(async (options?: { signal?: AbortSignal }) => {
     const seq = ++backendLogLoadSeqRef.current;
