@@ -338,12 +338,23 @@ def _ensure_user_property(
     return item, True
 
 
-def _profile_out(db: Session, user: User) -> ProfileOut:
+def _profile_out(db: Session, user: User, *, include_private_contact: bool = True) -> ProfileOut:
     properties = _active_properties(db, user.id)
     current = properties[0] if properties else None
     additional = properties[1:] if len(properties) > 1 else []
+    user_out = UserOut.model_validate(user)
+    if not include_private_contact:
+        user_out = user_out.model_copy(
+            update={
+                "phone": None,
+                "email": None,
+                "address_line1": None,
+                "postal_code": None,
+                "city": None,
+            }
+        )
     return ProfileOut(
-        user=UserOut.model_validate(user),
+        user=user_out,
         property=PropertyOut.model_validate(current) if current else None,
         additional_properties=[PropertyOut.model_validate(item) for item in additional],
     )
@@ -1843,9 +1854,10 @@ def logout_admin(response: Response) -> AdminSessionStatusResponse:
 
 
 @router.get("/profile/current", response_model=ProfileOut)
-def get_profile_current(db: Session = Depends(get_db)) -> ProfileOut:
+def get_profile_current(request: Request, response: Response, db: Session = Depends(get_db)) -> ProfileOut:
     user = _current_user(db)
-    return _profile_out(db, user)
+    response.headers["Cache-Control"] = "no-store"
+    return _profile_out(db, user, include_private_contact=get_admin_session(request) is not None)
 
 
 @router.patch("/profile/current", response_model=ProfileOut)

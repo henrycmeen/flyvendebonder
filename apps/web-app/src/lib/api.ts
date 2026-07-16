@@ -286,6 +286,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
               ...(options.headers || {}),
             },
             credentials: options.credentials ?? "same-origin",
+            cache: shouldCache ? "default" : "no-store",
             signal,
           });
 

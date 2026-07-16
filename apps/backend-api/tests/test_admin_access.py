@@ -25,6 +25,43 @@ def test_admin_logout_blocks_subsequent_writes(client):
     assert response.json()["detail"] == "Admin-innlogging kreves for denne handlingen"
 
 
+def test_public_profile_redacts_private_contact_fields(client):
+    update = client.patch(
+        "/api/v1/profile/current",
+        json={
+            "user": {
+                "phone": "+47 22222222",
+                "email": "private@example.test",
+                "address_line1": "Privatveien 1",
+                "postal_code": "0001",
+                "city": "Privatsted",
+            }
+        },
+    )
+    assert update.status_code == 200
+
+    logout = client.post("/api/v1/admin/logout")
+    assert logout.status_code == 200
+
+    public_profile = client.get("/api/v1/profile/current")
+    assert public_profile.status_code == 200
+    assert public_profile.headers["cache-control"] == "no-store"
+    public_user = public_profile.json()["user"]
+    for field in ("phone", "email", "address_line1", "postal_code", "city"):
+        assert public_user[field] is None
+
+    login = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
+    assert login.status_code == 200
+    private_profile = client.get("/api/v1/profile/current")
+    assert private_profile.headers["cache-control"] == "no-store"
+    private_user = private_profile.json()["user"]
+    assert private_user["phone"] == "+47 22222222"
+    assert private_user["email"] == "private@example.test"
+    assert private_user["address_line1"] == "Privatveien 1"
+    assert private_user["postal_code"] == "0001"
+    assert private_user["city"] == "Privatsted"
+
+
 def test_admin_login_rejects_invalid_code(client):
     logout = client.post("/api/v1/admin/logout")
     assert logout.status_code == 200
