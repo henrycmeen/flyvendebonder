@@ -206,6 +206,38 @@ slicer under #250; denne overgangen skal ikke tolkes som full route-isolasjon.
 Hvis admin-tilgang deaktiveres, ignoreres og slettes eksisterende cookies også
 for leseruter, slik at privat profilinformasjon ikke forblir tilgjengelig.
 
+### Sesjonsbundet operativ skrivetilgang
+
+Neste identitetsslice binder alle eksisterende sesjonsbeskyttede operative
+ruter til `user_id` i den signerte adminsesjonen. Det gjelder felt, planlegging,
+funn, oppdrag, captures, processing, bildehandlinger, import, media, video,
+assets og backendlogger. Objektoppslag og foreldrekoblinger blir filtrert i
+databasespørringen; en ID som tilhører en annen pilot-eier gir `404`.
+Vedlikeholdsendepunkter som fortsatt tar `user_id` som parameter avviser en
+annen ID enn sesjonsidentiteten med `403`.
+
+`ingest_runs` får en obligatorisk eier og kan bare leses eller kobles til
+processing-artefakter av samme sesjonsbruker. Bildehash-deduplisering skjer
+per bruker, slik at samme bildefil aldri gjenbruker eller røper en annen
+brukers `photo_id`. De underliggende derivatfilene kan være innholdslike, men
+hver bruker får sitt eget autoriserbare foto- og assetobjekt. Migreringen utleder eier fra
+tilknyttede bilder, bilde-assets eller processing-captures. En historisk
+kjøring uten slike koblinger kan bare legges til den eneste aktive eieren;
+tvetydige kjøringer eller flere mulige fallback-eiere stopper migreringen før
+schemaet endres. Teknisk rollback er kode-rollback sammen med
+Alembic-downgrade til `20260716_18`, etter verifisert databasebackup. Hvis to
+brukere allerede har importert samme bildefil etter deploy, stopper hash-
+downgraden før DDL; da skal den verifiserte pre-deploy-backupen gjenopprettes.
+
+Backendlogger er systemglobale og er derfor et eksplisitt unntak fra vanlig
+tenant-scope. Bare identiteten som er konfigurert som pilotadministrator kan
+lese dem; et annet aktivt eiermedlemskap er ikke tilstrekkelig.
+
+Denne slicen endrer ikke de eksisterende anonyme leserutene. Default-deny,
+offentlig allowlist og rydding av privat frontend-state leveres i neste
+route-slice; dette skillet hindrer at en sikkerhetsendring utilsiktet bryter
+dagens offentlige lesekontrakt.
+
 ## Testkontrakt
 
 Implementasjonen skal minst bevise:

@@ -162,7 +162,7 @@ def test_processing_run_and_artifact_lifecycle(client):
     assert patched["finished_at"] is not None
 
     with SessionLocal() as db:
-        ingest_run = IngestRun(source_path="/tmp/imports/demo")
+        ingest_run = IngestRun(user_id=1, source_path="/tmp/imports/demo")
         db.add(ingest_run)
         db.commit()
         db.refresh(ingest_run)

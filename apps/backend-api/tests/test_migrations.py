@@ -118,3 +118,196 @@ def test_observed_at_migration_keeps_existing_scouting_tasks_unknown(tmp_path, m
     assert property_row.operating_relation_confirmed_at is None
     assert field_source_key is None
     get_settings.cache_clear()
+
+
+def _migration_config(database_url: str) -> Config:
+    cfg = Config(str(_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_ROOT / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", database_url)
+    return cfg
+
+
+def _insert_owner_before_farm_migration(connection, *, user_id: int, property_id: int) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO users (id, full_name, created_at, updated_at) "
+            "VALUES (:user_id, :name, '2026-01-01', '2026-01-01')"
+        ),
+        {"user_id": user_id, "name": f"Eier {user_id}"},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO properties ("
+            "id, user_id, komm, gnr, bnr, fnr, operating_relation, created_at, updated_at"
+            ") VALUES ("
+            ":property_id, :user_id, '4003', :gnr, 1, 0, 'unknown', "
+            "'2026-01-01', '2026-01-01'"
+            ")"
+        ),
+        {"property_id": property_id, "user_id": user_id, "gnr": 70 + user_id},
+    )
+
+
+def _insert_ingest_run(connection, *, run_id: int) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO ingest_runs ("
+            "id, started_at, source_path, files_seen, files_imported, files_skipped, errors_json"
+            ") VALUES ("
+            ":run_id, '2026-07-16', :source_path, 0, 0, 0, '[]'"
+            ")"
+        ),
+        {"run_id": run_id, "source_path": f"/synthetic/run-{run_id}"},
+    )
+
+
+def _insert_photo(
+    connection,
+    *,
+    photo_id: str,
+    user_id: int,
+    property_id: int,
+    run_id: int | None,
+    source_hash: str | None = None,
+) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO photos ("
+            "id, user_id, property_id, ingest_run_id, captured_at, captured_date, lat, lng, "
+            "source_filename, source_hash, tags_json, created_at, updated_at"
+            ") VALUES ("
+            ":photo_id, :user_id, :property_id, :run_id, '2026-07-16', '2026-07-16', "
+            "59.0, 10.0, :filename, :source_hash, '[]', '2026-07-16', '2026-07-16'"
+            ")"
+        ),
+        {
+            "photo_id": photo_id,
+            "user_id": user_id,
+            "property_id": property_id,
+            "run_id": run_id,
+            "filename": f"{photo_id}.jpg",
+            "source_hash": source_hash or f"hash-{photo_id}",
+        },
+    )
+
+
+def test_ingest_run_ownership_migration_backfills_and_downgrades(tmp_path, monkeypatch) -> None:
+    from app.config import get_settings
+
+    database_url = f"sqlite:///{(tmp_path / 'ingest-ownership.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    cfg = _migration_config(database_url)
+    command.upgrade(cfg, "20260716_17")
+    engine = create_engine(database_url)
+
+    with engine.begin() as connection:
+        _insert_owner_before_farm_migration(connection, user_id=1, property_id=1)
+    command.upgrade(cfg, "20260716_18")
+    with engine.begin() as connection:
+        _insert_ingest_run(connection, run_id=1)
+        _insert_ingest_run(connection, run_id=2)
+        _insert_photo(connection, photo_id="photo-owned", user_id=1, property_id=1, run_id=1)
+
+    command.upgrade(cfg, "head")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT id, user_id FROM ingest_runs ORDER BY id")
+        ).all() == [(1, 1), (2, 1)]
+        assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+        columns = {row.name: row for row in connection.execute(text("PRAGMA table_info(ingest_runs)"))}
+        assert columns["user_id"].notnull == 1
+
+    command.downgrade(cfg, "20260716_18")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM ingest_runs")).scalar_one() == 2
+        assert "user_id" not in {
+            row.name for row in connection.execute(text("PRAGMA table_info(ingest_runs)"))
+        }
+        assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    get_settings.cache_clear()
+
+
+def test_photo_hash_ownership_migration_blocks_unsafe_downgrade(tmp_path, monkeypatch) -> None:
+    from app.config import get_settings
+
+    database_url = f"sqlite:///{(tmp_path / 'photo-hash-ownership.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    cfg = _migration_config(database_url)
+    command.upgrade(cfg, "20260716_17")
+    engine = create_engine(database_url)
+
+    with engine.begin() as connection:
+        _insert_owner_before_farm_migration(connection, user_id=1, property_id=1)
+        _insert_owner_before_farm_migration(connection, user_id=2, property_id=2)
+    command.upgrade(cfg, "head")
+
+    with engine.begin() as connection:
+        _insert_photo(
+            connection,
+            photo_id="shared-user-1",
+            user_id=1,
+            property_id=1,
+            run_id=None,
+            source_hash="shared-source-hash",
+        )
+        _insert_photo(
+            connection,
+            photo_id="shared-user-2",
+            user_id=2,
+            property_id=2,
+            run_id=None,
+            source_hash="shared-source-hash",
+        )
+
+    for _attempt in range(2):
+        try:
+            command.downgrade(cfg, "20260716_19")
+        except RuntimeError as exc:
+            assert "flere brukere" in str(exc)
+        else:
+            raise AssertionError("Utrygg hash-downgrade skulle ha blitt stoppet")
+
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260716_20"
+            assert connection.execute(
+                text("SELECT COUNT(*) FROM photos WHERE source_hash = 'shared-source-hash'")
+            ).scalar_one() == 2
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    get_settings.cache_clear()
+
+
+def test_ingest_run_ownership_migration_rejects_ambiguous_data_before_ddl(tmp_path, monkeypatch) -> None:
+    from app.config import get_settings
+
+    database_url = f"sqlite:///{(tmp_path / 'ambiguous-ingest-ownership.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    cfg = _migration_config(database_url)
+    command.upgrade(cfg, "20260716_17")
+    engine = create_engine(database_url)
+
+    with engine.begin() as connection:
+        _insert_owner_before_farm_migration(connection, user_id=1, property_id=1)
+        _insert_owner_before_farm_migration(connection, user_id=2, property_id=2)
+    command.upgrade(cfg, "20260716_18")
+    with engine.begin() as connection:
+        _insert_ingest_run(connection, run_id=1)
+        _insert_photo(connection, photo_id="photo-user-1", user_id=1, property_id=1, run_id=1)
+        _insert_photo(connection, photo_id="photo-user-2", user_id=2, property_id=2, run_id=1)
+
+    for _attempt in range(2):
+        try:
+            command.upgrade(cfg, "20260716_19")
+        except RuntimeError as exc:
+            assert "flere brukeridentiteter" in str(exc)
+        else:
+            raise AssertionError("Tvetydig importkjøring skulle ha stoppet migreringen")
+
+        with engine.connect() as connection:
+            assert "user_id" not in {
+                row.name for row in connection.execute(text("PRAGMA table_info(ingest_runs)"))
+            }
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260716_18"
+    get_settings.cache_clear()

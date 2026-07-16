@@ -291,6 +291,12 @@ def _request_owner_user(
     return _owner_user_for_session(db, session)
 
 
+def _session_user_id(user: User, requested_user_id: int | None) -> int:
+    if requested_user_id is not None and requested_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Kan ikke velge en annen bruker enn sesjonsidentiteten")
+    return user.id
+
+
 def _pilot_owner_for_login(db: Session) -> User:
     try:
         user = resolve_pilot_owner(db)
@@ -302,6 +308,12 @@ def _pilot_owner_for_login(db: Session) -> User:
     if user is None:
         raise HTTPException(status_code=503, detail="Pilotinnlogging krever en aktiv eier")
     return user
+
+
+def _require_pilot_admin_identity(db: Session, user: User) -> None:
+    pilot_user = _pilot_owner_for_login(db)
+    if pilot_user.id != user.id:
+        raise HTTPException(status_code=403, detail="Backendlogger krever pilotadministrator")
 
 
 def _current_property(db: Session, user_id: int) -> Property | None:
@@ -1860,8 +1872,10 @@ def get_orthophoto_color_sample(
 def get_logs(
     limit: int = Query(default=200, ge=1, le=1000),
     level: str | None = Query(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
 ) -> BackendLogsResponse:
+    _require_pilot_admin_identity(db, user)
     if level and level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         raise HTTPException(status_code=400, detail="Nyttig nivå: DEBUG, INFO, WARNING, ERROR, CRITICAL")
 
@@ -2102,10 +2116,9 @@ def get_field_report_html(field_id: int, db: Session = Depends(get_db)) -> HTMLR
 @router.post("/fields", response_model=FieldPlotOut, status_code=status.HTTP_201_CREATED)
 def create_field_plot(
     payload: FieldPlotCreate = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, payload.property_id)
     geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
 
@@ -2133,10 +2146,9 @@ def create_field_plot(
 def patch_field_plot(
     field_id: int,
     payload: FieldPlotPatch = Body(default_factory=FieldPlotPatch),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
-    user = _current_user(db)
     item = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
 
     if "name" in payload.model_fields_set:
@@ -2176,10 +2188,9 @@ def patch_field_plot(
 @router.delete("/fields/{field_id}", response_model=FieldPlotDeleteResponse)
 def delete_field_plot(
     field_id: int,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldPlotDeleteResponse:
-    user = _current_user(db)
     item = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
 
     db.execute(
@@ -2196,10 +2207,9 @@ def delete_field_plot(
 @router.get("/fields/export.geojson")
 def export_field_plots_geojson(
     status_filter: str | None = Query(default=None, alias="status"),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     query = (
         select(FieldPlot)
@@ -2259,10 +2269,9 @@ def list_planning_drone_profiles() -> DroneProfileListResponse:
 @router.post("/planning/properties/{property_id}/sync", response_model=PlanningUnitSyncResponse)
 async def sync_property_planning_units(
     property_id: int,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PlanningUnitSyncResponse:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, property_id)
 
     try:
@@ -2355,10 +2364,9 @@ def list_scouting_tasks(
 @router.post("/scouting/tasks", response_model=ScoutingTaskOut, status_code=status.HTTP_201_CREATED)
 def create_scouting_task(
     payload: ScoutingTaskCreate = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ScoutingTaskOut:
-    user = _current_user(db)
     property_obj, field, planning_unit = _resolve_scouting_scope(
         db,
         user_id=user.id,
@@ -2402,10 +2410,9 @@ def create_scouting_task(
 def patch_scouting_task(
     task_id: int,
     payload: ScoutingTaskPatch = Body(default_factory=ScoutingTaskPatch),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ScoutingTaskOut:
-    user = _current_user(db)
     item = _require_user_scouting_task(db, user_id=user.id, task_id=task_id)
 
     if payload.title is not None:
@@ -2447,10 +2454,9 @@ def patch_scouting_task(
 def split_property_planning_unit(
     unit_id: int,
     payload: PlanningUnitSplitIn = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PlanningUnitSplitOut:
-    user = _current_user(db)
     unit = _require_user_planning_unit(db, user_id=user.id, unit_id=unit_id)
     property_obj = _require_active_property(db, user.id, unit.property_id)
 
@@ -2562,12 +2568,11 @@ async def preview_operating_area(
 async def confirm_operating_area(
     candidate_id: str,
     payload: OperatingAreaConfirmIn = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> OperatingAreaConfirmOut:
     if len(candidate_id) != 64 or any(char not in "0123456789abcdef" for char in candidate_id):
         raise HTTPException(status_code=409, detail="Teigvalget er ikke lenger gyldig. Trykk i kartet på nytt.")
-    user = _current_user(db)
     candidates = await _lookup_operating_area_candidates(payload)
     selected: dict[str, Any] | None = None
     for candidate in candidates:
@@ -2737,10 +2742,9 @@ def _resolve_planning_candidate(
 @router.post("/planning/resolve-point", response_model=PlanningPointResolveOut)
 async def resolve_owned_planning_point(
     payload: PlanningPointResolveIn = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PlanningPointResolveOut:
-    user = _current_user(db)
     try:
         candidates = await lookup_field_candidates_by_point_any(
             lat=payload.lat,
@@ -2808,10 +2812,9 @@ async def resolve_owned_planning_point(
 async def resolve_property_planning_point(
     property_id: int,
     payload: PlanningPointResolveIn = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PlanningPointResolveOut:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, property_id)
 
     try:
@@ -2898,10 +2901,9 @@ def preview_flight_mission(
 def create_flight_mission(
     payload: FlightMissionCreate = Body(...),
     property_id: int | None = Query(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightMissionOut:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, payload.property_id if payload.property_id is not None else property_id)
     mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
 
@@ -2945,10 +2947,9 @@ def patch_flight_mission(
     mission_id: int,
     payload: FlightMissionPatch = Body(default_factory=FlightMissionPatch),
     property_id: int | None = Query(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightMissionOut:
-    user = _current_user(db)
     item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
     if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
@@ -2982,10 +2983,9 @@ def patch_flight_mission(
 def delete_flight_mission(
     mission_id: int,
     property_id: int | None = Query(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    user = _current_user(db)
     item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
     if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
@@ -3000,10 +3000,9 @@ def export_flight_mission(
     mission_id: int,
     property_id: int | None = Query(default=None),
     format: str = Query(default="auto"),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    user = _current_user(db)
     item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
     if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
@@ -3103,10 +3102,9 @@ def export_flight_mission(
 def export_flight_mission_route_geojson(
     mission_id: int,
     property_id: int | None = Query(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    user = _current_user(db)
     item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
     if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
@@ -3152,10 +3150,9 @@ def list_flight_captures(db: Session = Depends(get_db)) -> FlightCaptureListResp
 @router.post("/flight-captures", response_model=FlightCaptureOut, status_code=status.HTTP_201_CREATED)
 def create_flight_capture(
     payload: FlightCaptureCreate = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightCaptureOut:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     photos = _resolve_flight_capture_photos(db, user_id=user.id, property_obj=property_obj, photo_ids=payload.photo_ids)
 
@@ -3232,10 +3229,9 @@ def list_processing_runs(db: Session = Depends(get_db)) -> ProcessingRunListResp
 @router.post("/processing-runs", response_model=ProcessingRunOut, status_code=status.HTTP_201_CREATED)
 def create_processing_run(
     payload: ProcessingRunCreate = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ProcessingRunOut:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     capture = _resolve_flight_capture(db, property_obj=property_obj, capture_id=payload.capture_id)
 
@@ -3283,10 +3279,9 @@ def get_processing_run(run_id: int, db: Session = Depends(get_db)) -> Processing
 def patch_processing_run(
     run_id: int,
     payload: ProcessingRunPatch = Body(default_factory=ProcessingRunPatch),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ProcessingRunOut:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     item = (
         db.execute(
@@ -3350,10 +3345,9 @@ def list_processing_artifacts(run_id: int, db: Session = Depends(get_db)) -> Pro
 def create_processing_artifact(
     run_id: int,
     payload: ProcessingArtifactCreate = Body(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ProcessingArtifactOut:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     run = (
         db.execute(
@@ -3367,6 +3361,20 @@ def create_processing_artifact(
     )
     if run is None:
         raise HTTPException(status_code=404, detail="Fant ikke processing-run")
+
+    if payload.ingest_run_id is not None:
+        ingest_run = (
+            db.execute(
+                select(IngestRun).where(
+                    IngestRun.id == payload.ingest_run_id,
+                    IngestRun.user_id == user.id,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if ingest_run is None:
+            raise HTTPException(status_code=404, detail="Fant ikke importkjøring")
 
     item = ProcessingArtifact(
         processing_run_id=run.id,
@@ -3547,10 +3555,12 @@ def get_photo_assets(photo_id: str, db: Session = Depends(get_db)) -> PhotoAsset
 @router.post("/photos/{photo_id}/approve-analysis", response_model=PhotoAnalysisActionResponse)
 def approve_photo_analysis(
     photo_id: str,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoAnalysisActionResponse:
-    photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
+    photo = db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == user.id)
+    ).scalar_one_or_none()
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
 
@@ -3579,10 +3589,12 @@ def approve_photo_analysis(
 @router.post("/photos/{photo_id}/recompute-analysis", response_model=PhotoAnalysisActionResponse)
 def recompute_photo_analysis(
     photo_id: str,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoAnalysisActionResponse:
-    photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
+    photo = db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == user.id)
+    ).scalar_one_or_none()
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
 
@@ -3603,10 +3615,12 @@ def recompute_photo_analysis(
 def patch_photo_metadata(
     photo_id: str,
     payload: PhotoMetadataPatchRequest = Body(default_factory=PhotoMetadataPatchRequest),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoMetadataActionResponse:
-    photo = db.execute(select(Photo).where(Photo.id == photo_id)).scalar_one_or_none()
+    photo = db.execute(
+        select(Photo).where(Photo.id == photo_id, Photo.user_id == user.id)
+    ).scalar_one_or_none()
     if photo is None:
         raise HTTPException(status_code=404, detail="Fant ikke bilde")
 
@@ -3688,11 +3702,10 @@ def patch_photo_metadata(
 def refresh_analysis(
     user_id: int | None = Query(default=None),
     force: bool = Query(default=False),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoAnalysisRefreshResponse:
-    if user_id is None:
-        user_id = _current_user(db).id
+    user_id = _session_user_id(user, user_id)
 
     results = rebuild_photo_analysis_for_user(db, user_id=user_id, force=force)
     return PhotoAnalysisRefreshResponse(**results)
@@ -3703,11 +3716,10 @@ def reprocess_photo_metadata(
     user_id: int | None = Query(default=None),
     refresh_analysis: bool = Query(default=True),
     force_analysis: bool = Query(default=True),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoReprocessResponse:
-    if user_id is None:
-        user_id = _current_user(db).id
+    user_id = _session_user_id(user, user_id)
 
     results = reprocess_photos_for_user(
         db,
@@ -3885,17 +3897,29 @@ async def get_property_field_candidates_by_point(
 @router.post("/imports/photos")
 def post_import_photos(
     payload: ImportRequest = Body(default_factory=ImportRequest),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> dict:
     source = Path(payload.source_path) if payload.source_path else settings.imports_default_source
-    run = run_photo_ingest(db, source)
+    property_obj = _current_property(db, user.id)
+    run = run_photo_ingest(
+        db,
+        source,
+        user_id=user.id,
+        property_id=property_obj.id if property_obj else None,
+    )
     return {"import_run": ImportRunOut.model_validate(run)}
 
 
 @router.get("/imports/{run_id}")
-def get_import_run(run_id: int, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> dict:
-    run = db.execute(select(IngestRun).where(IngestRun.id == run_id)).scalar_one_or_none()
+def get_import_run(
+    run_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    run = db.execute(
+        select(IngestRun).where(IngestRun.id == run_id, IngestRun.user_id == user.id)
+    ).scalar_one_or_none()
     if run is None:
         raise HTTPException(status_code=404, detail="Fant ikke ingest-run")
     return {"import_run": ImportRunOut.model_validate(run)}
@@ -3904,13 +3928,12 @@ def get_import_run(run_id: int, _admin_session=Depends(require_admin_session), d
 @router.post("/media-staging-jobs", response_model=MediaStagingEnvelope, status_code=status.HTTP_201_CREATED)
 async def create_media_staging_job(
     files: list[UploadFile] = File(...),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> MediaStagingEnvelope:
     if not files:
         raise HTTPException(status_code=400, detail="Minst én fil må lastes opp")
 
-    user = _current_user(db)
     property_obj = _current_property(db, user.id)
     job = await create_media_staging_job_record(
         db,
@@ -3925,10 +3948,9 @@ async def create_media_staging_job(
 @router.get("/media-staging-jobs", response_model=MediaStagingJobListResponse)
 def list_media_staging_jobs(
     limit: int = Query(default=20, ge=1, le=100),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> MediaStagingJobListResponse:
-    user = _current_user(db)
     jobs = list_media_staging_jobs_record(db, user_id=user.id, limit=limit)
     return MediaStagingJobListResponse(count=len(jobs), jobs=[_media_staging_job_out(item) for item in jobs])
 
@@ -3936,10 +3958,9 @@ def list_media_staging_jobs(
 @router.get("/media-staging-jobs/{job_id}", response_model=MediaStagingEnvelope)
 def get_media_staging_job(
     job_id: str,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> MediaStagingEnvelope:
-    user = _current_user(db)
     job = _require_media_staging_job(db, user_id=user.id, job_id=job_id)
     return MediaStagingEnvelope(job=_media_staging_job_out(job))
 
@@ -3947,10 +3968,9 @@ def get_media_staging_job(
 @router.post("/media-staging-jobs/{job_id}/finalize", response_model=MediaFinalizeEnvelope)
 def finalize_media_staging_job(
     job_id: str,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> MediaFinalizeEnvelope:
-    user = _current_user(db)
     try:
         result = finalize_media_staging_job_record(
             db,
@@ -3971,7 +3991,7 @@ async def create_video_job(
     file: UploadFile = File(...),
     mode: str = Form(default="frames"),
     config: str | None = Form(default=None),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> VideoJobEnvelope:
     normalized_mode = (mode or "").strip().lower() or "frames"
@@ -3994,7 +4014,6 @@ async def create_video_job(
     filename = Path(file.filename or "video-upload").name or "video-upload"
     await file.close()
 
-    user = _current_user(db)
     property_obj = _current_property(db, user.id)
 
     job = create_video_job_record(
@@ -4014,10 +4033,9 @@ def list_video_jobs(
     limit: int = Query(default=20, ge=1, le=100),
     mode: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> VideoJobListResponse:
-    user = _current_user(db)
     normalized_mode = mode.strip().lower() if mode else None
     normalized_status = status_filter.strip().lower() if status_filter else None
     if normalized_mode is not None and normalized_mode not in {"frames", "map3d"}:
@@ -4036,8 +4054,11 @@ def list_video_jobs(
 
 
 @router.get("/video-jobs/{job_id}", response_model=VideoJobEnvelope)
-def get_video_job(job_id: str, _admin_session=Depends(require_admin_session), db: Session = Depends(get_db)) -> VideoJobEnvelope:
-    user = _current_user(db)
+def get_video_job(
+    job_id: str,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> VideoJobEnvelope:
     job = _require_video_job(db, user_id=user.id, job_id=job_id)
     return VideoJobEnvelope(job=_video_job_out(job))
 
@@ -4046,10 +4067,9 @@ def get_video_job(job_id: str, _admin_session=Depends(require_admin_session), db
 def put_video_job_review(
     job_id: str,
     payload: VideoJobReviewIn,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> VideoJobReviewOut:
-    user = _current_user(db)
     _require_video_job(db, user_id=user.id, job_id=job_id)
     review = save_video_job_review(
         db,
@@ -4077,14 +4097,13 @@ def put_video_job_review(
 def get_video_job_artifact(
     job_id: str,
     artifact_name: str,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> Response:
     media_type = _VIDEO_JOB_ARTIFACT_MEDIA_TYPES.get(artifact_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Fant ikke videoartefakt")
 
-    user = _current_user(db)
     _require_video_job(db, user_id=user.id, job_id=job_id)
     target = _video_job_artifact_path(job_id, artifact_name)
     if not target.exists() or not target.is_file():
@@ -4097,7 +4116,8 @@ def get_video_job_artifact(
 def get_asset(
     asset_path: str,
     request: Request,
-    _admin_session=Depends(require_admin_session),
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
 ) -> Response:
     root = settings.app_data_root.resolve()
     target = (root / asset_path).resolve()
@@ -4121,6 +4141,19 @@ def get_asset(
     if allowed_root not in target.parents:
         raise HTTPException(status_code=404, detail="Fant ikke fil")
     if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Fant ikke fil")
+
+    owned_asset = (
+        db.execute(
+            select(PhotoAsset.id)
+            .join(Photo, Photo.id == PhotoAsset.photo_id)
+            .where(PhotoAsset.path == normalized, Photo.user_id == user.id)
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if owned_asset is None:
         raise HTTPException(status_code=404, detail="Fant ikke fil")
 
     if asset_kind in {"thumb", "web"}:

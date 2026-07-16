@@ -106,7 +106,7 @@ def run_photo_ingest(
         raise FileNotFoundError(f"Katalog finnes ikke: {source_path}")
 
     user, property_obj = _default_targets(db, user_id=user_id, property_id=property_id)
-    run = IngestRun(source_path=str(source_path), started_at=datetime.utcnow())
+    run = IngestRun(user_id=user.id, source_path=str(source_path), started_at=datetime.utcnow())
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -120,7 +120,9 @@ def run_photo_ingest(
         try:
             source_hash = _sha256(file_path)
 
-            existing = db.execute(select(Photo).where(Photo.source_hash == source_hash)).scalars().first()
+            existing = db.execute(
+                select(Photo).where(Photo.user_id == user.id, Photo.source_hash == source_hash)
+            ).scalars().first()
             if existing:
                 skipped += 1
                 continue
@@ -150,6 +152,7 @@ def run_photo_ingest(
 
             secondary = db.execute(
                 select(Photo).where(
+                    Photo.user_id == user.id,
                     Photo.source_filename == file_path.name,
                     Photo.captured_at == metadata.captured_at,
                     Photo.lat == metadata.gps_latitude,
@@ -162,6 +165,9 @@ def run_photo_ingest(
 
             slug = _slugify(file_path.stem)
             photo_id = f"{slug}-{source_hash[:10]}"
+            if db.get(Photo, photo_id) is not None:
+                owner_token = hashlib.sha256(f"{user.id}:{source_hash}".encode()).hexdigest()[:10]
+                photo_id = f"{photo_id}-{owner_token}"
             assets = write_derivatives(file_path, source_hash)
             source_ref = _normalized_source_ref(source_path, file_path)
 
