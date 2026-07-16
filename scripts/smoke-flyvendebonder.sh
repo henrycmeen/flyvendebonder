@@ -149,18 +149,25 @@ echo "[1/7] Backend health"
 require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('status') == 'ok'"
 
 ADMIN_CONFIGURED="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('configured') is True else 'false'")"
-require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and obj.get('authenticated') is False"
+OPEN_ACCESS="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('open_access') is True else 'false'")"
+if [[ "$OPEN_ACCESS" == "true" ]]; then
+  require_json_field "Open admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and obj.get('open_access') is True and obj.get('authenticated') is True"
+else
+  require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and obj.get('open_access') is False and obj.get('authenticated') is False"
+fi
 
 ANONYMOUS_PROFILE_CODE="$(curl -sS -w "%{http_code}" -o /dev/null "$BACKEND_URL/api/v1/profile/current")"
 EXPECTED_ANONYMOUS_CODE="401"
-if [[ "$ADMIN_CONFIGURED" == "false" ]]; then
+if [[ "$OPEN_ACCESS" == "true" ]]; then
+  EXPECTED_ANONYMOUS_CODE="200"
+elif [[ "$ADMIN_CONFIGURED" == "false" ]]; then
   EXPECTED_ANONYMOUS_CODE="503"
 fi
 if [[ "$ANONYMOUS_PROFILE_CODE" != "$EXPECTED_ANONYMOUS_CODE" ]]; then
   fail "Anonym profil skal avvises med $EXPECTED_ANONYMOUS_CODE, fikk $ANONYMOUS_PROFILE_CODE"
 fi
 
-if [[ -z "$ADMIN_ACCESS_CODE" ]]; then
+if [[ -z "$ADMIN_ACCESS_CODE" && "$OPEN_ACCESS" != "true" ]]; then
   echo "[2/2] App side (skrivebeskyttet smoke)"
   APP_FILE="$(new_tmp)"
   require_200 "$APP_URL" "Frontend" "$APP_FILE"
@@ -223,13 +230,13 @@ print((photos[0] or {}).get("thumbnail_url", ""))
 PY
 )"
 
-if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
+if [[ -n "$ADMIN_ACCESS_CODE" || "$OPEN_ACCESS" == "true" ]]; then
   require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and 'authenticated' in obj"
 else
   require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and 'authenticated' in obj"
 fi
 
-if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
+if [[ -n "$ADMIN_ACCESS_CODE" || "$OPEN_ACCESS" == "true" ]]; then
   if [[ -n "$THUMB_URL" ]]; then
     require_200_with_cookie "$BACKEND_URL$THUMB_URL" "Photo thumbnail" "$COOKIE_JAR"
   else

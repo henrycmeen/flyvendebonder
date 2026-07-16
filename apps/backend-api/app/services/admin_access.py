@@ -38,6 +38,14 @@ class AdminSession:
 
 
 def admin_access_is_configured() -> bool:
+    return admin_access_is_open() or admin_access_code_is_configured()
+
+
+def admin_access_is_open() -> bool:
+    return get_settings().admin_access_open
+
+
+def admin_access_code_is_configured() -> bool:
     return bool(get_settings().admin_access_code.strip())
 
 
@@ -90,7 +98,7 @@ def verify_admin_access_code(code: str) -> bool:
 
 
 def get_admin_session(request: Request) -> AdminSession | None:
-    if not admin_access_is_configured():
+    if admin_access_is_open() or not admin_access_code_is_configured():
         return None
     settings = get_settings()
     cookie_value = request.cookies.get(settings.admin_session_cookie_name)
@@ -124,7 +132,7 @@ def clear_admin_session(response: Response) -> None:
 
 
 def require_admin_session(request: Request) -> AdminSession:
-    if not admin_access_is_configured():
+    if not admin_access_code_is_configured():
         raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
 
     session = get_admin_session(request)

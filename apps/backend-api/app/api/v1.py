@@ -127,7 +127,9 @@ from ..schemas import (
 )
 from ..services.admin_access import (
     AdminSession,
+    admin_access_code_is_configured,
     admin_access_is_configured,
+    admin_access_is_open,
     clear_admin_session,
     enforce_login_rate_limit,
     get_admin_session,
@@ -279,9 +281,12 @@ def _owner_user_for_session(db: Session, session: AdminSession) -> User:
 
 
 def _request_owner_user(
-    session: AdminSession = Depends(require_admin_session),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> User:
+    if admin_access_is_open():
+        return _pilot_owner_for_login(db)
+    session = require_admin_session(request)
     return _owner_user_for_session(db, session)
 
 
@@ -1902,6 +1907,17 @@ def get_admin_session_status(
     response: Response,
     db: Session = Depends(get_db),
 ) -> AdminSessionStatusResponse:
+    if admin_access_is_open():
+        _pilot_owner_for_login(db)
+        if request.cookies.get(settings.admin_session_cookie_name):
+            clear_admin_session(response)
+        return AdminSessionStatusResponse(
+            configured=True,
+            open_access=True,
+            authenticated=True,
+            expires_at=None,
+        )
+
     session = get_admin_session(request)
     if session is not None:
         try:
@@ -1913,6 +1929,7 @@ def get_admin_session_status(
 
     return AdminSessionStatusResponse(
         configured=admin_access_is_configured(),
+        open_access=False,
         authenticated=session is not None,
         expires_at=session.expires_at if session else None,
     )
@@ -1925,7 +1942,16 @@ def login_admin(
     response: Response,
     db: Session = Depends(get_db),
 ) -> AdminSessionStatusResponse:
-    if not admin_access_is_configured():
+    if admin_access_is_open():
+        _pilot_owner_for_login(db)
+        clear_admin_session(response)
+        return AdminSessionStatusResponse(
+            configured=True,
+            open_access=True,
+            authenticated=True,
+            expires_at=None,
+        )
+    if not admin_access_code_is_configured():
         raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
 
     enforce_login_rate_limit(request)
@@ -1936,13 +1962,24 @@ def login_admin(
     reset_login_attempts(request)
     user = _pilot_owner_for_login(db)
     session = issue_admin_session(response, request, user_id=user.id)
-    return AdminSessionStatusResponse(configured=True, authenticated=True, expires_at=session.expires_at)
+    return AdminSessionStatusResponse(
+        configured=True,
+        open_access=False,
+        authenticated=True,
+        expires_at=session.expires_at,
+    )
 
 
 @router.post("/admin/logout", response_model=AdminSessionStatusResponse)
 def logout_admin(response: Response) -> AdminSessionStatusResponse:
     clear_admin_session(response)
-    return AdminSessionStatusResponse(configured=admin_access_is_configured(), authenticated=False, expires_at=None)
+    open_access = admin_access_is_open()
+    return AdminSessionStatusResponse(
+        configured=admin_access_is_configured(),
+        open_access=open_access,
+        authenticated=open_access,
+        expires_at=None,
+    )
 
 
 @router.get("/profile/current", response_model=ProfileOut)

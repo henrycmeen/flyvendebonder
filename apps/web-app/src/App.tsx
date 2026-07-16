@@ -269,6 +269,9 @@ function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   if (!session?.authenticated) {
     return false;
   }
+  if (session.open_access) {
+    return true;
+  }
   if (!session.expires_at) {
     return false;
   }
@@ -1000,6 +1003,7 @@ export default function App() {
       if (confirmedSession) {
         const lockedSession: AdminSessionStatus = {
           configured: confirmedSession.configured,
+          open_access: confirmedSession.open_access,
           authenticated: false,
           expires_at: null,
         };
@@ -1018,6 +1022,7 @@ export default function App() {
 
       setAdminSession({
         configured: false,
+        open_access: false,
         authenticated: false,
         expires_at: null,
       });
@@ -1613,6 +1618,7 @@ export default function App() {
       clearPrivateApplicationState();
       setAdminSession((current) => ({
         configured: current?.configured ?? true,
+        open_access: current?.open_access ?? false,
         authenticated: false,
         expires_at: null,
       }));
@@ -1631,6 +1637,7 @@ export default function App() {
 
   useEffect(() => {
     if (!adminSession?.authenticated) return;
+    if (adminSession.open_access) return;
 
     if (!adminSession.expires_at) {
       setAdminSession((current) =>
@@ -1686,7 +1693,7 @@ export default function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [addLog, adminSession?.authenticated, adminSession?.expires_at, logoutAdminAndClearPrivateState]);
+  }, [addLog, adminSession?.authenticated, adminSession?.expires_at, adminSession?.open_access, logoutAdminAndClearPrivateState]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -2458,6 +2465,7 @@ export default function App() {
       clearPrivateApplicationState();
       setAdminSession({
         configured: true,
+        open_access: false,
         authenticated: false,
         expires_at: null,
       });
