@@ -270,11 +270,11 @@ function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
     return false;
   }
   if (!session.expires_at) {
-    return true;
+    return false;
   }
   const expiresAt = Date.parse(session.expires_at);
   if (Number.isNaN(expiresAt)) {
-    return true;
+    return false;
   }
   return expiresAt > Date.now();
 }
@@ -796,6 +796,8 @@ export default function App() {
     return trackRequest(async () => {
       const { data, requestId } = await apiGet<ProfileResponse>("/api/v1/profile/current", {
         signal: requestController?.signal ?? options?.signal,
+        cache: false,
+        dedupe: false,
       });
 
       if (seq !== profileLoadSeqRef.current) return data;
@@ -805,6 +807,23 @@ export default function App() {
       return data;
     });
   }, [addLog, trackRequest]);
+
+  const clearPrivateProfileState = useCallback(() => {
+    profileLoadSeqRef.current += 1;
+    profileAbortRef.current?.abort();
+    profileAbortRef.current = null;
+    setProfile(null);
+    setBackendLogs([]);
+    setMetadataEditMode(false);
+  }, []);
+
+  const logoutAdminAndLoadPublicProfile = useCallback(async () => {
+    clearPrivateProfileState();
+    const response = await apiPost<AdminSessionStatus>("/api/v1/admin/logout");
+    setAdminSession(response.data);
+    await loadProfile();
+    return response;
+  }, [clearPrivateProfileState, loadProfile]);
 
   const handleOperatingAreaConfirmed = useCallback(
     async () => {
@@ -895,6 +914,7 @@ export default function App() {
 
   const loadAdminSession = useCallback(async (options?: { signal?: AbortSignal; silent?: boolean }): Promise<AdminSessionStatus | null> => {
     const seq = ++adminSessionLoadSeqRef.current;
+    let confirmedSession: AdminSessionStatus | null = null;
     const requestController = options?.signal
       ? null
       : (() => {
@@ -912,12 +932,18 @@ export default function App() {
           dedupe: false,
         }),
       );
+      confirmedSession = data;
 
       if (seq !== adminSessionLoadSeqRef.current) return data;
 
-      setAdminSession(data);
       if (!data.authenticated) {
-        setBackendLogs([]);
+        setAdminSession(data);
+        clearPrivateProfileState();
+        await loadProfile({ signal: requestController?.signal ?? options?.signal });
+      } else {
+        await loadProfile({ signal: requestController?.signal ?? options?.signal });
+        if (seq !== adminSessionLoadSeqRef.current) return data;
+        setAdminSession(data);
       }
       if (!options?.silent && data.authenticated) {
         addLog("info", "Admin-sesjon bekreftet", requestId, {
@@ -930,6 +956,26 @@ export default function App() {
       if (seq !== adminSessionLoadSeqRef.current) return null;
       if (isRequestAborted(apiError)) return null;
 
+      clearPrivateProfileState();
+      if (confirmedSession) {
+        const lockedSession: AdminSessionStatus = {
+          configured: confirmedSession.configured,
+          authenticated: false,
+          expires_at: null,
+        };
+        setAdminSession(lockedSession);
+        if (confirmedSession.authenticated) {
+          try {
+            await logoutAdminAndLoadPublicProfile();
+          } catch (logoutError) {
+            const logoutApiError = logoutError as ApiError;
+            addLog("warn", "Kunne ikke rydde admin-sesjon etter profilfeil", logoutApiError.requestId, logoutApiError.detail);
+          }
+        }
+        addLog("warn", "Admin-status bekreftet, men profilen kunne ikke lastes", apiError.requestId, apiError.detail);
+        return lockedSession;
+      }
+
       setAdminSession({
         configured: false,
         authenticated: false,
@@ -938,7 +984,7 @@ export default function App() {
       addLog("warn", "Kunne ikke hente admin-status", apiError.requestId, apiError.detail);
       return null;
     }
-  }, [addLog, trackRequest]);
+  }, [addLog, clearPrivateProfileState, loadProfile, logoutAdminAndLoadPublicProfile, trackRequest]);
 
   const loadBackendLogs = useCallback(async (options?: { signal?: AbortSignal }) => {
     const seq = ++backendLogLoadSeqRef.current;
@@ -1063,6 +1109,10 @@ export default function App() {
             }
           : current,
       );
+      void logoutAdminAndLoadPublicProfile().catch((error) => {
+        const apiError = error as ApiError;
+        addLog("warn", "Kunne ikke fullføre utløpt admin-logout", apiError.requestId, apiError.detail);
+      });
     }
 
     const message =
@@ -1080,7 +1130,7 @@ export default function App() {
       authenticated: adminSession?.authenticated ?? null,
     });
     return false;
-  }, [addLog, adminSession]);
+  }, [addLog, adminSession, logoutAdminAndLoadPublicProfile]);
 
   const loadGardskartJobs = useCallback(
     async (
@@ -1452,10 +1502,7 @@ export default function App() {
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         setStatusText("Laster profil og tidslinje ...");
         try {
-          const [profileData, timelineData] = await Promise.all([
-            loadProfile({ signal }),
-            loadTimeline({ signal }),
-          ]);
+          const timelineData = await loadTimeline({ signal });
 
           if (seq !== bootstrapLoadSeqRef.current || signal?.aborted) return;
 
@@ -1476,7 +1523,7 @@ export default function App() {
           setSelectedIndex(resolvedIndex);
           setSelectedYear(resolvedDate.slice(0, 4));
           setSelectedSeason("all");
-          setStatusText(`Klar for ${profileData.user.full_name}`);
+          setStatusText("Klar.");
           return;
         } catch (error) {
           const apiError = error as ApiError;
@@ -1508,7 +1555,7 @@ export default function App() {
     return () => {
       abortController.abort();
     };
-  }, [addLog, initialDate, loadProfile, loadTimeline]);
+  }, [addLog, initialDate, loadTimeline]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1517,6 +1564,65 @@ export default function App() {
       abortController.abort();
     };
   }, [loadAdminSession]);
+
+  useEffect(() => {
+    if (!adminSession?.authenticated) return;
+
+    if (!adminSession.expires_at) {
+      setAdminSession((current) =>
+        current
+          ? {
+              ...current,
+              authenticated: false,
+            }
+          : current,
+      );
+      void logoutAdminAndLoadPublicProfile().catch((error) => {
+        const apiError = error as ApiError;
+        addLog("warn", "Kunne ikke låse ugyldig admin-sesjon på serveren", apiError.requestId, apiError.detail);
+      });
+      return;
+    }
+
+    const expiresAt = Date.parse(adminSession.expires_at);
+    if (Number.isNaN(expiresAt)) {
+      setAdminSession((current) =>
+        current
+          ? {
+              ...current,
+              authenticated: false,
+              expires_at: null,
+            }
+          : current,
+      );
+      void logoutAdminAndLoadPublicProfile().catch((error) => {
+        const apiError = error as ApiError;
+        addLog("warn", "Kunne ikke fullføre automatisk admin-logout", apiError.requestId, apiError.detail);
+      });
+      return;
+    }
+
+    const expiryDelayMs = Math.max(0, expiresAt - Date.now() + 250);
+    const timeoutId = window.setTimeout(() => {
+      setAdminSession((current) =>
+        current
+          ? {
+              ...current,
+              authenticated: false,
+              expires_at: null,
+            }
+          : current,
+      );
+      void logoutAdminAndLoadPublicProfile().catch((error) => {
+        const apiError = error as ApiError;
+        addLog("warn", "Kunne ikke fullføre automatisk admin-logout", apiError.requestId, apiError.detail);
+      });
+    }, expiryDelayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [addLog, adminSession?.authenticated, adminSession?.expires_at, logoutAdminAndLoadPublicProfile]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -2262,10 +2368,21 @@ export default function App() {
 
   const handleAdminLogin = useCallback(async (code: string) => {
     setIsAdminSessionBusy(true);
+    clearPrivateProfileState();
+    setAdminSession((current) =>
+      current
+        ? {
+            ...current,
+            authenticated: false,
+            expires_at: null,
+          }
+        : current,
+    );
     try {
       const { data, requestId } = await trackRequest(() =>
         apiPost<AdminSessionStatus>("/api/v1/admin/login", { code }),
       );
+      await loadProfile();
       setAdminSession(data);
       addLog("info", "Admin-tilgang aktivert", requestId, {
         expiresAt: data.expires_at,
@@ -2273,28 +2390,30 @@ export default function App() {
       setStatusText("Admin-tilgang aktiv.");
     } catch (error) {
       const apiError = error as ApiError;
-      setAdminSession((current) => current ?? {
+      clearPrivateProfileState();
+      setAdminSession({
         configured: true,
         authenticated: false,
         expires_at: null,
       });
+      try {
+        await logoutAdminAndLoadPublicProfile();
+      } catch (logoutError) {
+        const logoutApiError = logoutError as ApiError;
+        addLog("warn", "Kunne ikke rydde delvis admin-innlogging", logoutApiError.requestId, logoutApiError.detail);
+      }
       addLog("error", "Admin-innlogging feilet", apiError.requestId, apiError.detail);
       setStatusText(`Admin-innlogging feilet: ${apiError.message}`);
       throw apiError;
     } finally {
       setIsAdminSessionBusy(false);
     }
-  }, [addLog, trackRequest]);
+  }, [addLog, clearPrivateProfileState, loadProfile, logoutAdminAndLoadPublicProfile, trackRequest]);
 
   const handleAdminLogout = useCallback(async () => {
     setIsAdminSessionBusy(true);
     try {
-      const { data, requestId } = await trackRequest(() =>
-        apiPost<AdminSessionStatus>("/api/v1/admin/logout"),
-      );
-      setAdminSession(data);
-      setBackendLogs([]);
-      setMetadataEditMode(false);
+      const { requestId } = await trackRequest(logoutAdminAndLoadPublicProfile);
       setActiveView((current) => (current === "import" || current === "video" ? "map" : current));
       addLog("info", "Admin-tilgang slått av", requestId);
       setStatusText("Admin-tilgang slått av.");
@@ -2306,7 +2425,7 @@ export default function App() {
     } finally {
       setIsAdminSessionBusy(false);
     }
-  }, [addLog, trackRequest]);
+  }, [addLog, logoutAdminAndLoadPublicProfile, trackRequest]);
 
   const handleStartMediaImport = useCallback(() => {
     if (!BROWSER_MEDIA_IMPORT_ENABLED) {
