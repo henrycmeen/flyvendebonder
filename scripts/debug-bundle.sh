@@ -34,6 +34,17 @@ trap cleanup EXIT
 } >"${WORK_DIR}/bundle-manifest.txt"
 
 {
+  echo "# Privacy and retention notice"
+  echo "Classification: confidential operational data"
+  echo "Purpose: time-limited incident diagnosis"
+  echo "Access: operators with a concrete troubleshooting need"
+  echo "Delete no later than: 7 days after generation"
+  echo "Do not attach to public issues or pull requests"
+  echo "Review and redact backend-tail.txt and logs-api.json before sharing"
+  echo "Policy: docs/drift/compliance-retention-v1.md"
+} >"${WORK_DIR}/privacy-notice.txt"
+
+{
   echo "# Git + repo"
   echo "Branch: $(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
   echo "SHA: $(git -C "$ROOT_DIR" rev-parse HEAD)"
@@ -92,36 +103,23 @@ PY
   echo
   env | sort | awk -F= '
     BEGIN {
-      split("FB_,VITE_,NIBIO_,API_,DATABASE_,LOG_,PORT,HOST,PYTHON,NODE,UVICORN", whitelist_arr, ",")
-    }
-    function is_whitelisted(key, i, n, part, hit) {
-      hit = 0
-      for (i = 1; i <= length(whitelist_arr); i++) {
-        part = whitelist_arr[i]
-        if (index(key, part) == 1) {
-          hit = 1
-        }
-      }
-      return hit
-    }
-    function should_mask(key) {
-      return (tolower(key) ~ /token|secret|pass|apikey|api[_-]?key|private|credential|bearer/)
+      safe["ENV"] = 1
+      safe["HOST"] = 1
+      safe["LOG_LEVEL"] = 1
+      safe["LOG_TO_CONSOLE"] = 1
+      safe["LOG_TO_FILE"] = 1
+      safe["NIBIO_GARDSKART_ENABLED"] = 1
+      safe["NODE_ENV"] = 1
+      safe["PHOTO_AR5_ENABLED"] = 1
+      safe["PORT"] = 1
+      safe["PYTHONPATH"] = 1
+      safe["UVICORN_WORKERS"] = 1
     }
     {
       key = $1
       sub(/=.*/, "", key)
-      if (is_whitelisted(key)) {
-        if (should_mask(key)) {
-          value = substr($0, length(key) + 2)
-          if (length(value) > 6) {
-            value = substr(value, 1, 3) "..." substr(value, length(value) - 2)
-          } else {
-            value = "***MASKED***"
-          }
-          printf "%s=%s\n", key, value
-        } else {
-          print $0
-        }
+      if (safe[key]) {
+        print $0
       }
     }
   '

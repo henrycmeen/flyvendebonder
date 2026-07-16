@@ -269,7 +269,7 @@ def test_field_report_uses_stored_photo_asset_paths_and_original_fallback(client
             )
         ).scalar_one()
         source_path = settings.app_data_root / web_asset.path
-        custom_path = "report-assets/pilot-original.jpg"
+        custom_path = "photos/original/pilot-original.jpg"
         target_path = settings.app_data_root / custom_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(source_path.read_bytes())
@@ -282,7 +282,7 @@ def test_field_report_uses_stored_photo_asset_paths_and_original_fallback(client
     assert report["key_photos"][0]["thumbnail_url"] == (
         "/api/v1/assets/photos/thumb/smoke-2025-07-18-00.jpg"
     )
-    assert report["key_photos"][0]["web_url"] == "/api/v1/assets/report-assets/pilot-original.jpg"
+    assert report["key_photos"][0]["web_url"] == "/api/v1/assets/photos/original/pilot-original.jpg"
     assert client.get(report["key_photos"][0]["web_url"]).status_code == 200
 
 

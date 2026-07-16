@@ -40,6 +40,16 @@ Dette er fortsatt bevisst **ikke** full videoprosessering. Nå leverer backenden
 - `geodata.geojson` inneholder både rute (`LineString`) og valgte steg (`Point`-features).
 - `metadata.json` speiler den beregnede frames-kontrakten, slik at backend og filer forteller samme historie.
 
+## Data- og retention-policy
+
+- Direkte opplasting til `POST /api/v1/video-jobs` leser ikke videoinnholdet og lukker opplastingen uten å lagre råvideoen. Bare filnavn, jobbconfig, review og deterministiske eksempelartefakter beholdes.
+- Blandede opplastinger via media-staging lagrer råfiler midlertidig under `APP_DATA_ROOT/media-staging/{job_id}/`. De skal slettes senest 24 timer etter vellykket finalize og senest 7 dager etter avbrutt eller mislykket staging.
+- Videojobbmetadata, review og avledede artefakter under `APP_DATA_ROOT/video-jobs/{job_id}/` beholdes i 90 dager etter siste jobboppdatering, med mindre brukeren sletter dem tidligere eller et dokumentert behov krever en ny vurdering.
+- Tjenestelaget filtrerer på dagens bruker-ID og eiendoms-/jobbtilgang, men sikker request-identitet og medlemskap er ikke ferdig og spores i GitHub issue 250. Råvideo, config eller geodata skal ikke kopieres til logger eller debug bundles.
+- Sletting må omfatte både databasepost, review og filer. Inntil automatisk håndheving er levert, er tidsgrensene en operativ manuell kontroll og skal ikke fremstilles som teknisk garanterte.
+
+Den samlede policyen og enforcement-status står i `docs/drift/compliance-retention-v1.md`.
+
 ## Hvorfor denne formen
 
 - Frontenden var allerede bygget rundt `/api/v1/video-jobs`, men repo-backenden manglet hele kontrakten.
@@ -52,3 +62,4 @@ Dette er fortsatt bevisst **ikke** full videoprosessering. Nå leverer backenden
 - koble metadata mot ekte video/telemetri i stedet for config-drevet rute
 - la frame-uttrekk produsere egne thumbnails i stedet for å gjenbruke én preview
 - koble videre mot processing-sporet for ODM/WebODM der det gir mening
+- håndhev retention for media-staging og videojobber med dry-run, avgrenset sletting og revisjonsspor
