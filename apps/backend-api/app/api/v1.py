@@ -2425,17 +2425,17 @@ async def preview_operating_area(
 ) -> OperatingAreaPreviewOut:
     user = _current_user(db)
     candidates = await _lookup_operating_area_candidates(payload)
-    try:
-        items = [
-            operating_area_candidate_payload(db, user_id=user.id, candidate=candidate)
-            for candidate in candidates
-        ]
-    except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Geonorge returnerte ugyldig driftsarealkandidat", extra={"error": str(exc)})
+    items = []
+    for candidate in candidates:
+        try:
+            items.append(operating_area_candidate_payload(db, user_id=user.id, candidate=candidate))
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Geonorge returnerte ugyldig driftsarealkandidat", extra={"error": str(exc)})
+    if not items:
         raise HTTPException(
             status_code=502,
             detail="Eiendomsoppslaget returnerte ufullstendige data. Prøv et annet punkt.",
-        ) from exc
+        )
     return OperatingAreaPreviewOut(
         count=len(items),
         candidates=items,

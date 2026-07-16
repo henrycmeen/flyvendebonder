@@ -81,6 +81,43 @@ def test_preview_returns_all_candidates_without_writes_or_owner_data(client, mon
     assert _counts() == before
 
 
+def test_preview_keeps_valid_candidates_when_one_upstream_candidate_is_malformed(client, monkeypatch):
+    import app.api.v1 as v1
+
+    async def fake_lookup(**_kwargs):
+        return [{"source": "geonorge", "name": "Ufullstendig teig"}, _candidate()]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+
+    response = client.post(
+        "/api/v1/operating-area-previews",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["candidates"][0]["property_ref"]["label"] == "70/28"
+
+
+def test_preview_fails_cleanly_when_all_upstream_candidates_are_malformed(client, monkeypatch):
+    import app.api.v1 as v1
+
+    async def fake_lookup(**_kwargs):
+        return [{"source": "geonorge", "name": "Ufullstendig teig"}]
+
+    monkeypatch.setattr(v1, "lookup_field_candidates_by_point_any", fake_lookup)
+
+    response = client.post(
+        "/api/v1/operating-area-previews",
+        json={"lat": 59.0, "lng": 10.0, "radius_m": 60},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "Eiendomsoppslaget returnerte ufullstendige data. Prøv et annet punkt."
+    )
+
+
 def test_confirm_requires_admin_and_rejects_stale_candidate(client, monkeypatch):
     import app.api.v1 as v1
 
