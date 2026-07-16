@@ -29,8 +29,11 @@ Sjekk verktøy, GitHub-innlogging, arbeidskopi og diskplass først:
 ./scripts/doctor.sh
 ```
 
-Repoet forventer Node-versjonen i `.nvmrc` og Python-versjonen i
-`.python-version`. Doctor-kommandoen varsler om avvik uten å blokkere arbeid.
+Repoet bruker Node-versjonen i `.nvmrc` og Python-versjonen i `.python-version`
+som anbefalte utviklingsversjoner. Backendens minimum er Python 3.9, definert i
+`apps/backend-api/pyproject.toml`; både PR-validering og produksjonsdeploy kjører
+backendtestene på dette minimumet. Doctor-kommandoen varsler om lokale avvik
+uten å blokkere arbeid.
 
 Enklest:
 ```bash

@@ -51,7 +51,7 @@ _ROLE_CAPABILITY_SCOPES: dict[str, dict[str, AccessScope]] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class MembershipAccess:
     user_id: int
     farm_id: int

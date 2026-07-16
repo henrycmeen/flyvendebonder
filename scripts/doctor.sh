@@ -69,9 +69,9 @@ else
   PYTHON_VERSION="$($PYTHON_BIN -c 'import platform; print(platform.python_version())')"
   PYTHON_LINE="$($PYTHON_BIN -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
   if [[ "$PYTHON_LINE" == "$EXPECTED_PYTHON_MAJOR.$EXPECTED_PYTHON_MINOR" ]]; then
-    pass "Python $PYTHON_VERSION matcher .python-version"
+    pass "Python $PYTHON_VERSION matcher repoets utviklingsversjon"
   else
-    warn "Python $PYTHON_VERSION er aktiv; backend forventer $EXPECTED_PYTHON_MAJOR.$EXPECTED_PYTHON_MINOR"
+    warn "Python $PYTHON_VERSION er aktiv; repoets anbefalte utviklingsversjon er $EXPECTED_PYTHON_MAJOR.$EXPECTED_PYTHON_MINOR (backend støtter Python >=3.9)"
   fi
 fi
 
