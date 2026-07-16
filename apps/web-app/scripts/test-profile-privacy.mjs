@@ -12,8 +12,13 @@ assert.match(
   /cache:\s*shouldCache\s*\?\s*"default"\s*:\s*"no-store"/,
   "Disabling the API cache must also bypass the browser HTTP cache",
 );
-assert.match(api, /response\.status === 401 \|\| response\.status === 403/, "Auth rejection must be handled centrally");
-assert.match(api, /notifyAuthRejected\(response\.status\)/, "401/403 must invalidate client auth state");
+assert.match(api, /responseStatus === 401\s*\|\|\s*responseStatus === 403/, "Auth rejection must be handled centrally");
+assert.match(
+  api,
+  /responseStatus === 503[\s\S]*detail === ADMIN_ACCESS_UNCONFIGURED_DETAIL/,
+  "Disabling backend admin access must also fail closed",
+);
+assert.match(api, /notifyAuthRejected\(response\.status\)/, "Auth rejection must invalidate client auth state");
 assert.match(api, /function notifyAuthRejected[\s\S]*clearApiCache\(\)/, "Auth rejection must clear cached private reads");
 
 const loginHandler = app.match(/const handleAdminLogin = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";

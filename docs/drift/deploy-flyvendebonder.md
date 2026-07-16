@@ -180,3 +180,8 @@ python3 -m pytest -q tests/test_smoke.py
 ```bash
 ./scripts/smoke-flyvendebonder.sh
 ```
+Denne standardkjøringen er skrivebeskyttet og verifiserer offentlig status, anonym avvisning og frontend. Kjør autentiserte lesesjekker ved behov uten å skrive til produksjonsdata:
+```bash
+ADMIN_ACCESS_CODE='<admin-kode>' ./scripts/smoke-flyvendebonder.sh
+```
+`SMOKE_ALLOW_WRITES=1` aktiverer oppretting, eksport og sletting av et testoppdrag og skal bare brukes av `run-stack-smoke.sh` mot den isolerte lokale testdatabasen, aldri mot produksjon.

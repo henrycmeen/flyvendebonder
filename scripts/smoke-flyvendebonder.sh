@@ -4,6 +4,7 @@ set -euo pipefail
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 APP_URL="${APP_URL:-http://127.0.0.1:5173/app/}"
 ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
+SMOKE_ALLOW_WRITES="${SMOKE_ALLOW_WRITES:-0}"
 AUTH_COOKIE_JAR=""
 MISSION_ID=""
 
@@ -147,13 +148,27 @@ PY
 echo "[1/7] Backend health"
 require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('status') == 'ok'"
 
-if [[ -z "$ADMIN_ACCESS_CODE" ]]; then
-  fail "ADMIN_ACCESS_CODE må settes for full default-deny smoke."
-fi
+ADMIN_CONFIGURED="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('configured') is True else 'false'")"
+require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and obj.get('authenticated') is False"
 
 ANONYMOUS_PROFILE_CODE="$(curl -sS -w "%{http_code}" -o /dev/null "$BACKEND_URL/api/v1/profile/current")"
-if [[ "$ANONYMOUS_PROFILE_CODE" != "401" ]]; then
-  fail "Anonym profil skal avvises med 401, fikk $ANONYMOUS_PROFILE_CODE"
+EXPECTED_ANONYMOUS_CODE="401"
+if [[ "$ADMIN_CONFIGURED" == "false" ]]; then
+  EXPECTED_ANONYMOUS_CODE="503"
+fi
+if [[ "$ANONYMOUS_PROFILE_CODE" != "$EXPECTED_ANONYMOUS_CODE" ]]; then
+  fail "Anonym profil skal avvises med $EXPECTED_ANONYMOUS_CODE, fikk $ANONYMOUS_PROFILE_CODE"
+fi
+
+if [[ -z "$ADMIN_ACCESS_CODE" ]]; then
+  echo "[2/2] App side (skrivebeskyttet smoke)"
+  APP_FILE="$(new_tmp)"
+  require_200 "$APP_URL" "Frontend" "$APP_FILE"
+  if ! grep -qi "flyvendebønder" "$APP_FILE"; then
+    echo "Frontend responderer, men kunne ikke verifisere tekst i HTML."
+  fi
+  echo "Read-only smoke check OK. Sett ADMIN_ACCESS_CODE for autentiserte lesesjekker."
+  exit 0
 fi
 
 COOKIE_JAR="$(new_tmp)"
@@ -175,7 +190,11 @@ echo "[2/7] Profile og timeline"
 require_json_field "Profile payload" "$BACKEND_URL/api/v1/profile/current" "obj.get('user', {}).get('full_name') == 'Roar Meen'"
 require_json_field "Timeline payload" "$BACKEND_URL/api/v1/timeline/dates" "len(obj.get('dates', [])) >= 1"
 require_json_field "Property payload" "$BACKEND_URL/api/v1/properties/current" "obj.get('property', {}).get('komm') == '4003' and obj.get('property', {}).get('gnr') == 70 and obj.get('property', {}).get('bnr') == 17"
-require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id')) or obj.get('source') == 'disabled'"
+if [[ "$SMOKE_ALLOW_WRITES" == "1" ]]; then
+  require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id')) or obj.get('source') == 'disabled'"
+else
+  echo "Hopper over tilstandsfull Gårdskart-jobbsjekk i skrivebeskyttet modus."
+fi
 require_json_field "Source status payload" "$BACKEND_URL/api/v1/sources/status" "obj.get('ar5', {}).get('source') in ('enabled', 'disabled') and obj.get('gardskart', {}).get('source') in ('enabled', 'disabled')"
 
 echo "[3/7] Photo-feed og paginering"
@@ -326,6 +345,7 @@ PY
 
   echo "[6/7] Mini 4 Pro eksport"
 
+  if [[ "$SMOKE_ALLOW_WRITES" == "1" ]]; then
   CREATE_MISSION_FILE="$(new_tmp)"
   CREATE_MISSION_PAYLOAD="$(python3 - "$CURRENT_PROPERTY_ID" "$FIRST_UNIT_ID" <<'PY'
 import json
@@ -402,6 +422,9 @@ PY
     fail "Kunne ikke rydde opp testoppdrag etter eksport ($DELETE_CODE)"
   fi
   MISSION_ID=""
+  else
+    echo "Hopper over oppretting av testoppdrag; SMOKE_ALLOW_WRITES er ikke 1."
+  fi
 else
   echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet asset- og logs-sjekk."
 fi

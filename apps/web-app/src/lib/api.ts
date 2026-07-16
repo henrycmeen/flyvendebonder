@@ -53,6 +53,7 @@ const DEFAULT_RETRY_DELAY_MS = 320;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const RETRIABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const SLOW_REQUEST_WARN_MS = 1_200;
+const ADMIN_ACCESS_UNCONFIGURED_DETAIL = "Admin-innlogging er ikke konfigurert i backend";
 export const AUTH_REJECTED_EVENT = "flyvendebonder:auth-rejected";
 
 const inFlightMap = new Map<string, Promise<ApiResponse<unknown>>>();
@@ -248,6 +249,14 @@ function notifyAuthRejected(status: number): void {
   window.dispatchEvent(new CustomEvent(AUTH_REJECTED_EVENT, { detail: { status } }));
 }
 
+function responseRejectsAuthentication(responseStatus: number, detail: unknown): boolean {
+  return (
+    responseStatus === 401 ||
+    responseStatus === 403 ||
+    (responseStatus === 503 && detail === ADMIN_ACCESS_UNCONFIGURED_DETAIL)
+  );
+}
+
 export function requestJson<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiResponse<T>> {
   const method = options.method ?? "GET";
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -323,7 +332,7 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
           }
 
           const apiError = await parseApiError(response, parsed);
-          if (response.status === 401 || response.status === 403) {
+          if (responseRejectsAuthentication(response.status, apiError.detail)) {
             notifyAuthRejected(response.status);
           }
           if (RETRIABLE_STATUS.has(response.status) && attempt < maxRetries) {
