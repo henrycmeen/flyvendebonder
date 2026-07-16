@@ -30,7 +30,7 @@ export function OrthophotoColorAnalysisPopup({ outcome, onClose }: OrthophotoCol
   const isAnalysis = outcome.status === "analysis";
 
   return (
-    <aside className="pointer-events-auto w-[min(26rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-fb-border-subtle bg-[color:color-mix(in_srgb,var(--fb-surface-page)_96%,white)] shadow-fb-floating backdrop-blur">
+    <aside className="fb-map-overlay-panel pointer-events-auto w-[min(26rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-fb-border-subtle bg-[color:color-mix(in_srgb,var(--fb-surface-page)_96%,white)] shadow-fb-floating backdrop-blur">
       <div className="flex items-start justify-between gap-3 border-b border-fb-border-subtle px-4 py-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-fb-text-secondary">Fargeanalyse</p>

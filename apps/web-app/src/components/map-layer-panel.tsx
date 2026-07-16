@@ -21,7 +21,7 @@ function LayerToggle({ active, label, status, accentClassName, onToggle, disable
       disabled={disabled}
       aria-pressed={active}
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors",
+        "fb-map-layer-toggle flex w-full items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-2 text-left transition-colors",
         active
           ? "bg-fb-surface-ghost text-fb-text-primary"
           : "bg-transparent text-fb-text-secondary hover:bg-fb-surface-ghost/80",
@@ -32,7 +32,7 @@ function LayerToggle({ active, label, status, accentClassName, onToggle, disable
       <span className="flex min-w-0 items-center gap-2.5">
         <span
           className={cn(
-            "h-2.5 w-2.5 shrink-0 rounded-full transition-transform",
+            "fb-map-layer-toggle__indicator h-2.5 w-2.5 shrink-0 rounded-full transition-transform",
             active ? accentClassName : "bg-fb-border-subtle",
           )}
           aria-hidden="true"
@@ -41,7 +41,7 @@ function LayerToggle({ active, label, status, accentClassName, onToggle, disable
       </span>
       <span
         className={cn(
-          "rounded-full px-2 py-0.5 text-[11px] font-medium",
+          "fb-map-layer-toggle__status rounded-full px-2 py-0.5 text-[11px] font-medium",
           active ? "bg-fb-surface-page text-fb-text-primary" : "bg-fb-surface-ghost text-fb-text-secondary",
         )}
       >
@@ -216,11 +216,11 @@ export function MapLayerPanel({
         </button>
 
         {open ? (
-          <div className="absolute right-0 top-12 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
+          <div className="fb-map-layer-panel absolute right-0 top-12 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-transparent bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Kartfiltre</p>
-                <p className="text-sm font-semibold text-fb-text-primary">
+                <p className="fb-map-layer-panel__eyebrow text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Kartfiltre</p>
+                <p className="fb-map-layer-panel__summary text-sm font-semibold text-fb-text-primary">
                   {propertyCount > 0 ? `${propertyCount} eiendommer i spill` : "Ingen eiendommer valgt"}
                 </p>
               </div>
@@ -266,7 +266,7 @@ export function MapLayerPanel({
               />
             </div>
 
-            <p className="mt-3 px-1 text-xs leading-5 text-fb-text-secondary">
+            <p className="fb-map-layer-panel__hint mt-3 px-1 text-xs leading-5 text-fb-text-secondary">
               Flere kartvalg ligger under innstillinger i sidepanelet.
             </p>
           </div>

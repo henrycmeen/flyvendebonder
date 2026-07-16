@@ -1931,7 +1931,7 @@ export function MapCanvas({
       <div ref={mapElementRef} className="absolute inset-0" aria-label="Kart med geotaggede bilder" />
       {mapVintage ? <div className="map-vintage-overlay" aria-hidden="true" /> : null}
       {colorAnalysisActive ? (
-        <div className="pointer-events-none absolute left-1/2 top-[4.25rem] z-[760] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-fb-border-subtle bg-fb-surface-page/95 px-3 py-2 text-center text-xs font-medium text-fb-text-primary shadow-fb-floating backdrop-blur">
+        <div className="fb-map-overlay-alert pointer-events-none absolute left-1/2 top-[4.25rem] z-[760] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-fb-border-subtle bg-fb-surface-page/95 px-3 py-2 text-center text-xs font-medium text-fb-text-primary shadow-fb-floating backdrop-blur">
           Klikk i et synlig ortofoto for relative RGB-indikatorer. Esc avslutter.
         </div>
       ) : null}
