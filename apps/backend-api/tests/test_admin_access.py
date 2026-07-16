@@ -227,6 +227,34 @@ def test_bound_session_reads_and_updates_only_its_profile(client):
         assert secondary.phone == "+47 44444444"
 
 
+def test_bound_session_reads_only_its_fields_photos_and_property(client):
+    primary_photos = client.get(
+        "/api/v1/photos",
+        params={"date": "2025-07-18", "mode": "day"},
+    )
+    assert primary_photos.status_code == 200
+    primary_photo_id = primary_photos.json()["photos"][0]["id"]
+
+    secondary_user_id, _membership_id = _create_secondary_owner()
+    _set_bound_admin_session(client, secondary_user_id)
+
+    secondary_timeline = client.get("/api/v1/timeline/dates")
+    secondary_photos = client.get("/api/v1/photos")
+    secondary_fields = client.get("/api/v1/fields")
+    secondary_property = client.get("/api/v1/properties/current")
+    primary_assets = client.get(f"/api/v1/photos/{primary_photo_id}/assets")
+
+    assert secondary_timeline.status_code == 200
+    assert secondary_timeline.json()["dates"] == []
+    assert secondary_photos.status_code == 200
+    assert secondary_photos.json()["photos"] == []
+    assert secondary_fields.status_code == 200
+    assert secondary_fields.json()["fields"] == []
+    assert secondary_property.status_code == 200
+    assert secondary_property.json()["property"]["label"] == "Sekundær eiendom"
+    assert primary_assets.status_code == 404
+
+
 def test_bound_session_rejects_revoked_owner_membership(client):
     from app.database import SessionLocal
     from app.models import FarmMembership
@@ -286,12 +314,8 @@ def test_disabling_admin_access_revokes_private_reads_and_clears_cookie(client, 
     monkeypatch.setenv("ADMIN_ACCESS_CODE", "")
     get_settings.cache_clear()
     try:
-        public_profile = client.get("/api/v1/profile/current")
-        assert public_profile.status_code == 200
-        assert public_profile.json()["user"]["phone"] is None
-        profile_clear_cookie = public_profile.headers.get("set-cookie", "").lower()
-        assert "flyvendebonder_admin=" in profile_clear_cookie
-        assert "max-age=0" in profile_clear_cookie
+        private_profile = client.get("/api/v1/profile/current")
+        assert private_profile.status_code == 503
 
         client.cookies.set("flyvendebonder_admin", signed_cookie)
         status = client.get("/api/v1/admin/session")
@@ -337,7 +361,7 @@ def test_admin_logout_blocks_subsequent_writes(client):
     assert response.json()["detail"] == "Admin-innlogging kreves for denne handlingen"
 
 
-def test_public_profile_redacts_private_contact_fields(client):
+def test_profile_requires_login_and_returns_private_contact_fields_after_login(client):
     update = client.patch(
         "/api/v1/profile/current",
         json={
@@ -355,12 +379,8 @@ def test_public_profile_redacts_private_contact_fields(client):
     logout = client.post("/api/v1/admin/logout")
     assert logout.status_code == 200
 
-    public_profile = client.get("/api/v1/profile/current")
-    assert public_profile.status_code == 200
-    assert public_profile.headers["cache-control"] == "no-store"
-    public_user = public_profile.json()["user"]
-    for field in ("phone", "email", "address_line1", "postal_code", "city"):
-        assert public_user[field] is None
+    anonymous_profile = client.get("/api/v1/profile/current")
+    assert anonymous_profile.status_code == 401
 
     login = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
     assert login.status_code == 200
@@ -408,15 +428,21 @@ def test_admin_login_success_clears_throttle(client):
 
 
 def test_admin_write_requires_login(client):
-    logout = client.post("/api/v1/admin/logout")
-    assert logout.status_code == 200
-
     photos_response = client.get(
         "/api/v1/photos",
         params={"date": date(2025, 7, 18).isoformat(), "mode": "day"},
     )
     assert photos_response.status_code == 200
     photo_id = photos_response.json()["photos"][0]["id"]
+
+    logout = client.post("/api/v1/admin/logout")
+    assert logout.status_code == 200
+
+    anonymous_photos = client.get(
+        "/api/v1/photos",
+        params={"date": date(2025, 7, 18).isoformat(), "mode": "day"},
+    )
+    assert anonymous_photos.status_code == 401
 
     response = client.patch(
         f"/api/v1/photos/{photo_id}/metadata",

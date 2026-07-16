@@ -256,13 +256,6 @@ _GEOJSON_CONTRACT_NAME = "flyvendebonder.geojson"
 _GEOJSON_CONTRACT_VERSION = "v1"
 
 
-def _current_user(db: Session) -> User:
-    user = db.execute(select(User).order_by(User.id)).scalars().first()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Ingen bruker registrert")
-    return user
-
-
 def _owner_user_for_session(db: Session, session: AdminSession) -> User:
     user = db.get(User, session.user_id)
     if user is None:
@@ -1848,6 +1841,7 @@ def get_orthophoto_color_sample(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     sample_size_px: int = Query(21, ge=3, le=101),
+    _user: User = Depends(_request_owner_user),
 ) -> dict:
     try:
         return sample_orthophoto_color(
@@ -1950,13 +1944,13 @@ def logout_admin(response: Response) -> AdminSessionStatusResponse:
 
 
 @router.get("/profile/current", response_model=ProfileOut)
-def get_profile_current(request: Request, response: Response, db: Session = Depends(get_db)) -> ProfileOut:
-    session = get_admin_session(request)
-    if request.cookies.get(settings.admin_session_cookie_name) and session is None:
-        clear_admin_session(response)
-    user = _owner_user_for_session(db, session) if session is not None else _current_user(db)
+def get_profile_current(
+    response: Response,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> ProfileOut:
     response.headers["Cache-Control"] = "no-store"
-    return _profile_out(db, user, include_private_contact=session is not None)
+    return _profile_out(db, user, include_private_contact=True)
 
 
 @router.patch("/profile/current", response_model=ProfileOut)
@@ -2029,18 +2023,20 @@ def patch_profile_current(
 @router.get("/timeline/dates", response_model=TimelineResponse)
 def get_timeline_dates(
     user_id: int | None = Query(default=None),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> TimelineResponse:
-    if user_id is None:
-        user_id = _current_user(db).id
+    user_id = _session_user_id(user, user_id)
 
     dates = timeline_dates(db, user_id=user_id)
     return TimelineResponse(user_id=user_id, dates=[TimelineDateEntry(**item) for item in dates])
 
 
 @router.get("/fields", response_model=FieldPlotListResponse)
-def list_field_plots(db: Session = Depends(get_db)) -> FieldPlotListResponse:
-    user = _current_user(db)
+def list_field_plots(
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> FieldPlotListResponse:
     property_obj = _require_current_property(db, user.id)
     field_plots = (
         db.execute(
@@ -2059,8 +2055,11 @@ def list_field_plots(db: Session = Depends(get_db)) -> FieldPlotListResponse:
 
 
 @router.get("/fields/{field_id}/history", response_model=FieldHistoryOut)
-def get_field_history(field_id: int, db: Session = Depends(get_db)) -> FieldHistoryOut:
-    user = _current_user(db)
+def get_field_history(
+    field_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> FieldHistoryOut:
     property_obj = _require_current_property(db, user.id)
     field = (
         db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id == property_obj.id))
@@ -2091,17 +2090,20 @@ def get_field_history(field_id: int, db: Session = Depends(get_db)) -> FieldHist
 def get_field_report(
     field_id: int,
     response: Response,
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldReportOut:
-    user = _current_user(db)
     report = _build_field_report(db, user_id=user.id, field_id=field_id)
     response.headers["Cache-Control"] = "no-store"
     return report
 
 
 @router.get("/fields/{field_id}/report.html", response_class=HTMLResponse)
-def get_field_report_html(field_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
-    user = _current_user(db)
+def get_field_report_html(
+    field_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     report = _build_field_report(db, user_id=user.id, field_id=field_id)
     response = HTMLResponse(render_field_report_html(report))
     response.headers["Cache-Control"] = "no-store"
@@ -2261,7 +2263,9 @@ def export_field_plots_geojson(
 
 
 @router.get("/drone-profiles", response_model=DroneProfileListResponse)
-def list_planning_drone_profiles() -> DroneProfileListResponse:
+def list_planning_drone_profiles(
+    _user: User = Depends(_request_owner_user),
+) -> DroneProfileListResponse:
     profiles = [DroneProfileOut(**item) for item in list_drone_profiles()]
     return DroneProfileListResponse(count=len(profiles), profiles=profiles)
 
@@ -2297,8 +2301,11 @@ async def sync_property_planning_units(
 
 
 @router.get("/planning/properties/{property_id}/units", response_model=PlanningUnitListResponse)
-def list_property_planning_units(property_id: int, db: Session = Depends(get_db)) -> PlanningUnitListResponse:
-    user = _current_user(db)
+def list_property_planning_units(
+    property_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> PlanningUnitListResponse:
     property_obj = _require_active_property(db, user.id, property_id)
 
     units = (
@@ -2319,9 +2326,9 @@ def list_scouting_tasks(
     field_id: int | None = Query(default=None),
     planning_unit_id: int | None = Query(default=None),
     status_filter: ScoutingTaskStatus | None = Query(default=None, alias="status"),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> ScoutingTaskListResponse:
-    user = _current_user(db)
     property_ids = _active_property_ids(db, user.id)
     selected_property_id: int | None = None
     selected_field: FieldPlot | None = None
@@ -2538,9 +2545,9 @@ async def _lookup_operating_area_candidates(payload: OperatingAreaPointIn) -> li
 @router.post("/operating-area-previews", response_model=OperatingAreaPreviewOut)
 async def preview_operating_area(
     payload: OperatingAreaPointIn = Body(...),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> OperatingAreaPreviewOut:
-    user = _current_user(db)
     candidates = await _lookup_operating_area_candidates(payload)
     items = []
     for candidate in candidates:
@@ -2865,9 +2872,9 @@ async def resolve_property_planning_point(
 @router.get("/flight-missions", response_model=FlightMissionListResponse)
 def list_flight_missions(
     property_id: int | None = Query(default=None),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightMissionListResponse:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, property_id)
     missions = (
         db.execute(
@@ -2889,9 +2896,9 @@ def list_flight_missions(
 def preview_flight_mission(
     payload: FlightMissionCreate = Body(...),
     property_id: int | None = Query(default=None),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightMissionPreviewOut:
-    user = _current_user(db)
     property_obj = _require_active_property(db, user.id, payload.property_id if payload.property_id is not None else property_id)
     mission_payload = _build_flight_mission_preview_payload(db, property_obj=property_obj, payload=payload)
     return _flight_mission_preview_out(mission_payload)
@@ -2933,9 +2940,9 @@ def create_flight_mission(
 def get_flight_mission(
     mission_id: int,
     property_id: int | None = Query(default=None),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FlightMissionOut:
-    user = _current_user(db)
     item = _require_user_flight_mission(db, user_id=user.id, mission_id=mission_id)
     if property_id is not None and property_id != item.property_id:
         raise HTTPException(status_code=404, detail="Fant ikke oppdrag")
@@ -3127,8 +3134,10 @@ def export_flight_mission_route_geojson(
 
 
 @router.get("/flight-captures", response_model=FlightCaptureListResponse)
-def list_flight_captures(db: Session = Depends(get_db)) -> FlightCaptureListResponse:
-    user = _current_user(db)
+def list_flight_captures(
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> FlightCaptureListResponse:
     property_obj = _require_current_property(db, user.id)
     captures = (
         db.execute(
@@ -3197,16 +3206,21 @@ def create_flight_capture(
 
 
 @router.get("/flight-captures/{capture_id}", response_model=FlightCaptureOut)
-def get_flight_capture(capture_id: int, db: Session = Depends(get_db)) -> FlightCaptureOut:
-    user = _current_user(db)
+def get_flight_capture(
+    capture_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> FlightCaptureOut:
     property_obj = _require_current_property(db, user.id)
     item = _resolve_flight_capture(db, property_obj=property_obj, capture_id=capture_id)
     return _flight_capture_out(db, item)
 
 
 @router.get("/processing-runs", response_model=ProcessingRunListResponse)
-def list_processing_runs(db: Session = Depends(get_db)) -> ProcessingRunListResponse:
-    user = _current_user(db)
+def list_processing_runs(
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> ProcessingRunListResponse:
     property_obj = _require_current_property(db, user.id)
     runs = (
         db.execute(
@@ -3257,8 +3271,11 @@ def create_processing_run(
 
 
 @router.get("/processing-runs/{run_id}", response_model=ProcessingRunOut)
-def get_processing_run(run_id: int, db: Session = Depends(get_db)) -> ProcessingRunOut:
-    user = _current_user(db)
+def get_processing_run(
+    run_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> ProcessingRunOut:
     property_obj = _require_current_property(db, user.id)
     item = (
         db.execute(
@@ -3315,8 +3332,11 @@ def patch_processing_run(
 
 
 @router.get("/processing-runs/{run_id}/artifacts", response_model=ProcessingArtifactListResponse)
-def list_processing_artifacts(run_id: int, db: Session = Depends(get_db)) -> ProcessingArtifactListResponse:
-    user = _current_user(db)
+def list_processing_artifacts(
+    run_id: int,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> ProcessingArtifactListResponse:
     property_obj = _require_current_property(db, user.id)
     run = (
         db.execute(
@@ -3404,8 +3424,11 @@ def create_processing_artifact(
 
 
 @router.get("/stac/collections", response_model=StacCollectionListResponse)
-def list_stac_collections(request: Request, db: Session = Depends(get_db)) -> StacCollectionListResponse:
-    user = _current_user(db)
+def list_stac_collections(
+    request: Request,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> StacCollectionListResponse:
     property_obj = _require_current_property(db, user.id)
     captures = (
         db.execute(
@@ -3431,8 +3454,12 @@ def list_stac_collections(request: Request, db: Session = Depends(get_db)) -> St
 
 
 @router.get("/stac/collections/{collection_id}", response_model=StacCollectionOut)
-def get_stac_collection(collection_id: str, request: Request, db: Session = Depends(get_db)) -> StacCollectionOut:
-    user = _current_user(db)
+def get_stac_collection(
+    collection_id: str,
+    request: Request,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> StacCollectionOut:
     property_obj = _require_current_property(db, user.id)
     capture = _resolve_stac_capture(db, property_obj, collection_id)
     items = _stac_items_for_capture(request, db, property_obj, capture)
@@ -3440,8 +3467,12 @@ def get_stac_collection(collection_id: str, request: Request, db: Session = Depe
 
 
 @router.get("/stac/collections/{collection_id}/items", response_model=StacItemCollectionOut)
-def list_stac_items(collection_id: str, request: Request, db: Session = Depends(get_db)) -> StacItemCollectionOut:
-    user = _current_user(db)
+def list_stac_items(
+    collection_id: str,
+    request: Request,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> StacItemCollectionOut:
     property_obj = _require_current_property(db, user.id)
     capture = _resolve_stac_capture(db, property_obj, collection_id)
     items = _stac_items_for_capture(request, db, property_obj, capture)
@@ -3457,9 +3488,9 @@ def get_stac_item(
     collection_id: str,
     item_id: str,
     request: Request,
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> StacItemOut:
-    user = _current_user(db)
     property_obj = _require_current_property(db, user.id)
     capture = _resolve_stac_capture(db, property_obj, collection_id)
     items = _stac_items_for_capture(request, db, property_obj, capture)
@@ -3473,10 +3504,10 @@ def get_photos(
     date: date_type | None = Query(default=None),
     mode: str = Query(default="day", pattern="^(day|cumulative)$"),
     include_analysis: bool = Query(default=False),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoResponse:
-    if user_id is None:
-        user_id = _current_user(db).id
+    user_id = _session_user_id(user, user_id)
 
     timeline = timeline_dates(db, user_id=user_id)
     if not timeline:
@@ -3504,10 +3535,10 @@ def get_photos_page(
     limit: int = Query(default=120, ge=1, le=300),
     cursor: str | None = Query(default=None),
     sort: str = Query(default="asc", pattern="^(asc|desc)$"),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> PhotoPageResponse:
-    if user_id is None:
-        user_id = _current_user(db).id
+    user_id = _session_user_id(user, user_id)
 
     try:
         photos, next_cursor = load_photos_page(
@@ -3534,8 +3565,11 @@ def get_photos_page(
 
 
 @router.get("/photos/{photo_id}/assets", response_model=PhotoAssetListResponse)
-def get_photo_assets(photo_id: str, db: Session = Depends(get_db)) -> PhotoAssetListResponse:
-    user = _current_user(db)
+def get_photo_assets(
+    photo_id: str,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> PhotoAssetListResponse:
     photo = (
         db.execute(select(Photo).options(selectinload(Photo.assets)).where(Photo.id == photo_id, Photo.user_id == user.id))
         .scalars()
@@ -3731,7 +3765,9 @@ def reprocess_photo_metadata(
 
 
 @router.get("/sources/status", response_model=SourceStatusResponse)
-def get_source_status() -> SourceStatusResponse:
+def get_source_status(
+    _user: User = Depends(_request_owner_user),
+) -> SourceStatusResponse:
     ar5_configured = _configured_layer(
         settings.photo_ar5_wms_url,
         settings.photo_ar5_wms_layers,
@@ -3768,8 +3804,10 @@ def get_source_status() -> SourceStatusResponse:
 
 
 @router.get("/properties/current")
-def get_current_property_endpoint(db: Session = Depends(get_db)) -> dict:
-    user = _current_user(db)
+def get_current_property_endpoint(
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> dict:
     property_obj = _current_property(db, user.id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
@@ -3780,9 +3818,9 @@ def get_current_property_endpoint(db: Session = Depends(get_db)) -> dict:
 @router.get("/properties/current/gardskart-job", response_model=GardskartJobResponse)
 async def get_current_gardskart_job(
     force_refresh: bool = Query(default=False),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> GardskartJobResponse:
-    user = _current_user(db)
     property_obj = _current_property(db, user.id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
@@ -3791,8 +3829,10 @@ async def get_current_gardskart_job(
 
 
 @router.get("/properties/current/field-candidates", response_model=FieldCandidateListResponse)
-async def get_current_property_field_candidates(db: Session = Depends(get_db)) -> FieldCandidateListResponse:
-    user = _current_user(db)
+async def get_current_property_field_candidates(
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> FieldCandidateListResponse:
     property_obj = _current_property(db, user.id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
@@ -3814,9 +3854,9 @@ async def get_current_property_field_candidates_by_point(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lng: float = Query(..., ge=-180.0, le=180.0),
     radius_m: int = Query(default=settings.geonorge_point_lookup_radius_m, ge=1, le=3000),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldCandidateListResponse:
-    user = _current_user(db)
     property_obj = _current_property(db, user.id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ingen aktiv eiendom")
@@ -3837,9 +3877,9 @@ async def get_current_property_field_candidates_by_point(
 async def get_property_gardskart_job(
     property_id: int,
     force_refresh: bool = Query(default=False),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> GardskartJobResponse:
-    user = _current_user(db)
     property_obj = _active_property_by_id(db, user.id, property_id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
@@ -3850,9 +3890,9 @@ async def get_property_gardskart_job(
 @router.get("/properties/{property_id}/field-candidates", response_model=FieldCandidateListResponse)
 async def get_property_field_candidates(
     property_id: int,
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldCandidateListResponse:
-    user = _current_user(db)
     property_obj = _active_property_by_id(db, user.id, property_id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")
@@ -3875,9 +3915,9 @@ async def get_property_field_candidates_by_point(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lng: float = Query(..., ge=-180.0, le=180.0),
     radius_m: int = Query(default=settings.geonorge_point_lookup_radius_m, ge=1, le=3000),
+    user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldCandidateListResponse:
-    user = _current_user(db)
     property_obj = _active_property_by_id(db, user.id, property_id)
     if property_obj is None:
         raise HTTPException(status_code=404, detail="Fant ikke aktiv eiendom")

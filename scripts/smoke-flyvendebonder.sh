@@ -4,13 +4,28 @@ set -euo pipefail
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 APP_URL="${APP_URL:-http://127.0.0.1:5173/app/}"
 ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
+AUTH_COOKIE_JAR=""
+MISSION_ID=""
 
 TMP_FILES=()
 
 cleanup() {
+  local exit_code=$?
+
+  if [[ -n "$MISSION_ID" && -n "$AUTH_COOKIE_JAR" ]]; then
+    local delete_code=""
+    if ! delete_code="$(curl -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o /dev/null -X DELETE "$BACKEND_URL/api/v1/flight-missions/$MISSION_ID")"; then
+      echo "Advarsel: kunne ikke kontakte backend for å rydde opp testoppdrag $MISSION_ID." >&2
+    elif [[ "$delete_code" != "204" && "$delete_code" != "404" ]]; then
+      echo "Advarsel: cleanup av testoppdrag $MISSION_ID svarte med HTTP $delete_code." >&2
+    fi
+  fi
+
   if ((${#TMP_FILES[@]})); then
     rm -f "${TMP_FILES[@]}"
   fi
+
+  return "$exit_code"
 }
 trap cleanup EXIT
 
@@ -34,7 +49,11 @@ require_200() {
   local code
 
   response="$(mktemp)"
-  code="$(curl -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
   if [[ "$code" != "200" ]]; then
     rm -f "$response"
     fail "$label ($code): $url"
@@ -69,7 +88,11 @@ require_json_field() {
   local code
 
   response="$(new_tmp)"
-  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
   if [[ "$code" != "200" ]]; then
     fail "$label ($code): $url"
   fi
@@ -100,7 +123,11 @@ extract_json_field() {
   local code
 
   response="$(new_tmp)"
-  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
   if [[ "$code" != "200" ]]; then
     fail "Kunne ikke hente JSON-felt ($code): $url"
   fi
@@ -119,6 +146,30 @@ PY
 
 echo "[1/7] Backend health"
 require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('status') == 'ok'"
+
+if [[ -z "$ADMIN_ACCESS_CODE" ]]; then
+  fail "ADMIN_ACCESS_CODE må settes for full default-deny smoke."
+fi
+
+ANONYMOUS_PROFILE_CODE="$(curl -sS -w "%{http_code}" -o /dev/null "$BACKEND_URL/api/v1/profile/current")"
+if [[ "$ANONYMOUS_PROFILE_CODE" != "401" ]]; then
+  fail "Anonym profil skal avvises med 401, fikk $ANONYMOUS_PROFILE_CODE"
+fi
+
+COOKIE_JAR="$(new_tmp)"
+LOGIN_FILE="$(new_tmp)"
+LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"code": sys.argv[1]}))
+PY
+)"
+LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
+if [[ "$LOGIN_CODE" != "200" ]]; then
+  fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
+fi
+AUTH_COOKIE_JAR="$COOKIE_JAR"
 
 echo "[2/7] Profile og timeline"
 require_json_field "Profile payload" "$BACKEND_URL/api/v1/profile/current" "obj.get('user', {}).get('full_name') == 'Roar Meen'"
@@ -160,20 +211,6 @@ else
 fi
 
 if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
-  COOKIE_JAR="$(new_tmp)"
-  LOGIN_FILE="$(new_tmp)"
-  LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
-import json
-import sys
-
-print(json.dumps({"code": sys.argv[1]}))
-PY
-)"
-  LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
-  if [[ "$LOGIN_CODE" != "200" ]]; then
-    fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
-  fi
-
   if [[ -n "$THUMB_URL" ]]; then
     require_200_with_cookie "$BACKEND_URL$THUMB_URL" "Photo thumbnail" "$COOKIE_JAR"
   else
@@ -364,6 +401,7 @@ PY
   if [[ "$DELETE_CODE" != "204" ]]; then
     fail "Kunne ikke rydde opp testoppdrag etter eksport ($DELETE_CODE)"
   fi
+  MISSION_ID=""
 else
   echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet asset- og logs-sjekk."
 fi
