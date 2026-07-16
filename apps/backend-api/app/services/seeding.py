@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Photo, PhotoAsset, Property, User
+from ..models import Farm, FarmMembership, Photo, PhotoAsset, Property, User
 from .image_derivatives import write_derivatives
+from .pilot_identity import resolve_pilot_owner
 
 settings = get_settings()
 
@@ -47,8 +48,52 @@ def _normalize_legacy_skien_code(db: Session, user: User) -> None:
         db.refresh(user)
 
 
+def _ensure_owner_farm(
+    db: Session,
+    *,
+    user: User,
+    property_obj: Property | None,
+) -> Farm:
+    farm = db.get(Farm, property_obj.farm_id) if property_obj is not None else None
+    if farm is None:
+        membership = (
+            db.execute(
+                select(FarmMembership)
+                .where(FarmMembership.user_id == user.id)
+                .where(FarmMembership.role == "owner")
+                .order_by(FarmMembership.id)
+            )
+            .scalars()
+            .first()
+        )
+        farm = db.get(Farm, membership.farm_id) if membership is not None else None
+
+    if farm is None:
+        farm = Farm(name=f"{user.full_name.strip()} gård")
+        db.add(farm)
+        db.flush()
+
+    membership = db.execute(
+        select(FarmMembership).where(
+            FarmMembership.farm_id == farm.id,
+            FarmMembership.user_id == user.id,
+        )
+    ).scalar_one_or_none()
+    if membership is None:
+        db.add(
+            FarmMembership(
+                farm_id=farm.id,
+                user_id=user.id,
+                role="owner",
+                status="active",
+            )
+        )
+    db.flush()
+    return farm
+
+
 def seed_default_user_and_property(db: Session) -> tuple[User, Property]:
-    user = db.execute(select(User).where(User.full_name == settings.default_user_name)).scalar_one_or_none()
+    user = resolve_pilot_owner(db)
     if user is None:
         user = User(
             full_name=settings.default_user_name,
@@ -72,9 +117,12 @@ def seed_default_user_and_property(db: Session) -> tuple[User, Property]:
         )
     ).scalar_one_or_none()
 
+    farm = _ensure_owner_farm(db, user=user, property_obj=property_obj)
+
     if property_obj is None:
         property_obj = Property(
             user_id=user.id,
+            farm_id=farm.id,
             komm=settings.default_municipality_code,
             gnr=settings.default_gnr,
             bnr=settings.default_bnr,
@@ -84,8 +132,8 @@ def seed_default_user_and_property(db: Session) -> tuple[User, Property]:
             active_to=None,
         )
         db.add(property_obj)
-        db.commit()
-        db.refresh(property_obj)
+    db.commit()
+    db.refresh(property_obj)
 
     return user, property_obj
 

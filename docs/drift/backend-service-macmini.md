@@ -20,8 +20,10 @@ Health:
 curl -s http://127.0.0.1:8787/api/v1/health
 ```
 
-## 2b) Admin-kode for skriveoperasjoner
-Skriveoperasjoner som import, metadataendringer og profiloppdatering er nå låst bak admin-sesjon. Sett dette på Mac mini før deploy:
+## 2b) Tilgangsmodus for pilotappen
+
+Standardmodus er fail-closed og bruker admin-kode for gårdsdata og
+skriveoperasjoner:
 
 ```bash
 cat > /Users/henrymeen/srv/apps/flyvendebonder/apps/backend-api/.env <<'EOF'
@@ -31,6 +33,17 @@ EOF
 ```
 
 `ADMIN_SESSION_SECRET` bør være forskjellig fra selve koden. Etter endring i `.env`, restart backend-tjenesten.
+
+Den private pilotinstallasjonen kan i stedet åpnes uten passord ved å legge til:
+
+```bash
+ADMIN_ACCESS_OPEN=true
+```
+
+Åpen modus er eksplisitt opt-in. Alle requests bindes da til den konfigurerte
+piloteieren (`ADMIN_USER_ID` når flere aktive eiere finnes), og både lesing og
+skriving er tilgjengelig uten cookie. Ikke aktiver denne modusen i en delt eller
+flerbrukerinstallasjon.
 
 ## 3) LaunchAgent
 1. Kopier og juster stier i `scripts/macos/com.flyvendebonder.backend.plist`.

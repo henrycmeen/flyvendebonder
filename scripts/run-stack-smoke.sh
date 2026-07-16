@@ -163,6 +163,7 @@ echo "Starting backend on $BACKEND_URL ..."
   PHOTO_AR5_WFS_LAYERS="" \
   PHOTO_SOIL_WFS_URL="" \
   PHOTO_SOIL_WFS_LAYERS="" \
+  ADMIN_ACCESS_OPEN="${ADMIN_ACCESS_OPEN:-false}" \
   ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
   ADMIN_SESSION_SECRET="$ADMIN_SESSION_SECRET" \
   PYTHONUNBUFFERED=1 \
@@ -181,10 +182,25 @@ WEB_PID=$!
 
 wait_for_url "$APP_URL" "Frontend"
 
-echo "Running API + frontend smoke ..."
+echo "Running read-only API + frontend smoke ..."
+BACKEND_URL="$BACKEND_URL" \
+APP_URL="$APP_URL" \
+ADMIN_ACCESS_CODE="" \
+SMOKE_ALLOW_WRITES=0 \
+"$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
+
+echo "Running authenticated read-only API + frontend smoke ..."
 BACKEND_URL="$BACKEND_URL" \
 APP_URL="$APP_URL" \
 ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
+SMOKE_ALLOW_WRITES=0 \
+"$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
+
+echo "Running authenticated isolated API + frontend smoke ..."
+BACKEND_URL="$BACKEND_URL" \
+APP_URL="$APP_URL" \
+ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
+SMOKE_ALLOW_WRITES=1 \
 "$ROOT_DIR/scripts/smoke-flyvendebonder.sh"
 
 SUCCESS=1

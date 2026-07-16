@@ -135,11 +135,15 @@ def test_orthophoto_color_sample_api_maps_bounds_error(tmp_path, monkeypatch):
     monkeypatch.setenv("DEMO_SEED_GEOJSON", empty_geojson.as_posix())
     monkeypatch.setenv("DEMO_SEED_ASSETS_DIR", empty_assets.as_posix())
     monkeypatch.setenv("ORTHOPHOTO_OVERLAY_ROOT", overlay_root.as_posix())
+    monkeypatch.setenv("ADMIN_ACCESS_CODE", "test-admin-code")
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-admin-secret")
 
     fresh_backend_modules()
     main_module = importlib.import_module("app.main")
 
     with TestClient(main_module.app) as client:
+        login = client.post("/api/v1/admin/login", json={"code": "test-admin-code"})
+        assert login.status_code == 200
         response = client.get(
             "/api/v1/orthophotos/test-orthophoto/color-sample",
             params={"lat": 61.0, "lng": 9.5, "sample_size_px": 3},

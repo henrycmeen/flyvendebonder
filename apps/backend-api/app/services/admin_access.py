@@ -33,10 +33,19 @@ _warned_about_ephemeral_secret = False
 
 @dataclass(frozen=True)
 class AdminSession:
+    user_id: int
     expires_at: datetime
 
 
 def admin_access_is_configured() -> bool:
+    return admin_access_is_open() or admin_access_code_is_configured()
+
+
+def admin_access_is_open() -> bool:
+    return get_settings().admin_access_open
+
+
+def admin_access_code_is_configured() -> bool:
     return bool(get_settings().admin_access_code.strip())
 
 
@@ -89,15 +98,17 @@ def verify_admin_access_code(code: str) -> bool:
 
 
 def get_admin_session(request: Request) -> AdminSession | None:
+    if admin_access_is_open() or not admin_access_code_is_configured():
+        return None
     settings = get_settings()
     cookie_value = request.cookies.get(settings.admin_session_cookie_name)
     return decode_admin_session_cookie(cookie_value)
 
 
-def issue_admin_session(response: Response, request: Request) -> AdminSession:
+def issue_admin_session(response: Response, request: Request, *, user_id: int) -> AdminSession:
     settings = get_settings()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=max(1, settings.admin_session_ttl_hours))
-    cookie_value = _encode_admin_session_cookie(expires_at)
+    cookie_value = _encode_admin_session_cookie(expires_at, user_id=user_id)
     response.set_cookie(
         key=settings.admin_session_cookie_name,
         value=cookie_value,
@@ -107,7 +118,7 @@ def issue_admin_session(response: Response, request: Request) -> AdminSession:
         secure=_request_is_secure(request),
         path="/",
     )
-    return AdminSession(expires_at=expires_at)
+    return AdminSession(user_id=user_id, expires_at=expires_at)
 
 
 def clear_admin_session(response: Response) -> None:
@@ -121,7 +132,7 @@ def clear_admin_session(response: Response) -> None:
 
 
 def require_admin_session(request: Request) -> AdminSession:
-    if not admin_access_is_configured():
+    if not admin_access_code_is_configured():
         raise HTTPException(status_code=503, detail="Admin-innlogging er ikke konfigurert i backend")
 
     session = get_admin_session(request)
@@ -156,15 +167,25 @@ def decode_admin_session_cookie(raw_value: str | None) -> AdminSession | None:
     if not isinstance(payload, dict):
         return None
 
+    if payload.get("v") != 2:
+        return None
+
     expires_at_ts = payload.get("exp")
-    if not isinstance(expires_at_ts, int):
+    user_id = payload.get("uid")
+    if (
+        not isinstance(expires_at_ts, int)
+        or isinstance(expires_at_ts, bool)
+        or not isinstance(user_id, int)
+        or isinstance(user_id, bool)
+        or user_id <= 0
+    ):
         return None
 
     expires_at = datetime.fromtimestamp(expires_at_ts, tz=timezone.utc)
     if expires_at <= datetime.now(timezone.utc):
         return None
 
-    return AdminSession(expires_at=expires_at)
+    return AdminSession(user_id=user_id, expires_at=expires_at)
 
 
 def _request_is_secure(request: Request) -> bool:
@@ -174,9 +195,12 @@ def _request_is_secure(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
-def _encode_admin_session_cookie(expires_at: datetime) -> str:
+def _encode_admin_session_cookie(expires_at: datetime, *, user_id: int) -> str:
+    if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+        raise ValueError("user_id must be positive")
     payload = {
-        "v": 1,
+        "v": 2,
+        "uid": user_id,
         "exp": int(expires_at.astimezone(timezone.utc).timestamp()),
     }
     payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")

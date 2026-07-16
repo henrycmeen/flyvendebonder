@@ -186,7 +186,10 @@ def finalize_media_staging_job(
 
     existing_photos = (
         db.execute(
-            select(Photo).where(Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]))
+            select(Photo).where(
+                Photo.user_id == job.user_id,
+                Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]),
+            )
         )
         .scalars()
         .all()
@@ -208,7 +211,10 @@ def finalize_media_staging_job(
 
     imported_photos = (
         db.execute(
-            select(Photo).where(Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]))
+            select(Photo).where(
+                Photo.user_id == job.user_id,
+                Photo.source_hash.in_([item.checksum for item in image_items if item.checksum]),
+            )
         )
         .scalars()
         .all()

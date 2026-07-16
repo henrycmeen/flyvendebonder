@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     default_gnr: int = 70
     default_bnr: int = 17
     default_fnr: int = 0
+    admin_user_id: int | None = None
+    admin_access_open: bool = False
     admin_access_code: str = ""
     admin_session_secret: str = ""
     admin_session_cookie_name: str = "flyvendebonder_admin"

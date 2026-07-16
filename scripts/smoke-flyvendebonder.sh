@@ -4,13 +4,30 @@ set -euo pipefail
 BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8787}"
 APP_URL="${APP_URL:-http://127.0.0.1:5173/app/}"
 ADMIN_ACCESS_CODE="${ADMIN_ACCESS_CODE:-}"
+SMOKE_ALLOW_WRITES="${SMOKE_ALLOW_WRITES:-0}"
+EXPECT_OPEN_ACCESS="${EXPECT_OPEN_ACCESS:-}"
+AUTH_COOKIE_JAR=""
+MISSION_ID=""
 
 TMP_FILES=()
 
 cleanup() {
+  local exit_code=$?
+
+  if [[ -n "$MISSION_ID" && -n "$AUTH_COOKIE_JAR" ]]; then
+    local delete_code=""
+    if ! delete_code="$(curl -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o /dev/null -X DELETE "$BACKEND_URL/api/v1/flight-missions/$MISSION_ID")"; then
+      echo "Advarsel: kunne ikke kontakte backend for å rydde opp testoppdrag $MISSION_ID." >&2
+    elif [[ "$delete_code" != "204" && "$delete_code" != "404" ]]; then
+      echo "Advarsel: cleanup av testoppdrag $MISSION_ID svarte med HTTP $delete_code." >&2
+    fi
+  fi
+
   if ((${#TMP_FILES[@]})); then
     rm -f "${TMP_FILES[@]}"
   fi
+
+  return "$exit_code"
 }
 trap cleanup EXIT
 
@@ -26,6 +43,10 @@ fail() {
   exit 1
 }
 
+if [[ -n "$EXPECT_OPEN_ACCESS" && "$EXPECT_OPEN_ACCESS" != "true" && "$EXPECT_OPEN_ACCESS" != "false" ]]; then
+  fail "EXPECT_OPEN_ACCESS må være true, false eller tom."
+fi
+
 require_200() {
   local url="$1"
   local label="$2"
@@ -34,7 +55,29 @@ require_200() {
   local code
 
   response="$(mktemp)"
-  code="$(curl -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
+  if [[ "$code" != "200" ]]; then
+    rm -f "$response"
+    fail "$label ($code): $url"
+  fi
+  cat "$response" >"$output_file"
+  rm -f "$response"
+}
+
+require_200_with_cookie() {
+  local url="$1"
+  local label="$2"
+  local cookie_jar="$3"
+  local output_file="${4:-/dev/null}"
+  local response
+  local code
+
+  response="$(mktemp)"
+  code="$(curl -sS -w "%{http_code}" -b "$cookie_jar" -o "$response" "$url")"
   if [[ "$code" != "200" ]]; then
     rm -f "$response"
     fail "$label ($code): $url"
@@ -51,7 +94,11 @@ require_json_field() {
   local code
 
   response="$(new_tmp)"
-  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
   if [[ "$code" != "200" ]]; then
     fail "$label ($code): $url"
   fi
@@ -82,7 +129,11 @@ extract_json_field() {
   local code
 
   response="$(new_tmp)"
-  code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  if [[ -n "$AUTH_COOKIE_JAR" ]]; then
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -b "$AUTH_COOKIE_JAR" -o "$response" "$url")"
+  else
+    code="$(curl -A "flyvendebonder-smoke/1.0" -sS -w "%{http_code}" -o "$response" "$url")"
+  fi
   if [[ "$code" != "200" ]]; then
     fail "Kunne ikke hente JSON-felt ($code): $url"
   fi
@@ -102,11 +153,63 @@ PY
 echo "[1/7] Backend health"
 require_json_field "Health payload" "$BACKEND_URL/api/v1/health" "obj.get('status') == 'ok'"
 
+ADMIN_CONFIGURED="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('configured') is True else 'false'")"
+OPEN_ACCESS="$(extract_json_field "$BACKEND_URL/api/v1/admin/session" "'true' if obj.get('open_access') is True else 'false'")"
+if [[ -n "$EXPECT_OPEN_ACCESS" && "$OPEN_ACCESS" != "$EXPECT_OPEN_ACCESS" ]]; then
+  fail "Forventet open_access=$EXPECT_OPEN_ACCESS, fikk $OPEN_ACCESS"
+fi
+if [[ "$OPEN_ACCESS" == "true" ]]; then
+  require_json_field "Open admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and obj.get('open_access') is True and obj.get('authenticated') is True"
+else
+  require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and obj.get('open_access') is False and obj.get('authenticated') is False"
+fi
+
+ANONYMOUS_PROFILE_CODE="$(curl -sS -w "%{http_code}" -o /dev/null "$BACKEND_URL/api/v1/profile/current")"
+EXPECTED_ANONYMOUS_CODE="401"
+if [[ "$OPEN_ACCESS" == "true" ]]; then
+  EXPECTED_ANONYMOUS_CODE="200"
+elif [[ "$ADMIN_CONFIGURED" == "false" ]]; then
+  EXPECTED_ANONYMOUS_CODE="503"
+fi
+if [[ "$ANONYMOUS_PROFILE_CODE" != "$EXPECTED_ANONYMOUS_CODE" ]]; then
+  fail "Anonym profil skal avvises med $EXPECTED_ANONYMOUS_CODE, fikk $ANONYMOUS_PROFILE_CODE"
+fi
+
+if [[ -z "$ADMIN_ACCESS_CODE" && "$OPEN_ACCESS" != "true" ]]; then
+  echo "[2/2] App side (skrivebeskyttet smoke)"
+  APP_FILE="$(new_tmp)"
+  require_200 "$APP_URL" "Frontend" "$APP_FILE"
+  if ! grep -qi "flyvendebønder" "$APP_FILE"; then
+    echo "Frontend responderer, men kunne ikke verifisere tekst i HTML."
+  fi
+  echo "Read-only smoke check OK. Sett ADMIN_ACCESS_CODE for autentiserte lesesjekker."
+  exit 0
+fi
+
+COOKIE_JAR="$(new_tmp)"
+LOGIN_FILE="$(new_tmp)"
+LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"code": sys.argv[1]}))
+PY
+)"
+LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
+if [[ "$LOGIN_CODE" != "200" ]]; then
+  fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
+fi
+AUTH_COOKIE_JAR="$COOKIE_JAR"
+
 echo "[2/7] Profile og timeline"
 require_json_field "Profile payload" "$BACKEND_URL/api/v1/profile/current" "obj.get('user', {}).get('full_name') == 'Roar Meen'"
 require_json_field "Timeline payload" "$BACKEND_URL/api/v1/timeline/dates" "len(obj.get('dates', [])) >= 1"
 require_json_field "Property payload" "$BACKEND_URL/api/v1/properties/current" "obj.get('property', {}).get('komm') == '4003' and obj.get('property', {}).get('gnr') == 70 and obj.get('property', {}).get('bnr') == 17"
-require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id')) or obj.get('source') == 'disabled'"
+if [[ "$SMOKE_ALLOW_WRITES" == "1" ]]; then
+  require_json_field "Gardskart job payload" "$BACKEND_URL/api/v1/properties/current/gardskart-job" "bool(obj.get('job_id')) or obj.get('source') == 'disabled'"
+else
+  echo "Hopper over tilstandsfull Gårdskart-jobbsjekk i skrivebeskyttet modus."
+fi
 require_json_field "Source status payload" "$BACKEND_URL/api/v1/sources/status" "obj.get('ar5', {}).get('source') in ('enabled', 'disabled') and obj.get('gardskart', {}).get('source') in ('enabled', 'disabled')"
 
 echo "[3/7] Photo-feed og paginering"
@@ -135,31 +238,17 @@ print((photos[0] or {}).get("thumbnail_url", ""))
 PY
 )"
 
-if [[ -n "$THUMB_URL" ]]; then
-  require_200 "$BACKEND_URL$THUMB_URL" "Photo thumbnail"
-else
-  echo "Advarsel: Fotoresponsen inneholder ingen thumbnail_url."
-fi
-
-if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
+if [[ -n "$ADMIN_ACCESS_CODE" || "$OPEN_ACCESS" == "true" ]]; then
   require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "obj.get('configured') is True and 'authenticated' in obj"
 else
   require_json_field "Admin session endpoint" "$BACKEND_URL/api/v1/admin/session" "'configured' in obj and 'authenticated' in obj"
 fi
 
-if [[ -n "$ADMIN_ACCESS_CODE" ]]; then
-  COOKIE_JAR="$(new_tmp)"
-  LOGIN_FILE="$(new_tmp)"
-  LOGIN_PAYLOAD="$(python3 - "$ADMIN_ACCESS_CODE" <<'PY'
-import json
-import sys
-
-print(json.dumps({"code": sys.argv[1]}))
-PY
-)"
-  LOGIN_CODE="$(curl -sS -w "%{http_code}" -c "$COOKIE_JAR" -H "Content-Type: application/json" -o "$LOGIN_FILE" -d "$LOGIN_PAYLOAD" "$BACKEND_URL/api/v1/admin/login")"
-  if [[ "$LOGIN_CODE" != "200" ]]; then
-    fail "Admin-login feilet under smoke-check ($LOGIN_CODE)"
+if [[ -n "$ADMIN_ACCESS_CODE" || "$OPEN_ACCESS" == "true" ]]; then
+  if [[ -n "$THUMB_URL" ]]; then
+    require_200_with_cookie "$BACKEND_URL$THUMB_URL" "Photo thumbnail" "$COOKIE_JAR"
+  else
+    echo "Advarsel: Fotoresponsen inneholder ingen thumbnail_url."
   fi
 
   LOGS_FILE="$(new_tmp)"
@@ -271,6 +360,7 @@ PY
 
   echo "[6/7] Mini 4 Pro eksport"
 
+  if [[ "$SMOKE_ALLOW_WRITES" == "1" ]]; then
   CREATE_MISSION_FILE="$(new_tmp)"
   CREATE_MISSION_PAYLOAD="$(python3 - "$CURRENT_PROPERTY_ID" "$FIRST_UNIT_ID" <<'PY'
 import json
@@ -346,8 +436,12 @@ PY
   if [[ "$DELETE_CODE" != "204" ]]; then
     fail "Kunne ikke rydde opp testoppdrag etter eksport ($DELETE_CODE)"
   fi
+  MISSION_ID=""
+  else
+    echo "Hopper over oppretting av testoppdrag; SMOKE_ALLOW_WRITES er ikke 1."
+  fi
 else
-  echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet logs-sjekk."
+  echo "Advarsel: ADMIN_ACCESS_CODE er ikke satt, hopper over beskyttet asset- og logs-sjekk."
 fi
 
 echo "[7/7] App side"

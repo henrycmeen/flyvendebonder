@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu, RefreshCw } from "lucide-react";
 
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
+import { AUTH_REJECTED_EVENT, apiDelete, apiGet, apiPatch, apiPost, ApiError, clearApiCache } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
@@ -269,6 +269,9 @@ function hasActiveAdminSession(session: AdminSessionStatus | null): boolean {
   if (!session?.authenticated) {
     return false;
   }
+  if (session.open_access) {
+    return true;
+  }
   if (!session.expires_at) {
     return false;
   }
@@ -303,6 +306,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>(initialView);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [adminSession, setAdminSession] = useState<AdminSessionStatus | null>(null);
+  const [adminLoginCode, setAdminLoginCode] = useState("");
   const [timeline, setTimeline] = useState<TimelineDate[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -368,7 +372,7 @@ export default function App() {
   const [mediaImportError, setMediaImportError] = useState("");
   const [mediaImportSummary, setMediaImportSummary] = useState("");
   const [isMediaImportSubmitting, setIsMediaImportSubmitting] = useState(false);
-  const [initialVideoJobIds] = useState<string[]>(() => {
+  const [initialVideoJobIds, setInitialVideoJobIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem(VIDEO_JOB_QUEUE_STORAGE_KEY);
@@ -808,22 +812,62 @@ export default function App() {
     });
   }, [addLog, trackRequest]);
 
-  const clearPrivateProfileState = useCallback(() => {
+  const clearPrivateApplicationState = useCallback(() => {
+    clearApiCache();
     profileLoadSeqRef.current += 1;
+    timelineLoadSeqRef.current += 1;
+    photoLoadSeqRef.current += 1;
+    albumLoadSeqRef.current += 1;
+    backendLogLoadSeqRef.current += 1;
+    gardskartJobLoadSeqRef.current += 1;
+    bootstrapLoadSeqRef.current += 1;
     profileAbortRef.current?.abort();
+    timelineAbortRef.current?.abort();
+    photosAbortRef.current?.abort();
+    albumAbortRef.current?.abort();
+    backendLogAbortRef.current?.abort();
+    gardskartJobAbortRef.current?.abort();
+    bootstrapAbortRef.current?.abort();
     profileAbortRef.current = null;
+    timelineAbortRef.current = null;
+    photosAbortRef.current = null;
+    albumAbortRef.current = null;
+    backendLogAbortRef.current = null;
+    gardskartJobAbortRef.current = null;
+    bootstrapAbortRef.current = null;
     setProfile(null);
+    setTimeline([]);
+    setSelectedIndex(0);
+    setPhotoPool([]);
+    setAlbumPhotos([]);
+    setAlbumCursor(null);
+    setAlbumHasMore(false);
+    setAlbumLoadedDate(null);
+    setSelectedPhotoId(null);
+    setHoverPreviewPhotoId(null);
+    setIsPhotoViewerOpen(false);
+    setPropertyJobs([]);
+    setFlightMissions([]);
+    setActiveFlightMissionId(null);
+    setVideoMapArtifacts([]);
+    setInitialVideoJobIds([]);
+    setArchivedVideoJobIds([]);
+    setLogs([]);
     setBackendLogs([]);
+    setIsBackendLogsLoading(false);
     setMetadataEditMode(false);
+    setMediaImportError("");
+    setMediaImportSummary("");
+    setIsMediaImportSubmitting(false);
+    setStatusText("Logg inn for å åpne gårdsdata.");
   }, []);
 
-  const logoutAdminAndLoadPublicProfile = useCallback(async () => {
-    clearPrivateProfileState();
+  const logoutAdminAndClearPrivateState = useCallback(async () => {
+    clearPrivateApplicationState();
     const response = await apiPost<AdminSessionStatus>("/api/v1/admin/logout");
     setAdminSession(response.data);
-    await loadProfile();
     return response;
-  }, [clearPrivateProfileState, loadProfile]);
+  }, [clearPrivateApplicationState]);
 
   const handleOperatingAreaConfirmed = useCallback(
     async () => {
@@ -938,8 +982,7 @@ export default function App() {
 
       if (!data.authenticated) {
         setAdminSession(data);
-        clearPrivateProfileState();
-        await loadProfile({ signal: requestController?.signal ?? options?.signal });
+        clearPrivateApplicationState();
       } else {
         await loadProfile({ signal: requestController?.signal ?? options?.signal });
         if (seq !== adminSessionLoadSeqRef.current) return data;
@@ -956,17 +999,24 @@ export default function App() {
       if (seq !== adminSessionLoadSeqRef.current) return null;
       if (isRequestAborted(apiError)) return null;
 
-      clearPrivateProfileState();
+      clearPrivateApplicationState();
       if (confirmedSession) {
+        if (confirmedSession.open_access) {
+          setAdminSession(confirmedSession);
+          setStatusText("Åpen tilgang er aktiv, men gårdsdata kunne ikke lastes.");
+          addLog("warn", "Åpen tilgang bekreftet, men profilen kunne ikke lastes", apiError.requestId, apiError.detail);
+          return confirmedSession;
+        }
         const lockedSession: AdminSessionStatus = {
           configured: confirmedSession.configured,
+          open_access: confirmedSession.open_access,
           authenticated: false,
           expires_at: null,
         };
         setAdminSession(lockedSession);
         if (confirmedSession.authenticated) {
           try {
-            await logoutAdminAndLoadPublicProfile();
+            await logoutAdminAndClearPrivateState();
           } catch (logoutError) {
             const logoutApiError = logoutError as ApiError;
             addLog("warn", "Kunne ikke rydde admin-sesjon etter profilfeil", logoutApiError.requestId, logoutApiError.detail);
@@ -978,13 +1028,14 @@ export default function App() {
 
       setAdminSession({
         configured: false,
+        open_access: false,
         authenticated: false,
         expires_at: null,
       });
       addLog("warn", "Kunne ikke hente admin-status", apiError.requestId, apiError.detail);
       return null;
     }
-  }, [addLog, clearPrivateProfileState, loadProfile, logoutAdminAndLoadPublicProfile, trackRequest]);
+  }, [addLog, clearPrivateApplicationState, loadProfile, logoutAdminAndClearPrivateState, trackRequest]);
 
   const loadBackendLogs = useCallback(async (options?: { signal?: AbortSignal }) => {
     const seq = ++backendLogLoadSeqRef.current;
@@ -1109,7 +1160,7 @@ export default function App() {
             }
           : current,
       );
-      void logoutAdminAndLoadPublicProfile().catch((error) => {
+      void logoutAdminAndClearPrivateState().catch((error) => {
         const apiError = error as ApiError;
         addLog("warn", "Kunne ikke fullføre utløpt admin-logout", apiError.requestId, apiError.detail);
       });
@@ -1130,7 +1181,7 @@ export default function App() {
       authenticated: adminSession?.authenticated ?? null,
     });
     return false;
-  }, [addLog, adminSession, logoutAdminAndLoadPublicProfile]);
+  }, [addLog, adminSession, logoutAdminAndClearPrivateState]);
 
   const loadGardskartJobs = useCallback(
     async (
@@ -1485,6 +1536,8 @@ export default function App() {
   }, [selectedPhoto]);
 
   useEffect(() => {
+    if (!isAdminAuthenticated) return;
+
     const bootstrap = async (options?: { signal?: AbortSignal }) => {
       const seq = ++bootstrapLoadSeqRef.current;
       const requestController = options?.signal
@@ -1555,7 +1608,7 @@ export default function App() {
     return () => {
       abortController.abort();
     };
-  }, [addLog, initialDate, loadTimeline]);
+  }, [addLog, initialDate, isAdminAuthenticated, loadTimeline]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1566,7 +1619,58 @@ export default function App() {
   }, [loadAdminSession]);
 
   useEffect(() => {
+    const handleAuthRejected = (event: Event) => {
+      const status = event instanceof CustomEvent ? Number(event.detail?.status) : 401;
+      if (adminSession?.open_access) {
+        clearPrivateApplicationState();
+        setStatusText(
+          status === 403
+            ? "Handlingen ble avvist. Sjekker fortsatt åpen tilgang …"
+            : "Gårdsdata kunne ikke lastes. Sjekker fortsatt åpen tilgang …",
+        );
+        void apiGet<AdminSessionStatus>("/api/v1/admin/session", {
+          cache: false,
+          dedupe: false,
+          notifyAuthFailure: false,
+        })
+          .then(({ data }) => {
+            setAdminSession(data);
+            setStatusText(
+              data.open_access && data.authenticated
+                ? "Åpen tilgang er aktiv, men forespørselen ble avvist."
+                : "Tilgangsmodus er endret. Logg inn for å åpne gårdsdata.",
+            );
+          })
+          .catch((error) => {
+            const apiError = error as ApiError;
+            setStatusText("Kunne ikke kontrollere tilgangsmodus. Prøv igjen.");
+            addLog("warn", "Kunne ikke kontrollere tilgangsmodus", apiError.requestId, apiError.detail);
+          });
+        return;
+      }
+      clearPrivateApplicationState();
+      setAdminSession((current) => ({
+        configured: current?.configured ?? true,
+        open_access: current?.open_access ?? false,
+        authenticated: false,
+        expires_at: null,
+      }));
+      setStatusText(
+        status === 403
+          ? "Tilgangen ble avvist. Logg inn på nytt eller kontakt en eier."
+          : "Sesjonen er utløpt. Logg inn på nytt.",
+      );
+    };
+
+    window.addEventListener(AUTH_REJECTED_EVENT, handleAuthRejected);
+    return () => {
+      window.removeEventListener(AUTH_REJECTED_EVENT, handleAuthRejected);
+    };
+  }, [addLog, adminSession?.open_access, clearPrivateApplicationState]);
+
+  useEffect(() => {
     if (!adminSession?.authenticated) return;
+    if (adminSession.open_access) return;
 
     if (!adminSession.expires_at) {
       setAdminSession((current) =>
@@ -1577,7 +1681,7 @@ export default function App() {
             }
           : current,
       );
-      void logoutAdminAndLoadPublicProfile().catch((error) => {
+      void logoutAdminAndClearPrivateState().catch((error) => {
         const apiError = error as ApiError;
         addLog("warn", "Kunne ikke låse ugyldig admin-sesjon på serveren", apiError.requestId, apiError.detail);
       });
@@ -1595,7 +1699,7 @@ export default function App() {
             }
           : current,
       );
-      void logoutAdminAndLoadPublicProfile().catch((error) => {
+      void logoutAdminAndClearPrivateState().catch((error) => {
         const apiError = error as ApiError;
         addLog("warn", "Kunne ikke fullføre automatisk admin-logout", apiError.requestId, apiError.detail);
       });
@@ -1613,7 +1717,7 @@ export default function App() {
             }
           : current,
       );
-      void logoutAdminAndLoadPublicProfile().catch((error) => {
+      void logoutAdminAndClearPrivateState().catch((error) => {
         const apiError = error as ApiError;
         addLog("warn", "Kunne ikke fullføre automatisk admin-logout", apiError.requestId, apiError.detail);
       });
@@ -1622,7 +1726,7 @@ export default function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [addLog, adminSession?.authenticated, adminSession?.expires_at, logoutAdminAndLoadPublicProfile]);
+  }, [addLog, adminSession?.authenticated, adminSession?.expires_at, adminSession?.open_access, logoutAdminAndClearPrivateState]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -2368,7 +2472,7 @@ export default function App() {
 
   const handleAdminLogin = useCallback(async (code: string) => {
     setIsAdminSessionBusy(true);
-    clearPrivateProfileState();
+    clearPrivateApplicationState();
     setAdminSession((current) =>
       current
         ? {
@@ -2384,20 +2488,22 @@ export default function App() {
       );
       await loadProfile();
       setAdminSession(data);
+      setAdminLoginCode("");
       addLog("info", "Admin-tilgang aktivert", requestId, {
         expiresAt: data.expires_at,
       });
       setStatusText("Admin-tilgang aktiv.");
     } catch (error) {
       const apiError = error as ApiError;
-      clearPrivateProfileState();
+      clearPrivateApplicationState();
       setAdminSession({
         configured: true,
+        open_access: false,
         authenticated: false,
         expires_at: null,
       });
       try {
-        await logoutAdminAndLoadPublicProfile();
+        await logoutAdminAndClearPrivateState();
       } catch (logoutError) {
         const logoutApiError = logoutError as ApiError;
         addLog("warn", "Kunne ikke rydde delvis admin-innlogging", logoutApiError.requestId, logoutApiError.detail);
@@ -2408,12 +2514,12 @@ export default function App() {
     } finally {
       setIsAdminSessionBusy(false);
     }
-  }, [addLog, clearPrivateProfileState, loadProfile, logoutAdminAndLoadPublicProfile, trackRequest]);
+  }, [addLog, clearPrivateApplicationState, loadProfile, logoutAdminAndClearPrivateState, trackRequest]);
 
   const handleAdminLogout = useCallback(async () => {
     setIsAdminSessionBusy(true);
     try {
-      const { requestId } = await trackRequest(logoutAdminAndLoadPublicProfile);
+      const { requestId } = await trackRequest(logoutAdminAndClearPrivateState);
       setActiveView((current) => (current === "import" || current === "video" ? "map" : current));
       addLog("info", "Admin-tilgang slått av", requestId);
       setStatusText("Admin-tilgang slått av.");
@@ -2425,7 +2531,7 @@ export default function App() {
     } finally {
       setIsAdminSessionBusy(false);
     }
-  }, [addLog, logoutAdminAndLoadPublicProfile, trackRequest]);
+  }, [addLog, logoutAdminAndClearPrivateState, trackRequest]);
 
   const handleStartMediaImport = useCallback(() => {
     if (!BROWSER_MEDIA_IMPORT_ENABLED) {
@@ -2811,6 +2917,79 @@ export default function App() {
       albumScrollSpinTimeoutRef.current = null;
     }
   }, [activeView]);
+
+  if (adminSession === null) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10" data-testid="access-check">
+        <section className="flex items-center gap-3 rounded-3xl border border-fb-border-subtle bg-fb-surface-page px-6 py-5 shadow-xl">
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-fb-surface-raised">
+            <img src={`${import.meta.env.BASE_URL}flyvendebonder-logo.svg`} alt="" className="h-8 w-8" />
+          </span>
+          <div>
+            <p className="text-sm text-fb-text-secondary">Flyvendebønder</p>
+            <p className="text-sm font-medium text-fb-text-primary" role="status">Åpner gårdsdata …</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!isAdminAuthenticated) {
+    const loginConfigured = adminSession?.configured === true;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-5 py-10" data-testid="login-gate">
+        <section className="w-full max-w-md rounded-3xl border border-fb-border-subtle bg-fb-surface-page p-7 shadow-xl">
+          <div className="mb-7 flex items-center gap-3">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-fb-surface-raised">
+              <img src={`${import.meta.env.BASE_URL}flyvendebonder-logo.svg`} alt="" className="h-8 w-8" />
+            </span>
+            <div>
+              <p className="text-sm text-fb-text-secondary">Flyvendebønder</p>
+              <h1 className="text-xl font-semibold text-fb-text-primary">Logg inn for å åpne gårdsdata</h1>
+            </div>
+          </div>
+
+          {loginConfigured ? (
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAdminLogin(adminLoginCode).catch(() => undefined);
+              }}
+            >
+              <label className="block text-sm font-medium text-fb-text-primary" htmlFor="admin-access-code">
+                Tilgangskode
+              </label>
+              <input
+                id="admin-access-code"
+                type="password"
+                autoComplete="current-password"
+                value={adminLoginCode}
+                onChange={(event) => setAdminLoginCode(event.target.value)}
+                className="h-11 w-full rounded-xl border border-fb-border-subtle bg-fb-surface-raised px-3 text-fb-text-primary outline-none focus:border-fb-accent-primary"
+                disabled={isAdminSessionBusy}
+                required
+                autoFocus
+              />
+              <Button type="submit" className="w-full" disabled={isAdminSessionBusy || adminLoginCode.trim().length === 0}>
+                {isAdminSessionBusy ? "Logger inn …" : "Logg inn"}
+              </Button>
+              <p className="text-sm text-fb-text-secondary" role="status">
+                {statusText}
+              </p>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-fb-text-primary">Innlogging er ikke konfigurert.</p>
+              <p className="text-sm text-fb-text-secondary">
+                Sett opp tilgangskode i backend før gårdsdata kan åpnes.
+              </p>
+            </div>
+          )}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div
