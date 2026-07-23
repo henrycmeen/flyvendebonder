@@ -97,12 +97,12 @@ assert.doesNotMatch(
 );
 assert.match(
   css,
-  /\.map-ui-satellite \.fb-map-layer-panel[\s\S]*?border:\s*1px solid transparent/,
+  /\.map-ui-satellite \.fb-map-layer-panel\s*\{[^}]*border:\s*1px solid transparent/,
   "The map layer panel border width must be scoped to satellite mode",
 );
 assert.match(
   css,
-  /\.map-ui-satellite \.fb-map-layer-toggle[\s\S]*?border:\s*1px solid transparent/,
+  /\.map-ui-satellite \.fb-map-layer-toggle\s*\{[^}]*border:\s*1px solid transparent/,
   "Layer toggle border width must be scoped to satellite mode",
 );
 assert.ok(inspector.includes("fb-map-overlay-panel"), "Operating-area status panel must use the shared overlay surface");
