@@ -365,6 +365,10 @@ body {
   -webkit-backdrop-filter: blur(22px) saturate(1.16);
 }
 
+.map-ui-satellite .fb-map-layer-panel {
+  border: 1px solid transparent;
+}
+
 .map-ui-satellite .fb-map-layer-panel__eyebrow,
 .map-ui-satellite .fb-map-layer-panel__hint,
 .map-ui-satellite .fb-map-layer-panel .text-fb-text-secondary,
@@ -379,6 +383,7 @@ body {
 }
 
 .map-ui-satellite .fb-map-layer-toggle {
+  border: 1px solid transparent;
   color: var(--fb-map-control-secondary) !important;
 }
 

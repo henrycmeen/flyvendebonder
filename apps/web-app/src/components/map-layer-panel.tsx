@@ -21,7 +21,7 @@ function LayerToggle({ active, label, status, accentClassName, onToggle, disable
       disabled={disabled}
       aria-pressed={active}
       className={cn(
-        "fb-map-layer-toggle flex w-full items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-2 text-left transition-colors",
+        "fb-map-layer-toggle flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors",
         active
           ? "bg-fb-surface-ghost text-fb-text-primary"
           : "bg-transparent text-fb-text-secondary hover:bg-fb-surface-ghost/80",
@@ -216,7 +216,7 @@ export function MapLayerPanel({
         </button>
 
         {open ? (
-          <div className="fb-map-layer-panel absolute right-0 top-12 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border border-transparent bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
+          <div className="fb-map-layer-panel absolute right-0 top-12 w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
             <div className="mb-3 flex items-start justify-between gap-3 px-1">
               <div>
                 <p className="fb-map-layer-panel__eyebrow text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Kartfiltre</p>
