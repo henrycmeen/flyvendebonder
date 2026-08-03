@@ -30,3 +30,22 @@ export function shouldShowOperatingAreaInspector(options: {
 }): boolean {
   return options.isToolActive && !options.isLayerPanelExpanded;
 }
+
+export function resolveMapControlVisibility(options: {
+  hasPhotoLoadError: boolean;
+  isOperatingAreaToolActive: boolean;
+  isLayerPanelExpanded: boolean;
+}): {
+  showPhotoLoadAlert: boolean;
+  showLayerPanel: boolean;
+  showOperatingAreaInspector: boolean;
+} {
+  return {
+    showPhotoLoadAlert: options.hasPhotoLoadError,
+    showLayerPanel: !options.hasPhotoLoadError,
+    showOperatingAreaInspector: shouldShowOperatingAreaInspector({
+      isToolActive: options.isOperatingAreaToolActive,
+      isLayerPanelExpanded: options.isLayerPanelExpanded,
+    }),
+  };
+}

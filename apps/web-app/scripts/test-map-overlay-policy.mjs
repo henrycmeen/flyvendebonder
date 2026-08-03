@@ -6,7 +6,7 @@ import { build } from "esbuild";
 const srcDir = path.join(process.cwd(), "src");
 const bundle = await build({
   stdin: {
-    contents: `export { shouldShowMapHoverPreview, shouldShowOperatingAreaInspector } from "./src/lib/map-overlay-policy.ts";`,
+    contents: `export { resolveMapControlVisibility, shouldShowMapHoverPreview, shouldShowOperatingAreaInspector } from "./src/lib/map-overlay-policy.ts";`,
     resolveDir: process.cwd(),
     sourcefile: "map-overlay-policy-test-entry.ts",
     loader: "ts",
@@ -19,7 +19,9 @@ const bundle = await build({
 });
 
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`;
-const { shouldShowMapHoverPreview, shouldShowOperatingAreaInspector } = await import(moduleUrl);
+const { resolveMapControlVisibility, shouldShowMapHoverPreview, shouldShowOperatingAreaInspector } = await import(
+  moduleUrl
+);
 
 const visibleState = {
   isMapView: true,
@@ -60,5 +62,33 @@ assert.equal(
   "the layer panel and operating-area inspector must not compete for the same stack",
 );
 assert.equal(shouldShowOperatingAreaInspector({ isToolActive: false, isLayerPanelExpanded: false }), false);
+
+assert.deepEqual(
+  resolveMapControlVisibility({
+    hasPhotoLoadError: true,
+    isOperatingAreaToolActive: true,
+    isLayerPanelExpanded: false,
+  }),
+  {
+    showPhotoLoadAlert: true,
+    showLayerPanel: false,
+    showOperatingAreaInspector: true,
+  },
+  "the photo-load alert and operating-area inspector must share the control stack without hiding each other",
+);
+
+assert.deepEqual(
+  resolveMapControlVisibility({
+    hasPhotoLoadError: false,
+    isOperatingAreaToolActive: true,
+    isLayerPanelExpanded: true,
+  }),
+  {
+    showPhotoLoadAlert: false,
+    showLayerPanel: true,
+    showOperatingAreaInspector: false,
+  },
+  "an expanded layer panel must keep exclusive use of the control stack",
+);
 
 console.log("map overlay policy tests passed");

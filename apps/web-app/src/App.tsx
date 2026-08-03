@@ -20,7 +20,7 @@ import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { makePhotoFilter } from "@/lib/photo-filters";
 import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKey } from "@/lib/photo-ordering";
 import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
-import { shouldShowMapHoverPreview, shouldShowOperatingAreaInspector } from "@/lib/map-overlay-policy";
+import { resolveMapControlVisibility, shouldShowMapHoverPreview } from "@/lib/map-overlay-policy";
 import { selectVisibleOrthophotoOverlays } from "@/lib/orthophoto-overlay-selection";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
@@ -891,8 +891,9 @@ export default function App() {
     isColorAnalysisActive: colorAnalysisActive,
     hasPhotoLoadError: photosLoadFailed,
   });
-  const showOperatingAreaInspector = shouldShowOperatingAreaInspector({
-    isToolActive: operatingAreaTool.state.active,
+  const mapControlVisibility = resolveMapControlVisibility({
+    hasPhotoLoadError: photosLoadFailed,
+    isOperatingAreaToolActive: operatingAreaTool.state.active,
     isLayerPanelExpanded: isMapLayerPanelExpanded,
   });
 
@@ -3168,7 +3169,16 @@ export default function App() {
 
               {activeView === "map" ? (
                 <div className="pointer-events-none absolute right-3 top-3 z-[920] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2 sm:right-4 sm:top-4">
-                  {!photosLoadFailed ? (
+                  {mapControlVisibility.showPhotoLoadAlert ? (
+                    <div className="fb-map-overlay-alert pointer-events-auto inline-flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary">
+                      <span>Kunne ikke laste bilder for valgt filter.</span>
+                      <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Prøv igjen
+                      </Button>
+                    </div>
+                  ) : null}
+                  {mapControlVisibility.showLayerPanel ? (
                     <MapLayerPanel
                       propertyCount={activeProperties.length}
                       showPropertyLayer={showPropertyLayer}
@@ -3208,7 +3218,7 @@ export default function App() {
                       onExpandedChange={setIsMapLayerPanelExpanded}
                     />
                   ) : null}
-                  {showOperatingAreaInspector ? (
+                  {mapControlVisibility.showOperatingAreaInspector ? (
                     <OperatingAreaInspector
                       state={operatingAreaTool.state}
                       selectedCandidate={operatingAreaTool.selectedCandidate}
@@ -3372,18 +3382,6 @@ export default function App() {
                   onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED && isAdminAuthenticated ? handleStartMediaImport : undefined}
                 />
               )}
-
-              {activeView === "map" && photosLoadFailed ? (
-                <div className="pointer-events-none absolute left-1/2 top-3 z-[980] -translate-x-1/2 px-3 md:top-4">
-                  <div className="fb-map-overlay-alert pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary">
-                    <span>Kunne ikke laste bilder for valgt filter.</span>
-                    <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
-                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                      Prøv igjen
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
 
               {showMapHoverPreview && hoverPreviewPhoto && hoverPreviewImageUrl ? (
                 <div className="fb-map-hover-preview-anchor pointer-events-none absolute z-[760] hidden md:block">
