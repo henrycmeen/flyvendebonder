@@ -20,6 +20,7 @@ import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { makePhotoFilter } from "@/lib/photo-filters";
 import { buildNearestPath, compareByCapturedAtThenId, mergePhotoPages, photoIdKey } from "@/lib/photo-ordering";
 import { DEV_ORTHOPHOTO_OVERLAYS } from "@/lib/orthophoto-overlays";
+import { resolveMapControlVisibility, shouldShowMapHoverPreview } from "@/lib/map-overlay-policy";
 import { selectVisibleOrthophotoOverlays } from "@/lib/orthophoto-overlay-selection";
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
@@ -406,6 +407,7 @@ export default function App() {
   const [operatingAreaCenterInspectToken, setOperatingAreaCenterInspectToken] = useState(0);
   const [soilRefreshToken, setSoilRefreshToken] = useState(0);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [isMapLayerPanelExpanded, setIsMapLayerPanelExpanded] = useState(false);
   const activeUiSeason = useMemo<Exclude<SeasonFilter, "all">>(() => {
     if (selectedSeason !== "all") return selectedSeason;
     const month = new Date().getMonth() + 1;
@@ -878,6 +880,22 @@ export default function App() {
   );
   const operatingAreaTool = useOperatingAreaTool({ onConfirmed: handleOperatingAreaConfirmed });
   const deactivateOperatingAreaTool = operatingAreaTool.deactivate;
+  const showMapHoverPreview = shouldShowMapHoverPreview({
+    isMapView: activeView === "map",
+    hasPreviewPhoto: Boolean(hoverPreviewPhoto),
+    hasPreviewImage: Boolean(hoverPreviewImageUrl),
+    isPhotoViewerOpen,
+    isTimelineFilterExpanded: isFilterExpanded,
+    isLayerPanelExpanded: isMapLayerPanelExpanded,
+    isOperatingAreaToolActive: operatingAreaTool.state.active,
+    isColorAnalysisActive: colorAnalysisActive,
+    hasPhotoLoadError: photosLoadFailed,
+  });
+  const mapControlVisibility = resolveMapControlVisibility({
+    hasPhotoLoadError: photosLoadFailed,
+    isOperatingAreaToolActive: operatingAreaTool.state.active,
+    isLayerPanelExpanded: isMapLayerPanelExpanded,
+  });
 
   useEffect(() => {
     if (activeView !== "map") deactivateOperatingAreaTool();
@@ -3149,44 +3167,75 @@ export default function App() {
                 />
               ) : null}
 
-              {activeView === "map" && !photosLoadFailed ? (
-                <MapLayerPanel
-                  propertyCount={activeProperties.length}
-                  showPropertyLayer={showPropertyLayer}
-                  propertyStatus={propertyStatus}
-                  onTogglePropertyLayer={handleTogglePropertyLayer}
-                  showSoilLayer={showSoilLayer}
-                  soilStatus={soilStatus}
-                  onToggleSoilLayer={handleToggleSoilLayer}
-                  showForestLayer={showForestLayer}
-                  forestStatus={forestStatus}
-                  onToggleForestLayer={handleToggleForestLayer}
-                  colorAnalysisActive={colorAnalysisActive}
-                  colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
-                  colorAnalysisStatus={colorAnalysisStatus}
-                  onToggleColorAnalysis={(next) => {
-                    if (operatingAreaTool.state.phase === "confirming") return;
-                    if (next) operatingAreaTool.deactivate();
-                    setColorAnalysisActive(next);
-                    addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
-                  }}
-                  operatingAreaToolActive={operatingAreaTool.state.active}
-                  onToggleOperatingAreaTool={(next) => {
-                    if (operatingAreaTool.state.phase === "confirming") return;
-                    if (next) setColorAnalysisActive(false);
-                    operatingAreaTool.toggle(next);
-                    addLog("info", next ? "Jordeverktøy skrudd på" : "Jordeverktøy skrudd av");
-                  }}
-                  baseMapStyle={baseMapStyle}
-                  onChangeQuickBaseMap={(nextStyle) => {
-                    if (baseMapStyle === nextStyle) {
-                      return;
-                    }
-                    baseMapTileErrorRef.current = null;
-                    setBaseMapStyle(nextStyle);
-                    addLog("info", "Bakgrunnskart endret", null, { style: nextStyle, source: "quick-toggle" });
-                  }}
-                />
+              {activeView === "map" ? (
+                <div className="pointer-events-none absolute right-3 top-3 z-[920] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2 sm:right-4 sm:top-4">
+                  {mapControlVisibility.showPhotoLoadAlert ? (
+                    <div className="fb-map-overlay-alert pointer-events-auto inline-flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary">
+                      <span>Kunne ikke laste bilder for valgt filter.</span>
+                      <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Prøv igjen
+                      </Button>
+                    </div>
+                  ) : null}
+                  {mapControlVisibility.showLayerPanel ? (
+                    <MapLayerPanel
+                      propertyCount={activeProperties.length}
+                      showPropertyLayer={showPropertyLayer}
+                      propertyStatus={propertyStatus}
+                      onTogglePropertyLayer={handleTogglePropertyLayer}
+                      showSoilLayer={showSoilLayer}
+                      soilStatus={soilStatus}
+                      onToggleSoilLayer={handleToggleSoilLayer}
+                      showForestLayer={showForestLayer}
+                      forestStatus={forestStatus}
+                      onToggleForestLayer={handleToggleForestLayer}
+                      colorAnalysisActive={colorAnalysisActive}
+                      colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
+                      colorAnalysisStatus={colorAnalysisStatus}
+                      onToggleColorAnalysis={(next) => {
+                        if (operatingAreaTool.state.phase === "confirming") return;
+                        if (next) operatingAreaTool.deactivate();
+                        setColorAnalysisActive(next);
+                        addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
+                      }}
+                      operatingAreaToolActive={operatingAreaTool.state.active}
+                      onToggleOperatingAreaTool={(next) => {
+                        if (operatingAreaTool.state.phase === "confirming") return;
+                        if (next) setColorAnalysisActive(false);
+                        operatingAreaTool.toggle(next);
+                        addLog("info", next ? "Jordeverktøy skrudd på" : "Jordeverktøy skrudd av");
+                      }}
+                      baseMapStyle={baseMapStyle}
+                      onChangeQuickBaseMap={(nextStyle) => {
+                        if (baseMapStyle === nextStyle) {
+                          return;
+                        }
+                        baseMapTileErrorRef.current = null;
+                        setBaseMapStyle(nextStyle);
+                        addLog("info", "Bakgrunnskart endret", null, { style: nextStyle, source: "quick-toggle" });
+                      }}
+                      onExpandedChange={setIsMapLayerPanelExpanded}
+                    />
+                  ) : null}
+                  {mapControlVisibility.showOperatingAreaInspector ? (
+                    <OperatingAreaInspector
+                      state={operatingAreaTool.state}
+                      selectedCandidate={operatingAreaTool.selectedCandidate}
+                      confirmation={operatingAreaTool.confirmation}
+                      canConfirm={isAdminAuthenticated}
+                      onSelectCandidate={operatingAreaTool.selectCandidate}
+                      onConfirm={(relation) => void operatingAreaTool.confirm(relation)}
+                      onInspectMapCenter={() => setOperatingAreaCenterInspectToken((value) => value + 1)}
+                      onCancel={operatingAreaTool.deactivate}
+                      onOpenPlanning={() => {
+                        operatingAreaTool.deactivate();
+                        setActiveView("planning");
+                        addLog("info", "Planlegging åpnet fra jordeverktøy");
+                      }}
+                    />
+                  ) : null}
+                </div>
               ) : null}
 
               {activeView === "map" ? (
@@ -3238,21 +3287,6 @@ export default function App() {
                   onPropertyTileError={handlePropertyTileError}
                   onBaseMapTileError={handleBaseMapTileError}
                   onDropMissingVideoArtifact={handleDropMissingVideoArtifact}
-                  />
-                  <OperatingAreaInspector
-                    state={operatingAreaTool.state}
-                    selectedCandidate={operatingAreaTool.selectedCandidate}
-                    confirmation={operatingAreaTool.confirmation}
-                    canConfirm={isAdminAuthenticated}
-                    onSelectCandidate={operatingAreaTool.selectCandidate}
-                    onConfirm={(relation) => void operatingAreaTool.confirm(relation)}
-                    onInspectMapCenter={() => setOperatingAreaCenterInspectToken((value) => value + 1)}
-                    onCancel={operatingAreaTool.deactivate}
-                    onOpenPlanning={() => {
-                      operatingAreaTool.deactivate();
-                      setActiveView("planning");
-                      addLog("info", "Planlegging åpnet fra jordeverktøy");
-                    }}
                   />
                 </>
               ) : activeView === "planning" ? (
@@ -3349,19 +3383,7 @@ export default function App() {
                 />
               )}
 
-              {activeView === "map" && photosLoadFailed ? (
-                <div className="pointer-events-none absolute left-1/2 top-3 z-[980] -translate-x-1/2 px-3 md:top-4">
-                  <div className="fb-map-overlay-alert pointer-events-auto inline-flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--fb-accent-danger)]/75 bg-fb-surface-page px-3 py-2 text-sm text-fb-text-primary">
-                    <span>Kunne ikke laste bilder for valgt filter.</span>
-                    <Button type="button" size="sm" variant="outline" onClick={handleRetryPhotoLoad}>
-                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                      Prøv igjen
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-
-              {activeView === "map" && hoverPreviewPhoto && hoverPreviewImageUrl && !isPhotoViewerOpen && !isFilterExpanded && !photosLoadFailed ? (
+              {showMapHoverPreview && hoverPreviewPhoto && hoverPreviewImageUrl ? (
                 <div className="fb-map-hover-preview-anchor pointer-events-none absolute z-[760] hidden md:block">
                   <div className="fb-map-overlay-preview overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-2">
                     <img
