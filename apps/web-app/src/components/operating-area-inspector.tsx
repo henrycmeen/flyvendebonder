@@ -88,7 +88,7 @@ export function OperatingAreaInspector({
   const ownerMessage = state.preview?.owner_information_message;
   return (
     <section
-      className="pointer-events-auto absolute inset-x-3 bottom-3 z-[920] max-h-[min(70vh,36rem)] overflow-y-auto rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-4 shadow-fb-floating sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[25rem]"
+      className="pointer-events-auto max-h-[min(70vh,36rem)] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-fb-border-subtle bg-fb-surface-page p-4 shadow-fb-floating sm:w-[25rem]"
       aria-labelledby="operating-area-title"
       aria-live="polite"
     >
