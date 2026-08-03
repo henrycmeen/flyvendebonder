@@ -109,6 +109,16 @@ assert.ok(inspector.includes("fb-map-overlay-panel"), "Operating-area status pan
 assert.ok(inspector.includes("fb-map-overlay-option"), "Operating-area candidates must use the satellite-safe option surface");
 assert.ok(inspector.includes("fb-map-overlay-success"), "Operating-area success state must use the satellite-safe success surface");
 assert.ok(mapCanvas.includes("fb-map-overlay-alert"), "Color-analysis instruction must use the shared alert surface");
+assert.doesNotMatch(
+  css,
+  /(?:^|,)\s*\.fb-map-overlay-alert\s*(?:,|\{)/m,
+  "The color-analysis alert marker must not change Standard or Topografisk styling",
+);
+assert.match(
+  css,
+  /\.map-ui-satellite \.fb-map-overlay-alert\s*(?:,|\{)/,
+  "The color-analysis alert must only receive contrast overrides in satellite mode",
+);
 assert.ok(colorAnalysisPopup.includes("fb-map-overlay-panel"), "Color-analysis result must use the shared overlay surface");
 assert.match(
   css,
