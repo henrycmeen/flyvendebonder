@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
-const [css, panel, inspector, mapCanvas, colorAnalysisPopup] = await Promise.all([
+const [css, app, panel, inspector, mapCanvas, colorAnalysisPopup] = await Promise.all([
   readFile(new URL("src/index.css", root), "utf8"),
+  readFile(new URL("src/App.tsx", root), "utf8"),
   readFile(new URL("src/components/map-layer-panel.tsx", root), "utf8"),
   readFile(new URL("src/components/operating-area-inspector.tsx", root), "utf8"),
   readFile(new URL("src/components/map-canvas.tsx", root), "utf8"),
@@ -108,16 +109,22 @@ assert.match(
 assert.ok(inspector.includes("fb-map-overlay-panel"), "Operating-area status panel must use the shared overlay surface");
 assert.ok(inspector.includes("fb-map-overlay-option"), "Operating-area candidates must use the satellite-safe option surface");
 assert.ok(inspector.includes("fb-map-overlay-success"), "Operating-area success state must use the satellite-safe success surface");
-assert.ok(mapCanvas.includes("fb-map-overlay-alert"), "Color-analysis instruction must use the shared alert surface");
-assert.doesNotMatch(
+assert.ok(app.includes("fb-map-overlay-alert"), "Existing map errors must keep the shared alert surface");
+assert.ok(mapCanvas.includes("fb-map-overlay-satellite-alert"), "Color-analysis instruction must use its satellite-only marker");
+assert.match(
   css,
   /(?:^|,)\s*\.fb-map-overlay-alert\s*(?:,|\{)/m,
-  "The color-analysis alert marker must not change Standard or Topografisk styling",
+  "Existing map alerts must keep their Standard and Topografisk surface",
+);
+assert.doesNotMatch(
+  css,
+  /(?:^|,)\s*\.fb-map-overlay-satellite-alert\s*(?:,|\{)/m,
+  "The color-analysis marker must not change Standard or Topografisk styling",
 );
 assert.match(
   css,
-  /\.map-ui-satellite \.fb-map-overlay-alert\s*(?:,|\{)/,
-  "The color-analysis alert must only receive contrast overrides in satellite mode",
+  /\.map-ui-satellite \.fb-map-overlay-satellite-alert\s*(?:,|\{)/,
+  "The color-analysis marker must only receive contrast overrides in satellite mode",
 );
 assert.ok(colorAnalysisPopup.includes("fb-map-overlay-panel"), "Color-analysis result must use the shared overlay surface");
 assert.match(
