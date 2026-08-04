@@ -170,3 +170,35 @@ def test_api_layer_does_not_define_local_multi_role_policy_lists() -> None:
             if isinstance(item, ast.Constant) and isinstance(item.value, str)
         }
         assert len(literal_roles & contract_roles) < 2
+
+
+def test_field_write_routes_use_explicit_central_capability_guards() -> None:
+    source_path = Path(__file__).parents[1] / "app" / "api" / "v1.py"
+    source = source_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    expected_guards = {
+        "create_field_plot": "_require_active_property_for_capability",
+        "patch_field_plot": "_require_field_plot_for_capability",
+    }
+    for handler_name, guard_name in expected_guards.items():
+        function_source = ast.get_source_segment(source, functions[handler_name]) or ""
+        assert guard_name in function_source, handler_name
+        assert 'capability="field.write"' in function_source, handler_name
+
+    conditions_source = ast.get_source_segment(
+        source,
+        functions["_farm_capability_membership_conditions"],
+    ) or ""
+    assert "ACTIVE_MEMBERSHIP_STATUS" in conditions_source
+    assert "roles_with_farm_capability(capability)" in conditions_source
+
+    for helper_name in expected_guards.values():
+        helper_source = ast.get_source_segment(source, functions[helper_name]) or ""
+        assert ".join(FarmMembership" in helper_source, helper_name
+        assert "_farm_capability_membership_conditions" in helper_source, helper_name

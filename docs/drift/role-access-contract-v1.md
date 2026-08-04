@@ -270,10 +270,16 @@ fail-closed. En delingsavhengig capability er alltid avvist når kalleren ikke
 gir en eksplisitt, matchende grant.
 
 Første integrasjon erstatter den lokale `owner`/`operator`-listen ved valg av
-skrivbar gård med policyoppslaget for `field.write`. Kildeguarden i
-`test_access_control.py` hindrer nye flerrolle-matriser i API-laget. Dette er
-policygrunnlaget; full gårdsscoping av eksisterende bruker-eide ruter og
-persistente objektdelinger leveres som egne slicer før `advisor` og `viewer`
+skrivbar gård med policyoppslaget for `field.write`. `POST /fields` og
+`PATCH /fields/{field_id}` håndhever i tillegg `field.write` mot gården til den
+konkrete eiendommen eller feltressursen. Manglende medlemskap, utilstrekkelig
+rolle og inaktivt medlemskap gir samme `404` som en ukjent ressurs. Legacy
+`Property.user_id` er derfor ikke autoritativt for disse mutasjonene.
+
+Kildeguarden i `test_access_control.py` hindrer nye flerrolle-matriser i
+API-laget og krever eksplisitt capability-guard i de to feltrutene. Dette er
+fortsatt bare policygrunnlaget; full gårdsscoping av øvrige bruker-eide ruter
+og persistente objektdelinger leveres som egne slicer før `advisor` og `viewer`
 kan få produktmessig tilgang.
 
 ## Testkontrakt
@@ -307,3 +313,4 @@ slettemekanisme og kjente kopier før merge.
 - GitHub issue: 194
 - Implementasjonsspor: GitHub issue 250
 - Første kontrakt: 2026-07-16
+- Første rutehåndheving: GitHub issue 273
