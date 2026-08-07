@@ -1,0 +1,43 @@
+{
+  "width_px": 6958,
+  "height_px": 6631,
+  "utm_bounds": {
+    "westing": 537713.597905075,
+    "southing": 6558913.193959536,
+    "easting": 538757.2293911474,
+    "northing": 6559907.79784147
+  },
+  "latlng_bounds": {
+    "south": 59.16761524724223,
+    "west": 9.65982260728805,
+    "north": 59.17664053427298,
+    "east": 9.677903331908693
+  },
+  "crs": "WGS84 UTM zone 32N",
+  "label": "Flyvning 2. august 2026",
+  "source_file": "odm_orthophoto.tif",
+  "preview_file": "flyvning-2026-08-02-orthophoto.webp",
+  "preview_width_px": 2400,
+  "preview_height_px": 2287,
+  "capturedDate": "2026-08-02",
+  "year": "2026",
+  "season": "summer",
+  "overlay": {
+    "id": "flyvning-2026-08-02-orthophoto",
+    "label": "Flyvning 2. august 2026",
+    "propertyReference": "4003-70/17/0",
+    "assetFile": "flyvning-2026-08-02-orthophoto.webp",
+    "capturedDate": "2026-08-02",
+    "year": "2026",
+    "season": "summer",
+    "bounds": {
+      "south": 59.16761524724223,
+      "west": 9.65982260728805,
+      "north": 59.17664053427298,
+      "east": 9.677903331908693
+    },
+    "opacity": 0.82
+  },
+  "source_dir": null,
+  "project_name": "flyvning-2026-08-02"
+}
