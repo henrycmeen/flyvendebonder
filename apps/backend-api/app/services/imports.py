@@ -30,6 +30,10 @@ settings = get_settings()
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".tif", ".tiff"}
 
 
+class ImportSelectionError(ValueError):
+    pass
+
+
 def _sha256(file_path: Path) -> str:
     digest = hashlib.sha256()
     with file_path.open("rb") as handle:
@@ -55,6 +59,30 @@ def _normalized_source_ref(source_root: Path, file_path: Path) -> str:
         return file_path.relative_to(source_root).as_posix()
     except ValueError:
         return file_path.name
+
+
+def _select_import_files(source_path: Path, include_files: list[str] | None) -> list[Path]:
+    if include_files is None:
+        return sorted(
+            path
+            for path in source_path.rglob("*")
+            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTS
+        )
+
+    source_root = source_path.resolve()
+    selected: list[Path] = []
+    for relative_path in include_files:
+        candidate = (source_root / relative_path).resolve()
+        try:
+            candidate.relative_to(source_root)
+        except ValueError as exc:
+            raise ImportSelectionError(f"Importfil ligger utenfor kildekatalogen: {relative_path}") from exc
+        if candidate.suffix.lower() not in SUPPORTED_EXTS:
+            raise ImportSelectionError(f"Ustøttet bildefil: {relative_path}")
+        if not candidate.is_file():
+            raise FileNotFoundError(f"Importfil finnes ikke: {relative_path}")
+        selected.append(candidate)
+    return sorted(selected)
 
 
 def _default_targets(
@@ -101,17 +129,18 @@ def run_photo_ingest(
     *,
     user_id: int | None = None,
     property_id: int | None = None,
+    include_files: list[str] | None = None,
 ) -> IngestRun:
     if not source_path.exists() or not source_path.is_dir():
         raise FileNotFoundError(f"Katalog finnes ikke: {source_path}")
 
+    files = _select_import_files(source_path, include_files)
     user, property_obj = _default_targets(db, user_id=user_id, property_id=property_id)
     run = IngestRun(user_id=user.id, source_path=str(source_path), started_at=datetime.utcnow())
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    files = sorted([path for path in source_path.rglob("*") if path.is_file() and path.suffix.lower() in SUPPORTED_EXTS])
     errors: list[dict] = []
     seen = imported = skipped = 0
 

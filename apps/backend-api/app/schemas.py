@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -1142,6 +1143,30 @@ class ImportRunOut(BaseModel):
 
 class ImportRequest(BaseModel):
     source_path: str | None = None
+    include_files: list[str] | None = Field(default=None, max_length=10_000)
+
+    @field_validator("include_files")
+    @classmethod
+    def validate_include_files(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            candidate = PurePosixPath(value.strip())
+            if not value.strip() or candidate.is_absolute() or ".." in candidate.parts:
+                raise ValueError("include_files må inneholde relative filstier under source_path")
+            if candidate.suffix.lower() not in {".jpg", ".jpeg", ".tif", ".tiff"}:
+                raise ValueError("include_files kan bare inneholde støttede bildefiler")
+
+            relative_path = candidate.as_posix()
+            if relative_path in seen:
+                raise ValueError("include_files kan ikke inneholde duplikater")
+            seen.add(relative_path)
+            normalized.append(relative_path)
+
+        return normalized
 
 
 MediaStagingJobStatus = Literal["staged", "finalized", "failed"]

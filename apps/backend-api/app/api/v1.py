@@ -151,7 +151,7 @@ from ..services.geonorge_teiger import (
     lookup_field_candidates_by_point,
     lookup_field_candidates_by_point_any,
 )
-from ..services.imports import run_photo_ingest
+from ..services.imports import ImportSelectionError, run_photo_ingest
 from ..services.media_staging import (
     create_media_staging_job as create_media_staging_job_record,
     finalize_media_staging_job as finalize_media_staging_job_record,
@@ -4067,12 +4067,16 @@ def post_import_photos(
 ) -> dict:
     source = Path(payload.source_path) if payload.source_path else settings.imports_default_source
     property_obj = _current_property(db, user.id)
-    run = run_photo_ingest(
-        db,
-        source,
-        user_id=user.id,
-        property_id=property_obj.id if property_obj else None,
-    )
+    try:
+        run = run_photo_ingest(
+            db,
+            source,
+            user_id=user.id,
+            property_id=property_obj.id if property_obj else None,
+            include_files=payload.include_files,
+        )
+    except (FileNotFoundError, ImportSelectionError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"import_run": ImportRunOut.model_validate(run)}
 
 
