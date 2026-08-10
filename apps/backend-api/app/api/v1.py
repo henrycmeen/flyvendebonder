@@ -4075,7 +4075,7 @@ def post_import_photos(
             property_id=property_obj.id if property_obj else None,
             include_files=payload.include_files,
         )
-    except (FileNotFoundError, ImportSelectionError) as exc:
+    except ImportSelectionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"import_run": ImportRunOut.model_validate(run)}
 

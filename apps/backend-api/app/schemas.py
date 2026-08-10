@@ -1154,8 +1154,10 @@ class ImportRequest(BaseModel):
         normalized: list[str] = []
         seen: set[str] = set()
         for value in values:
-            candidate = PurePosixPath(value.strip())
-            if not value.strip() or candidate.is_absolute() or ".." in candidate.parts:
+            if value != value.strip():
+                raise ValueError("include_files kan ikke ha innledende eller etterfølgende mellomrom")
+            candidate = PurePosixPath(value)
+            if not value or candidate.is_absolute() or ".." in candidate.parts:
                 raise ValueError("include_files må inneholde relative filstier under source_path")
             if candidate.suffix.lower() not in {".jpg", ".jpeg", ".tif", ".tiff"}:
                 raise ValueError("include_files kan bare inneholde støttede bildefiler")

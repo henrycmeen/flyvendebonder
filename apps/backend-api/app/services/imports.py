@@ -80,7 +80,7 @@ def _select_import_files(source_path: Path, include_files: list[str] | None) -> 
         if candidate.suffix.lower() not in SUPPORTED_EXTS:
             raise ImportSelectionError(f"Ustøttet bildefil: {relative_path}")
         if not candidate.is_file():
-            raise FileNotFoundError(f"Importfil finnes ikke: {relative_path}")
+            raise ImportSelectionError(f"Importfil finnes ikke: {relative_path}")
         selected.append(candidate)
     return sorted(selected)
 
@@ -132,15 +132,20 @@ def run_photo_ingest(
     include_files: list[str] | None = None,
 ) -> IngestRun:
     if not source_path.exists() or not source_path.is_dir():
+        if include_files is not None:
+            raise ImportSelectionError(f"Katalog finnes ikke: {source_path}")
         raise FileNotFoundError(f"Katalog finnes ikke: {source_path}")
 
-    files = _select_import_files(source_path, include_files)
+    files = _select_import_files(source_path, include_files) if include_files is not None else None
     user, property_obj = _default_targets(db, user_id=user_id, property_id=property_id)
     run = IngestRun(user_id=user.id, source_path=str(source_path), started_at=datetime.utcnow())
     db.add(run)
     db.commit()
     db.refresh(run)
 
+    if files is None:
+        files = _select_import_files(source_path, None)
+    source_ref_root = source_path.resolve() if include_files is not None else source_path
     errors: list[dict] = []
     seen = imported = skipped = 0
 
@@ -198,7 +203,7 @@ def run_photo_ingest(
                 owner_token = hashlib.sha256(f"{user.id}:{source_hash}".encode()).hexdigest()[:10]
                 photo_id = f"{photo_id}-{owner_token}"
             assets = write_derivatives(file_path, source_hash)
-            source_ref = _normalized_source_ref(source_path, file_path)
+            source_ref = _normalized_source_ref(source_ref_root, file_path)
 
             photo = Photo(
                 id=photo_id,
