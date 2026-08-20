@@ -10,6 +10,7 @@ TARGET_ROOT="$TEST_ROOT/target"
 PROJECTS_MOUNT="$TEST_ROOT/Projects"
 DEFAULT_TARGET="$PROJECTS_MOUNT/Active/Flyvendebonder"
 FAKE_DISKUTIL="$TEST_ROOT/diskutil"
+FAKE_PLUTIL="$TEST_ROOT/plutil"
 
 cleanup() {
   rm -rf "$TEST_ROOT"
@@ -40,28 +41,35 @@ mkdir "$DEFAULT_TARGET"
 
 cat >"$FAKE_DISKUTIL" <<EOF
 #!/usr/bin/env bash
-cat <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>VolumeName</key><string>WrongVolume</string>
-<key>MountPoint</key><string>$PROJECTS_MOUNT</string>
-<key>FilesystemType</key><string>apfs</string>
-</dict></plist>
-PLIST
+printf '%s\n' '<plist><dict/></plist>'
 EOF
 chmod +x "$FAKE_DISKUTIL"
+
+cat >"$FAKE_PLUTIL" <<'EOF'
+#!/usr/bin/env bash
+case "$2" in
+  VolumeName) printf '%s\n' "${FAKE_VOLUME_NAME:-Projects}" ;;
+  MountPoint) printf '%s\n' "$FAKE_MOUNT_POINT" ;;
+  FilesystemType) printf '%s\n' "${FAKE_FILESYSTEM_TYPE:-apfs}" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$FAKE_PLUTIL"
 expect_failure env \
   FLYVENDEBONDER_PROJECTS_MOUNT="$PROJECTS_MOUNT" \
   FLYVENDEBONDER_DEFAULT_STORAGE_TARGET="$DEFAULT_TARGET" \
   FLYVENDEBONDER_DISKUTIL_BIN="$FAKE_DISKUTIL" \
+  FLYVENDEBONDER_PLUTIL_BIN="$FAKE_PLUTIL" \
+  FAKE_VOLUME_NAME="WrongVolume" \
+  FAKE_MOUNT_POINT="$PROJECTS_MOUNT" \
   "$FIXTURE_SCRIPT"
 
-sed -i '' 's/WrongVolume/Projects/' "$FAKE_DISKUTIL"
 env \
   FLYVENDEBONDER_PROJECTS_MOUNT="$PROJECTS_MOUNT" \
   FLYVENDEBONDER_DEFAULT_STORAGE_TARGET="$DEFAULT_TARGET" \
   FLYVENDEBONDER_DISKUTIL_BIN="$FAKE_DISKUTIL" \
+  FLYVENDEBONDER_PLUTIL_BIN="$FAKE_PLUTIL" \
+  FAKE_MOUNT_POINT="$PROJECTS_MOUNT" \
   "$FIXTURE_SCRIPT" >/dev/null
 [[ "$(readlink "$FIXTURE_ROOT/project-storage")" == "$DEFAULT_TARGET" ]]
 unlink "$FIXTURE_ROOT/project-storage"

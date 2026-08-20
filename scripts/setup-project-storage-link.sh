@@ -7,6 +7,7 @@ PROJECTS_MOUNT="${FLYVENDEBONDER_PROJECTS_MOUNT:-/Volumes/Projects}"
 DEFAULT_TARGET="${FLYVENDEBONDER_DEFAULT_STORAGE_TARGET:-$PROJECTS_MOUNT/Active/Flyvendebonder}"
 EXPECTED_VOLUME_NAME="${FLYVENDEBONDER_PROJECTS_VOLUME_NAME:-Projects}"
 DISKUTIL_BIN="${FLYVENDEBONDER_DISKUTIL_BIN:-/usr/sbin/diskutil}"
+PLUTIL_BIN="${FLYVENDEBONDER_PLUTIL_BIN:-/usr/bin/plutil}"
 TARGET_PATH="${1:-$DEFAULT_TARGET}"
 
 if [[ "$TARGET_PATH" == "--help" || "$TARGET_PATH" == "-h" ]]; then
@@ -22,9 +23,9 @@ if [[ "$TARGET_PATH" == "$DEFAULT_TARGET" ]]; then
   fi
 
   VOLUME_INFO="$($DISKUTIL_BIN info -plist "$PROJECTS_MOUNT" 2>/dev/null || true)"
-  VOLUME_NAME="$(/usr/bin/plutil -extract VolumeName raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
-  MOUNT_POINT="$(/usr/bin/plutil -extract MountPoint raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
-  FILESYSTEM_TYPE="$(/usr/bin/plutil -extract FilesystemType raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  VOLUME_NAME="$($PLUTIL_BIN -extract VolumeName raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  MOUNT_POINT="$($PLUTIL_BIN -extract MountPoint raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  FILESYSTEM_TYPE="$($PLUTIL_BIN -extract FilesystemType raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
   if [[ "$VOLUME_NAME" != "$EXPECTED_VOLUME_NAME" || "$MOUNT_POINT" != "$PROJECTS_MOUNT" || "$FILESYSTEM_TYPE" != "apfs" ]]; then
     echo "Expected APFS volume '$EXPECTED_VOLUME_NAME' is not mounted at $PROJECTS_MOUNT" >&2
     echo "Refusing to link the default target through an unverified or stale local path." >&2
