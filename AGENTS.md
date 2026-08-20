@@ -44,7 +44,7 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - På privat Mac mini ligger store runtime-cacher og prosjektdata under `/Volumes/Projects/Active/Flyvendebonder/`.
 - Bruk `project-storage/` i reporoten som maskinlokal snarvei. Opprett eller verifiser den med `./scripts/setup-project-storage-link.sh`.
 - Store datasett/importgrunnlag, dronebilder/video og genererte leveranser skal normalt legges i `project-storage/data/`, `project-storage/media/` og `project-storage/exports/`, ikke i Git-repoet.
-- På privat Mac mini og andre verter som bruker ekstern cache: verifiser før installasjon, build, test eller smoke at `/Volumes/Projects` er montert, at prosjektroten finnes og at forventede symlinkmål løser.
+- På privat Mac mini: verifiser før installasjon, build, test eller smoke at `/Volumes/Projects` er montert, at prosjektroten finnes og at forventede symlinkmål løser. På verter med eksplisitt alternativt mål verifiseres det konfigurerte målet i stedet.
 - Hvis en `node_modules`- eller `.venv`-symlink er dangling, stopp. Ikke installer en ny intern cache før riktig disk er montert eller Henry uttrykkelig har valgt en ny bootstrap.
 - Ekstern lagring er arbeidslagring, ikke eneste sikkerhetskopi. Uerstattelige rådata og medier må ha en separat kopi.
 - Se `docs/drift/local-project-storage.md` for struktur, oppsett og sikkerhetsregler.

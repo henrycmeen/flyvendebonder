@@ -3,14 +3,33 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LINK_PATH="$ROOT_DIR/project-storage"
-PROJECTS_MOUNT="/Volumes/Projects"
-DEFAULT_TARGET="/Volumes/Projects/Active/Flyvendebonder"
+PROJECTS_MOUNT="${FLYVENDEBONDER_PROJECTS_MOUNT:-/Volumes/Projects}"
+DEFAULT_TARGET="${FLYVENDEBONDER_DEFAULT_STORAGE_TARGET:-$PROJECTS_MOUNT/Active/Flyvendebonder}"
+EXPECTED_VOLUME_NAME="${FLYVENDEBONDER_PROJECTS_VOLUME_NAME:-Projects}"
+DISKUTIL_BIN="${FLYVENDEBONDER_DISKUTIL_BIN:-/usr/sbin/diskutil}"
 TARGET_PATH="${1:-$DEFAULT_TARGET}"
 
 if [[ "$TARGET_PATH" == "--help" || "$TARGET_PATH" == "-h" ]]; then
   echo "Usage: $0 [storage-path]"
   echo "Default storage path: $DEFAULT_TARGET"
   exit 0
+fi
+
+if [[ "$TARGET_PATH" == "$DEFAULT_TARGET" ]]; then
+  if [[ -L "$TARGET_PATH" ]]; then
+    echo "Default project storage target must not be a symlink: $TARGET_PATH" >&2
+    exit 1
+  fi
+
+  VOLUME_INFO="$($DISKUTIL_BIN info -plist "$PROJECTS_MOUNT" 2>/dev/null || true)"
+  VOLUME_NAME="$(/usr/bin/plutil -extract VolumeName raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  MOUNT_POINT="$(/usr/bin/plutil -extract MountPoint raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  FILESYSTEM_TYPE="$(/usr/bin/plutil -extract FilesystemType raw -o - - <<<"$VOLUME_INFO" 2>/dev/null || true)"
+  if [[ "$VOLUME_NAME" != "$EXPECTED_VOLUME_NAME" || "$MOUNT_POINT" != "$PROJECTS_MOUNT" || "$FILESYSTEM_TYPE" != "apfs" ]]; then
+    echo "Expected APFS volume '$EXPECTED_VOLUME_NAME' is not mounted at $PROJECTS_MOUNT" >&2
+    echo "Refusing to link the default target through an unverified or stale local path." >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -d "$TARGET_PATH" ]]; then
@@ -20,15 +39,6 @@ if [[ ! -d "$TARGET_PATH" ]]; then
 fi
 
 TARGET_PATH="$(cd "$TARGET_PATH" && pwd -P)"
-
-if [[ "$TARGET_PATH" == "$DEFAULT_TARGET" ]]; then
-  MOUNT_ROOT="$(/bin/df -P "$PROJECTS_MOUNT" 2>/dev/null | /usr/bin/awk 'NR == 2 { print $6 }')"
-  if [[ "$MOUNT_ROOT" != "$PROJECTS_MOUNT" ]]; then
-    echo "Projects volume is not mounted at $PROJECTS_MOUNT" >&2
-    echo "Refusing to link the default target through a stale local directory." >&2
-    exit 1
-  fi
-fi
 
 if [[ -L "$LINK_PATH" ]]; then
   CURRENT_TARGET="$(readlink "$LINK_PATH")"
