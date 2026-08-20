@@ -29,6 +29,7 @@ project-storage/
 ├── data/             store datasett og importgrunnlag
 ├── media/            dronebilder og video
 ├── exports/          genererte leveranser
+├── processing/       arbeidsdata fra lokal prosessering
 └── runtime-caches/   node_modules og virtuelle Python-miljøer
 ```
 
@@ -36,10 +37,10 @@ Eksisterende `node_modules`- og `.venv`-stier kan være symlinker til undermappe
 
 ## Sikker bruk
 
-Før installasjon, build, test eller smoke:
+På privat Mac mini og andre verter som bruker denne eksterne cachen, før installasjon, build, test eller smoke:
 
 1. Kontroller at `/Volumes/Projects` er montert.
 2. Kontroller at `project-storage/` løser til forventet prosjektrot.
 3. Kontroller at relevante `node_modules`- og `.venv`-lenker ikke er dangling.
 
-Hvis en lenke er brutt, stopp og monter riktig disk. Ekstern prosjektlagring er arbeidslagring, ikke en fullverdig sikkerhetskopi; uerstattelige rådata og medier skal også finnes på et separat lagringssted.
+Oppsettskriptet verifiserer at standardmålet faktisk ligger på volumet montert ved `/Volumes/Projects`; en stale lokal mappe godtas ikke. Hvis en lenke er brutt, stopp og monter riktig disk. Ekstern prosjektlagring er arbeidslagring, ikke en fullverdig sikkerhetskopi; uerstattelige rådata og medier skal også finnes på et separat lagringssted.
