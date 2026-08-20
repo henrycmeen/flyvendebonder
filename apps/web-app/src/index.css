@@ -298,6 +298,160 @@ body {
   -webkit-backdrop-filter: blur(14px) saturate(1.04);
 }
 
+.map-ui-satellite {
+  --fb-map-control-surface: rgba(15, 23, 32, 0.94);
+  --fb-map-control-surface-hover: rgba(45, 57, 70, 0.96);
+  --fb-map-control-surface-active: rgba(61, 76, 91, 0.98);
+  --fb-map-control-primary: #f8fafc;
+  --fb-map-control-secondary: #d7dee8;
+  --fb-map-control-border: rgba(255, 255, 255, 0.34);
+  --fb-map-control-border-strong: rgba(255, 255, 255, 0.68);
+  --fb-map-control-ring-dark: rgba(15, 23, 32, 0.96);
+  --fb-map-control-shadow: 0 14px 36px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --fb-map-overlay-option-surface: rgba(255, 255, 255, 0.1);
+  --fb-map-overlay-option-selected-surface: rgba(255, 255, 255, 0.16);
+  --fb-map-overlay-success-surface: rgba(20, 70, 56, 0.96);
+}
+
+.map-ui-satellite .fb-map-overlay-trigger {
+  border: 1px solid var(--fb-map-control-border) !important;
+  background: var(--fb-map-control-surface) !important;
+  color: var(--fb-map-control-primary) !important;
+  box-shadow: var(--fb-map-control-shadow) !important;
+  backdrop-filter: blur(20px) saturate(1.18);
+  -webkit-backdrop-filter: blur(20px) saturate(1.18);
+}
+
+.map-ui-satellite .fb-map-overlay-trigger:hover,
+.map-ui-satellite .fb-map-overlay-trigger[aria-expanded="true"] {
+  border-color: var(--fb-map-control-border-strong) !important;
+  background: var(--fb-map-control-surface-hover) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-trigger[aria-pressed="true"] {
+  border-color: var(--fb-map-control-primary) !important;
+  background: var(--fb-map-control-surface-active) !important;
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 32, 0.9),
+    0 0 0 4px rgba(248, 250, 252, 0.78),
+    var(--fb-map-control-shadow) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-trigger:disabled {
+  border-style: dashed !important;
+  border-color: rgba(215, 222, 232, 0.58) !important;
+  background: rgba(15, 23, 32, 0.9) !important;
+  color: var(--fb-map-control-secondary) !important;
+  opacity: 0.74 !important;
+}
+
+.map-ui-satellite .fb-map-overlay-trigger:focus-visible,
+.map-ui-satellite .fb-map-layer-toggle:focus-visible,
+.map-ui-satellite .fb-map-overlay-panel button:focus-visible {
+  outline: 3px solid var(--fb-map-control-primary) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(15, 23, 32, 0.88) !important;
+}
+
+.map-ui-satellite .fb-map-layer-panel,
+.map-ui-satellite .fb-map-overlay-panel,
+.map-ui-satellite .fb-map-overlay-alert,
+.map-ui-satellite .fb-map-overlay-satellite-alert,
+.map-ui-satellite .fb-map-overlay-preview {
+  border-color: var(--fb-map-control-border) !important;
+  background: var(--fb-map-control-surface) !important;
+  color: var(--fb-map-control-primary) !important;
+  box-shadow: var(--fb-map-control-shadow) !important;
+  backdrop-filter: blur(22px) saturate(1.16);
+  -webkit-backdrop-filter: blur(22px) saturate(1.16);
+}
+
+.map-ui-satellite .fb-map-layer-panel {
+  border: 1px solid transparent;
+}
+
+.map-ui-satellite .fb-map-layer-panel__eyebrow,
+.map-ui-satellite .fb-map-layer-panel__hint,
+.map-ui-satellite .fb-map-layer-panel .text-fb-text-secondary,
+.map-ui-satellite .fb-map-overlay-panel .text-fb-text-secondary {
+  color: var(--fb-map-control-secondary) !important;
+}
+
+.map-ui-satellite .fb-map-layer-panel__summary,
+.map-ui-satellite .fb-map-layer-panel .text-fb-text-primary,
+.map-ui-satellite .fb-map-overlay-panel .text-fb-text-primary {
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-layer-toggle {
+  border: 1px solid transparent;
+  color: var(--fb-map-control-secondary) !important;
+}
+
+.map-ui-satellite .fb-map-layer-toggle:hover {
+  border-color: var(--fb-map-control-border) !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-layer-toggle[aria-pressed="true"] {
+  border-color: var(--fb-map-control-border-strong) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: var(--fb-map-control-primary) !important;
+  box-shadow: inset 3px 0 0 var(--fb-map-control-primary);
+}
+
+.map-ui-satellite .fb-map-layer-toggle:disabled {
+  border-style: dashed !important;
+  border-color: rgba(215, 222, 232, 0.46) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  color: var(--fb-map-control-secondary) !important;
+  opacity: 0.72 !important;
+}
+
+.map-ui-satellite .fb-map-layer-toggle__status,
+.map-ui-satellite .fb-map-overlay-panel .bg-fb-surface-ghost {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-option {
+  border-color: var(--fb-map-control-border) !important;
+  background: var(--fb-map-overlay-option-surface) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-option[aria-pressed="true"] {
+  border-color: var(--fb-map-control-border-strong) !important;
+  background: var(--fb-map-overlay-option-selected-surface) !important;
+}
+
+.map-ui-satellite .fb-map-overlay-success {
+  border-color: rgba(110, 231, 183, 0.58) !important;
+  background: var(--fb-map-overlay-success-surface) !important;
+  color: var(--fb-map-control-primary) !important;
+}
+
+.map-ui-satellite .fb-map-layer-toggle:not([aria-pressed="true"]) .fb-map-layer-toggle__indicator {
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  background: transparent !important;
+}
+
+.map-ui-satellite .fb-map-overlay-trigger:hover:not(:disabled):not(:focus-visible),
+.map-ui-satellite .fb-map-layer-toggle:hover:not(:disabled):not(:focus-visible) {
+  box-shadow:
+    0 0 0 2px var(--fb-map-control-primary),
+    0 0 0 4px var(--fb-map-control-ring-dark),
+    var(--fb-map-control-shadow) !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .map-ui-satellite .fb-map-overlay-trigger:hover:not(:disabled),
+  .map-ui-satellite .fb-map-layer-toggle:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
 .fb-map-hover-preview-anchor {
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(3.75rem, calc(env(safe-area-inset-bottom) + 1rem));

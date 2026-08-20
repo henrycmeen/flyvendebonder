@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-orthophoto-color-analysis.mjs && node scripts/test-observed-at.mjs && node scripts/test-operating-area-tool.mjs && node scripts/test-profile-privacy.mjs && node scripts/test-open-access.mjs",
+    "test": "node scripts/test-orthophoto-color-analysis.mjs && node scripts/test-observed-at.mjs && node scripts/test-operating-area-tool.mjs && node scripts/test-map-overlay-policy.mjs && node scripts/test-profile-privacy.mjs && node scripts/test-open-access.mjs && node scripts/test-map-satellite-contrast.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint . && npm run motion:lint",
     "motion:lint": "bash ./scripts/motion-lint.sh",

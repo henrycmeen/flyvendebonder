@@ -1,0 +1,25 @@
+{
+  "id": "flyvning-2026-08-02-orthophoto-tiles",
+  "overlayId": "flyvning-2026-08-02-orthophoto",
+  "sourceKind": "canonical",
+  "sourceImage": "odm_orthophoto.tif",
+  "sourceWidthPx": 6958,
+  "sourceHeightPx": 6631,
+  "canonicalWidthPx": 6958,
+  "canonicalHeightPx": 6631,
+  "previewWidthPx": 2400,
+  "previewHeightPx": 2287,
+  "bounds": {
+    "south": 59.16761524724223,
+    "west": 9.65982260728805,
+    "north": 59.17664053427298,
+    "east": 9.677903331908693
+  },
+  "tileSize": 256,
+  "format": "webp",
+  "minZoom": 14,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "tileCount": 1000,
+  "qualityScale": 1.0
+}

@@ -139,7 +139,7 @@ from ..services.admin_access import (
     reset_login_attempts,
     verify_admin_access_code,
 )
-from ..services.access_control import roles_with_farm_capability
+from ..services.access_control import ACTIVE_MEMBERSHIP_STATUS, roles_with_farm_capability
 from ..services.pilot_identity import PilotIdentityConfigurationError, resolve_pilot_owner
 from ..services.operating_areas import candidate_payload as operating_area_candidate_payload
 from ..services.operating_area_identity import candidate_id as operating_area_candidate_id
@@ -151,7 +151,7 @@ from ..services.geonorge_teiger import (
     lookup_field_candidates_by_point,
     lookup_field_candidates_by_point_any,
 )
-from ..services.imports import run_photo_ingest
+from ..services.imports import ImportSelectionError, run_photo_ingest
 from ..services.media_staging import (
     create_media_staging_job as create_media_staging_job_record,
     finalize_media_staging_job as finalize_media_staging_job_record,
@@ -591,6 +591,51 @@ def _require_active_property(db: Session, user_id: int, property_id: int | None)
     return property_obj
 
 
+def _farm_capability_membership_conditions(
+    *,
+    user_id: int,
+    capability: str,
+) -> tuple[Any, ...]:
+    return (
+        FarmMembership.user_id == user_id,
+        FarmMembership.status == ACTIVE_MEMBERSHIP_STATUS,
+        FarmMembership.role.in_(roles_with_farm_capability(capability)),
+    )
+
+
+def _require_active_property_for_capability(
+    db: Session,
+    *,
+    user_id: int,
+    property_id: int | None,
+    capability: str,
+) -> Property:
+    today = date_type.today()
+    statement = (
+        select(Property)
+        .join(FarmMembership, FarmMembership.farm_id == Property.farm_id)
+        .where(
+            (Property.active_from.is_(None)) | (Property.active_from <= today),
+            (Property.active_to.is_(None)) | (Property.active_to >= today),
+            *_farm_capability_membership_conditions(
+                user_id=user_id,
+                capability=capability,
+            ),
+        )
+    )
+    if property_id is None:
+        statement = statement.where(Property.user_id == user_id).order_by(Property.id)
+    else:
+        statement = statement.where(Property.id == property_id)
+
+    property_obj = db.execute(statement).scalars().first()
+    if property_obj is None:
+        status_code = 400 if property_id is None else 404
+        detail = "Ingen aktiv eiendom er valgt" if property_id is None else "Fant ikke aktiv eiendom"
+        raise HTTPException(status_code=status_code, detail=detail)
+    return property_obj
+
+
 def _active_property_ids(db: Session, user_id: int) -> list[int]:
     return [item.id for item in _active_properties(db, user_id)]
 
@@ -599,6 +644,37 @@ def _require_user_field_plot(db: Session, *, user_id: int, field_id: int) -> Fie
     property_ids = _active_property_ids(db, user_id)
     item = (
         db.execute(select(FieldPlot).where(FieldPlot.id == field_id, FieldPlot.property_id.in_(property_ids or [-1])))
+        .scalars()
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Fant ikke jordutkast")
+    return item
+
+
+def _require_field_plot_for_capability(
+    db: Session,
+    *,
+    user_id: int,
+    field_id: int,
+    capability: str,
+) -> FieldPlot:
+    today = date_type.today()
+    item = (
+        db.execute(
+            select(FieldPlot)
+            .join(Property, Property.id == FieldPlot.property_id)
+            .join(FarmMembership, FarmMembership.farm_id == Property.farm_id)
+            .where(
+                FieldPlot.id == field_id,
+                (Property.active_from.is_(None)) | (Property.active_from <= today),
+                (Property.active_to.is_(None)) | (Property.active_to >= today),
+                *_farm_capability_membership_conditions(
+                    user_id=user_id,
+                    capability=capability,
+                ),
+            )
+        )
         .scalars()
         .first()
     )
@@ -2160,7 +2236,12 @@ def create_field_plot(
     user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
-    property_obj = _require_active_property(db, user.id, payload.property_id)
+    property_obj = _require_active_property_for_capability(
+        db,
+        user_id=user.id,
+        property_id=payload.property_id,
+        capability="field.write",
+    )
     geometry_json, area_m2 = _field_geometry_payload(payload.geometry)
 
     item = FieldPlot(
@@ -2190,7 +2271,12 @@ def patch_field_plot(
     user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> FieldPlotOut:
-    item = _require_user_field_plot(db, user_id=user.id, field_id=field_id)
+    item = _require_field_plot_for_capability(
+        db,
+        user_id=user.id,
+        field_id=field_id,
+        capability="field.write",
+    )
 
     if "name" in payload.model_fields_set:
         item.name = _normalize_field_name(payload.name)
@@ -3981,12 +4067,16 @@ def post_import_photos(
 ) -> dict:
     source = Path(payload.source_path) if payload.source_path else settings.imports_default_source
     property_obj = _current_property(db, user.id)
-    run = run_photo_ingest(
-        db,
-        source,
-        user_id=user.id,
-        property_id=property_obj.id if property_obj else None,
-    )
+    try:
+        run = run_photo_ingest(
+            db,
+            source,
+            user_id=user.id,
+            property_id=property_obj.id if property_obj else None,
+            include_files=payload.include_files,
+        )
+    except ImportSelectionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"import_run": ImportRunOut.model_validate(run)}
 
 
