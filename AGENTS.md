@@ -30,12 +30,24 @@ Dette dokumentet beskriver hvordan vi arbeider med Flyvendebønder-repoet på ko
 - `./scripts/run-web-app-dev.sh` – start backend + frontend (proxy mot backend på port 8787)
 - `cd apps/web-app && npm run dev -- --host 127.0.0.1 --port 5173` – kun frontend
 - `cd apps/web-app && npm run build` – frontend build
+- `./scripts/setup-project-storage-link.sh` – opprett maskinlokal `project-storage/`-snarvei til prosjektlagringen når `Projects`-disken er montert
 - `./scripts/validate-agent-worktree.sh` – standard backend + frontend-validering
 - `./scripts/run-stack-smoke.sh` – lokal stack-smoke for API + frontend
 - `./scripts/sync-github-labels.sh` – synk anbefalte GitHub-labels
 - `./scripts/prepare-webroot.sh` – bygg staging webroot
 - `./scripts/deploy-flyvendebonder.sh --dry-run` – valider deploy
 - `./scripts/deploy-flyvendebonder.sh` – faktisk deploy
+
+## Lokal prosjektlagring
+
+- Git-repo, `.git`, aktiv kildekode og lokale endringer skal ligge på intern SSD.
+- På privat Mac mini ligger store runtime-cacher og prosjektdata under `/Volumes/Projects/Active/Flyvendebonder/`.
+- Bruk `project-storage/` i reporoten som maskinlokal snarvei. Opprett eller verifiser den med `./scripts/setup-project-storage-link.sh`.
+- Store datasett/importgrunnlag, dronebilder/video og genererte leveranser skal normalt legges i `project-storage/data/`, `project-storage/media/` og `project-storage/exports/`, ikke i Git-repoet.
+- På privat Mac mini: verifiser før installasjon, build, test eller smoke at `/Volumes/Projects` er montert, at prosjektroten finnes og at forventede symlinkmål løser. På verter med eksplisitt alternativt mål verifiseres det konfigurerte målet i stedet.
+- Hvis en `node_modules`- eller `.venv`-symlink er dangling, stopp. Ikke installer en ny intern cache før riktig disk er montert eller Henry uttrykkelig har valgt en ny bootstrap.
+- Ekstern lagring er arbeidslagring, ikke eneste sikkerhetskopi. Uerstattelige rådata og medier må ha en separat kopi.
+- Se `docs/drift/local-project-storage.md` for struktur, oppsett og sikkerhetsregler.
 
 ## SSH og deploy-tilgang (Mac mini)
 - SSH alias `macmini` skal brukes for deploy-kommandoer.

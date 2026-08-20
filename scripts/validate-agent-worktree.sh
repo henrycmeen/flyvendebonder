@@ -23,32 +23,35 @@ while (($#)); do
   esac
 done
 
-echo "[1/4] Backend tests"
+echo "[1/5] Project storage link tests"
+"$ROOT_DIR/scripts/tests/test-setup-project-storage-link.sh"
+
+echo "[2/5] Backend tests"
 (
   cd "$ROOT_DIR/apps/backend-api"
   "$BACKEND_PYTHON" -m pytest -q
 )
 
-echo "[2/4] Frontend tests"
+echo "[3/5] Frontend tests"
 (
   cd "$ROOT_DIR/apps/web-app"
   npm run test
 )
 
-echo "[3/4] Frontend lint"
+echo "[4/5] Frontend lint"
 (
   cd "$ROOT_DIR/apps/web-app"
   npm run lint
 )
 
-echo "[4/4] Frontend build"
+echo "[5/5] Frontend build"
 (
   cd "$ROOT_DIR/apps/web-app"
   npm run build
 )
 
 if [[ "$RUN_STACK_SMOKE" -eq 1 ]]; then
-  echo "[5/5] Stack smoke"
+  echo "[6/6] Stack smoke"
   "$ROOT_DIR/scripts/run-stack-smoke.sh"
 fi
 
