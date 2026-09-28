@@ -106,11 +106,13 @@ export function numbersEqual(a: number | null, b: number | null): boolean {
 
 export function parseManualViewTarget(tags: string[] | null | undefined): ManualViewTarget | null {
   if (!tags?.length) return null;
-  const latTag = tags.find((tag) => tag.startsWith("meta:manual_view_lat="));
-  const lngTag = tags.find((tag) => tag.startsWith("meta:manual_view_lng="));
+  const latPrefix = "meta:manual_view_lat=";
+  const lngPrefix = "meta:manual_view_lng=";
+  const latTag = tags.find((tag) => tag.slice(0, latPrefix.length).toLowerCase() === latPrefix);
+  const lngTag = tags.find((tag) => tag.slice(0, lngPrefix.length).toLowerCase() === lngPrefix);
   if (!latTag || !lngTag) return null;
-  const lat = Number(latTag.slice("meta:manual_view_lat=".length));
-  const lng = Number(lngTag.slice("meta:manual_view_lng=".length));
+  const lat = Number(latTag.slice(latPrefix.length));
+  const lng = Number(lngTag.slice(lngPrefix.length));
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { lat, lng };

@@ -397,6 +397,7 @@ export default function App() {
   });
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
   const [isMapPhotosLoading, setIsMapPhotosLoading] = useState(false);
+  const [mapPhotoPaginationComplete, setMapPhotoPaginationComplete] = useState(false);
   const [photoLoadRetryToken, setPhotoLoadRetryToken] = useState(0);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
@@ -472,6 +473,9 @@ export default function App() {
   const albumAbortRef = useRef<AbortController | null>(null);
   const photoLoadSeqRef = useRef(0);
   const albumLoadSeqRef = useRef(0);
+  const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
+  const metadataSaveSequenceRef = useRef(0);
+  const metadataSaveTokensRef = useRef(new Map<string, number>());
   const profileLoadSeqRef = useRef(0);
   const adminSessionLoadSeqRef = useRef(0);
   const timelineLoadSeqRef = useRef(0);
@@ -479,6 +483,10 @@ export default function App() {
   const gardskartJobLoadSeqRef = useRef(0);
   const bootstrapLoadSeqRef = useRef(0);
   const autoAppliedLatestFiltersRef = useRef(false);
+
+  useEffect(() => {
+    selectedPhotoIdRef.current = selectedPhotoId;
+  }, [selectedPhotoId]);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const activeProperties = useMemo<Property[]>(() => {
@@ -1115,6 +1123,16 @@ export default function App() {
     );
   }, []);
 
+  const replacePhotoState = useCallback((updatedPhoto: PhotoFeature) => {
+    const replacePhoto = (previous: PhotoFeature[]) =>
+      previous.map((photo) =>
+        photoIdKey(photo.id) === photoIdKey(updatedPhoto.id) ? updatedPhoto : photo,
+      );
+
+    setPhotoPool(replacePhoto);
+    setAlbumPhotos(replacePhoto);
+  }, []);
+
   const updatePhotoMetadataState = useCallback(
     (
       photoId: string,
@@ -1372,8 +1390,10 @@ export default function App() {
 
   const handleSavePhotoMetadata = useCallback(async () => {
     if (!selectedPhoto) return;
-    if (metadataBusyPhotoId === selectedPhoto.id) return;
     if (!ensureAdminAccess("metadataendring")) return;
+
+    const photoId = selectedPhoto.id;
+    if (metadataSaveTokensRef.current.has(photoId)) return;
 
     const nextTags = normalizeTagsInput(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
@@ -1388,10 +1408,12 @@ export default function App() {
       return;
     }
 
-    setMetadataBusyPhotoId(selectedPhoto.id);
+    const saveToken = ++metadataSaveSequenceRef.current;
+    metadataSaveTokensRef.current.set(photoId, saveToken);
+    setMetadataBusyPhotoId(photoId);
     try {
       const { data, requestId } = await trackRequest(() =>
-        apiPatch<PhotoMetadataActionResponse>(`/api/v1/photos/${selectedPhoto.id}/metadata`, {
+        apiPatch<PhotoMetadataActionResponse>(`/api/v1/photos/${photoId}/metadata`, {
           tags: nextTags,
           caption: nextCaption,
           needs_manual_qc: nextNeedsManualQc,
@@ -1407,44 +1429,102 @@ export default function App() {
         }),
       );
 
-      updatePhotoMetadataState(
-        data.photo_id,
-        data.tags,
-        data.caption,
-        data.needs_manual_qc,
-        data.altitude_m,
-        data.heading_deg,
-        data.pitch_deg,
-      );
-      setMetadataTagsDraft(data.tags);
-      setMetadataCaptionDraft(data.caption ?? "");
-      setMetadataNeedsManualQcDraft(data.needs_manual_qc);
-      setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
-      setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
-      setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
-      setMetadataManualViewTargetDraft(
-        data.manual_view_lat != null && data.manual_view_lng != null
-          ? { lat: data.manual_view_lat, lng: data.manual_view_lng }
-          : null,
-      );
-      setMetadataTagDraft("");
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
+
+      let refreshedPhoto: PhotoFeature | null = null;
+      try {
+        const { data: refreshedPhotos } = await trackRequest(() =>
+          apiGet<PhotosResponse>("/api/v1/photos", {
+            query: {
+              date: selectedPhoto.captured_date,
+              mode: "cumulative",
+              include_analysis: false,
+            },
+            cache: false,
+            dedupe: false,
+          }),
+        );
+        refreshedPhoto =
+          refreshedPhotos.photos.find((photo) => photoIdKey(photo.id) === photoIdKey(photoId)) ?? null;
+        if (!refreshedPhoto) {
+          throw new Error("Backend returnerte ikke det oppdaterte bildet");
+        }
+      } catch (refreshError) {
+        if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
+
+        updatePhotoMetadataState(
+          data.photo_id,
+          data.tags,
+          data.caption,
+          data.needs_manual_qc,
+          data.altitude_m,
+          data.heading_deg,
+          data.pitch_deg,
+        );
+        if (selectedPhotoIdRef.current === photoId) {
+          setMetadataTagsDraft(data.tags);
+          setMetadataCaptionDraft(data.caption ?? "");
+          setMetadataNeedsManualQcDraft(data.needs_manual_qc);
+          setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
+          setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
+          setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
+          setMetadataManualViewTargetDraft(
+            data.manual_view_lat != null && data.manual_view_lng != null
+              ? { lat: data.manual_view_lat, lng: data.manual_view_lng }
+              : null,
+          );
+          setMetadataTagDraft("");
+          setMetadataEditMode(false);
+        }
+
+        const refreshApiError = refreshError as ApiError;
+        addLog("warn", "Metadata lagret, men kartdata kunne ikke oppdateres", requestId, {
+          photoId,
+          detail: refreshApiError.detail ?? refreshApiError.message,
+        });
+        if (selectedPhotoIdRef.current === photoId) {
+          setStatusText("Metadata lagret, men kartdata kunne ikke oppdateres.");
+        }
+        return;
+      }
+
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken || !refreshedPhoto) return;
+
+      replacePhotoState(refreshedPhoto);
+      if (selectedPhotoIdRef.current === photoId) {
+        setMetadataTagsDraft(refreshedPhoto.tags);
+        setMetadataCaptionDraft(refreshedPhoto.caption ?? "");
+        setMetadataNeedsManualQcDraft(refreshedPhoto.needs_manual_qc);
+        setMetadataAltitudeDraft(toDraftNumber(refreshedPhoto.altitude_m));
+        setMetadataHeadingDraft(toDraftNumber(refreshedPhoto.heading_deg));
+        setMetadataPitchDraft(toDraftNumber(refreshedPhoto.pitch_deg));
+        setMetadataManualViewTargetDraft(parseManualViewTarget(refreshedPhoto.tags));
+        setMetadataTagDraft("");
+        setMetadataEditMode(false);
+      }
       addLog("info", "Metadata lagret", requestId, {
-        photoId: data.photo_id,
-        tags: data.tags.length,
-        needs_manual_qc: data.needs_manual_qc,
+        photoId: refreshedPhoto.id,
+        tags: refreshedPhoto.tags.length,
+        needs_manual_qc: refreshedPhoto.needs_manual_qc,
       });
-      setStatusText("Metadata oppdatert.");
-      setMetadataEditMode(false);
+      if (selectedPhotoIdRef.current === photoId) {
+        setStatusText("Metadata oppdatert.");
+      }
     } catch (error) {
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
       const apiError = error as ApiError;
       addLog("error", "Kunne ikke lagre metadata", apiError.requestId, apiError.detail);
-      setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
+      if (selectedPhotoIdRef.current === photoId) {
+        setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
+      }
     } finally {
-      setMetadataBusyPhotoId(null);
+      if (metadataSaveTokensRef.current.get(photoId) === saveToken) {
+        metadataSaveTokensRef.current.delete(photoId);
+        setMetadataBusyPhotoId((current) => (current === photoId ? null : current));
+      }
     }
   }, [
     addLog,
-    metadataBusyPhotoId,
     metadataAltitudeDraft,
     metadataCaptionDraft,
     metadataHeadingDraft,
@@ -1453,6 +1533,7 @@ export default function App() {
     selectedPhoto,
     selectedPhotoManualViewTarget,
     ensureAdminAccess,
+    replacePhotoState,
     trackRequest,
     updatePhotoMetadataState,
     metadataNeedsManualQcDraft,
@@ -1529,6 +1610,7 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedPhoto) {
+      setMetadataBusyPhotoId(null);
       setMetadataTagDraft("");
       setMetadataTagsDraft([]);
       setMetadataCaptionDraft("");
@@ -1541,6 +1623,7 @@ export default function App() {
       setShowTechnicalMetadata(false);
       return;
     }
+    setMetadataBusyPhotoId(metadataSaveTokensRef.current.has(selectedPhoto.id) ? selectedPhoto.id : null);
     setMetadataTagDraft("");
     setMetadataTagsDraft(selectedPhoto.tags ?? []);
     setMetadataCaptionDraft(selectedPhoto.caption ?? "");
@@ -1890,6 +1973,8 @@ export default function App() {
     photosAbortRef.current = abortController;
 
     const loadPhotos = async () => {
+      let paginationComplete = false;
+      setMapPhotoPaginationComplete(false);
       if (!latestFilteredDate) {
         setPhotoPool([]);
         setPhotosLoadFailed(false);
@@ -1897,6 +1982,7 @@ export default function App() {
         setStatusText("Ingen bilder for valgt filter.");
         if (seq === photoLoadSeqRef.current) {
           setIsMapPhotosLoading(false);
+          setMapPhotoPaginationComplete(!initialPhotoRef.current);
         }
         return;
       }
@@ -1921,6 +2007,8 @@ export default function App() {
         const filteredPhotos = data.photos.filter(mapPhotoFilter);
         setPhotoPool(filteredPhotos);
         setPhotosLoadFailed(false);
+        paginationComplete = true;
+        setMapPhotoPaginationComplete(true);
         addLog("warn", "Bruker fallback for kartbilder", requestId, {
           reason,
           apiDate: latestFilteredDate,
@@ -1988,6 +2076,7 @@ export default function App() {
           cursor = data.next_cursor ?? null;
           hasMore = Boolean(cursor) && !shouldStopForSelectedYear;
         }
+        paginationComplete = !hasMore;
 
         if (mergedPhotos.length === 0 && filteredTimelineHasData && !showOnlyManualQc && !showOnlyLowConfidence) {
           const recovered = await loadFallbackPhotos("paged_load_returned_empty");
@@ -2031,6 +2120,7 @@ export default function App() {
       } finally {
         if (seq === photoLoadSeqRef.current) {
           setIsMapPhotosLoading(false);
+          setMapPhotoPaginationComplete(paginationComplete);
         }
       }
     };
@@ -2226,6 +2316,9 @@ export default function App() {
       return;
     }
     if (photos.length === 0) {
+      if (initialPhotoRef.current && (!mapPhotoPaginationComplete || isMapPhotosLoading)) {
+        return;
+      }
       setSelectedPhotoId(null);
       return;
     }
@@ -2234,21 +2327,40 @@ export default function App() {
       return;
     }
 
-    setSelectedPhotoId((previous) => {
-      if (initialPhotoRef.current && photos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))) {
-        const first = initialPhotoRef.current;
-        initialPhotoRef.current = null;
-        return first;
+    if (initialPhotoRef.current) {
+      const initialMapPhoto = photos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      if (initialMapPhoto) {
+        if (photoIdKey(selectedPhotoId) === photoIdKey(initialMapPhoto.id)) {
+          initialPhotoRef.current = null;
+        } else {
+          setSelectedPhotoId(initialMapPhoto.id);
+        }
+        return;
+      }
+      if (isMapPhotosLoading || !mapPhotoPaginationComplete) {
+        return;
       }
       initialPhotoRef.current = null;
+    }
 
+    setSelectedPhotoId((previous) => {
       if (previous && photos.some((photo) => photoIdKey(photo.id) === photoIdKey(previous))) {
         return previous;
       }
 
       return photos[photos.length - 1]?.id ?? null;
     });
-  }, [activeView, photos, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [
+    activeView,
+    hasExplicitDeepLink,
+    isMapPhotosLoading,
+    mapPhotoPaginationComplete,
+    photos,
+    selectedPhotoId,
+    syncSelectionToUrl,
+  ]);
 
   useEffect(() => {
     if (activeView === "album") {
@@ -2256,6 +2368,14 @@ export default function App() {
     }
     if (!selectedDate || photos.length === 0) return;
     if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
+    if (initialPhotoRef.current) {
+      const initialDatePhoto = photos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      if (!initialDatePhoto || photoIdKey(selectedPhotoId) !== photoIdKey(initialDatePhoto.id)) {
+        return;
+      }
+    }
     const inSelectedDate = photos.filter((photo) => photo.captured_date === selectedDate);
     if (inSelectedDate.length === 0) return;
 
@@ -2265,31 +2385,77 @@ export default function App() {
       }
       return inSelectedDate[inSelectedDate.length - 1].id;
     });
-  }, [activeView, photos, selectedDate, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [activeView, photos, selectedDate, hasExplicitDeepLink, selectedPhotoId, syncSelectionToUrl]);
 
   useEffect(() => {
     if (activeView !== "album") return;
-    if (albumPhotos.length === 0) return;
+    if (!latestTimelineDate) return;
+    if (albumLoadedDate !== latestTimelineDate) return;
     if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
 
-    setSelectedPhotoId((previous) => {
-      if (
-        initialPhotoRef.current &&
-        albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))
-      ) {
-        const initialAlbumPhoto = initialPhotoRef.current;
-        initialPhotoRef.current = null;
-        return initialAlbumPhoto;
+    if (initialPhotoRef.current) {
+      const initialAlbumPhoto = albumPhotos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      if (initialAlbumPhoto) {
+        if (
+          photoIdKey(selectedPhotoId) === photoIdKey(initialAlbumPhoto.id) &&
+          isPhotoViewerOpen
+        ) {
+          initialPhotoRef.current = null;
+        } else {
+          setSelectedPhotoId(initialAlbumPhoto.id);
+          setIsPhotoViewerOpen(true);
+        }
+        return;
+      }
+      if (albumLoadingInitial || albumLoadingMore || albumHasMore) {
+        return;
       }
       initialPhotoRef.current = null;
+      setSelectedPhotoId(null);
+      setIsPhotoViewerOpen(false);
+      return;
+    }
 
+    if (albumPhotos.length === 0) return;
+
+    setSelectedPhotoId((previous) => {
       if (previous && albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(previous))) {
         return previous;
       }
 
       return previous;
     });
-  }, [activeView, albumPhotos, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [
+    activeView,
+    albumHasMore,
+    albumLoadingInitial,
+    albumLoadingMore,
+    albumLoadedDate,
+    albumPhotos,
+    hasExplicitDeepLink,
+    isPhotoViewerOpen,
+    latestTimelineDate,
+    selectedPhotoId,
+    syncSelectionToUrl,
+  ]);
+
+  useEffect(() => {
+    if (activeView !== "album" || !latestTimelineDate || albumLoadFailed) return;
+    if (!initialPhotoRef.current || albumLoadingInitial || albumLoadingMore || !albumHasMore) return;
+    if (albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))) return;
+    void loadAlbumPage({ reset: false });
+  }, [
+    activeView,
+    albumHasMore,
+    albumLoadFailed,
+    albumLoadingInitial,
+    albumLoadingMore,
+    albumPhotos,
+    latestTimelineDate,
+    loadAlbumPage,
+  ]);
 
   useEffect(() => {
     if (activeProperties.length === 0 || !showPropertyLayer) {
@@ -2326,8 +2492,11 @@ export default function App() {
       syncSelectionToUrl &&
       Boolean(selectedPhotoId) &&
       (isPhotoViewerOpen || (activeView === "map" && selectedPhotoExistsInMap));
+    const pendingPhotoParam = syncSelectionToUrl ? initialPhotoRef.current : null;
 
-    if (!shouldPersistPhotoParam) {
+    if (pendingPhotoParam) {
+      next.set("photo", pendingPhotoParam);
+    } else if (!shouldPersistPhotoParam) {
       next.delete("photo");
     } else if (selectedPhotoId) {
       next.set("photo", selectedPhotoId);
