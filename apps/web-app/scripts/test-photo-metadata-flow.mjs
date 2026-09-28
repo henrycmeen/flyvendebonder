@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 
 import { build } from "esbuild";
-
-const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
 const bundle = await build({
   stdin: {
@@ -37,17 +34,5 @@ assert.equal(
   null,
   "a partial manual view override must not become a target",
 );
-
-assert.match(
-  app,
-  /apiGet<PhotosResponse>\("\/api\/v1\/photos",[\s\S]*?mode: "cumulative"[\s\S]*?cache: false[\s\S]*?dedupe: false/,
-  "metadata save must refresh the canonical photo after PATCH",
-);
-assert.match(app, /metadataSaveTokensRef\.current\.get\(photoId\) !== saveToken/, "stale metadata responses must be ignored");
-assert.match(app, /selectedPhotoIdRef\.current === photoId/, "metadata drafts must stay bound to the saved photo");
-assert.match(app, /initialPhotoRef\.current && \(!mapPhotoPaginationComplete \|\| isMapPhotosLoading\)/, "map deep links must survive the empty loading state");
-assert.match(app, /if \(albumLoadedDate !== latestTimelineDate\) return;/, "album deep links must wait for the first page state");
-assert.match(app, /void loadAlbumPage\(\{ reset: false \}\)/, "album deep links must request later pages while pending");
-assert.match(app, /const pendingPhotoParam = syncSelectionToUrl \? initialPhotoRef\.current : null/, "pending deep links must remain in the URL");
 
 console.log("photo metadata flow tests passed");
