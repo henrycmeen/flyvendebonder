@@ -5,6 +5,7 @@ import { AUTH_REJECTED_EVENT, apiDelete, apiGet, apiPatch, apiPost, ApiError, cl
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
+  editablePhotoTags,
   formatPropertyReference,
   normalizeTagsInput,
   numbersEqual,
@@ -361,6 +362,7 @@ export default function App() {
   const [pendingRequests, setPendingRequests] = useState(0);
   const [analysisBusyPhotoId, setAnalysisBusyPhotoId] = useState<string | null>(null);
   const [metadataBusyPhotoId, setMetadataBusyPhotoId] = useState<string | null>(null);
+  const [metadataSaveError, setMetadataSaveError] = useState<{ photoId: string; message: string } | null>(null);
   const [metadataEditMode, setMetadataEditMode] = useState(false);
   const [showTechnicalMetadata, setShowTechnicalMetadata] = useState(false);
   const [metadataTagDraft, setMetadataTagDraft] = useState("");
@@ -1402,7 +1404,8 @@ export default function App() {
     const photoId = selectedPhoto.id;
     if (metadataSaveTokensRef.current.has(photoId)) return;
 
-    const nextTags = normalizeTagsInput(metadataTagsDraft);
+    setMetadataSaveError(null);
+    const nextTags = editablePhotoTags(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
     const nextNeedsManualQc = metadataNeedsManualQcDraft;
     const manualTargetChanged = !sameManualViewTarget(selectedPhotoManualViewTarget, metadataManualViewTargetDraft);
@@ -1410,6 +1413,7 @@ export default function App() {
     const headingInput = parseDraftNumber(metadataHeadingDraft);
     const pitchInput = parseDraftNumber(metadataPitchDraft);
     if (!altitudeInput.valid || !headingInput.valid || !pitchInput.valid) {
+      setMetadataSaveError({ photoId, message: "Ugyldig tallformat. Bruk for eksempel 123,4." });
       setStatusText("Ugyldig tallformat i metadata. Bruk for eksempel 123.4");
       addLog("warn", "Ugyldig tallformat i metadata-redigering");
       return;
@@ -1491,6 +1495,7 @@ export default function App() {
         });
         if (selectedPhotoIdRef.current === photoId) {
           setStatusText("Metadata lagret, men kartdata kunne ikke oppdateres.");
+          setMetadataSaveError({ photoId, message: "Metadata er lagret, men kartdata kunne ikke oppdateres. Last siden på nytt." });
         }
         return;
       }
@@ -1523,6 +1528,7 @@ export default function App() {
       addLog("error", "Kunne ikke lagre metadata", apiError.requestId, apiError.detail);
       if (selectedPhotoIdRef.current === photoId) {
         setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
+        setMetadataSaveError({ photoId, message: `Kunne ikke lagre metadata: ${apiError.message}` });
       }
     } finally {
       if (metadataSaveTokensRef.current.get(photoId) === saveToken) {
@@ -1549,6 +1555,7 @@ export default function App() {
 
   const handleCancelMetadataEdit = useCallback(() => {
     if (!selectedPhoto) return;
+    setMetadataSaveError(null);
     setMetadataTagDraft("");
     setMetadataTagsDraft(selectedPhoto.tags ?? []);
     setMetadataCaptionDraft(selectedPhoto.caption ?? "");
@@ -1682,7 +1689,7 @@ export default function App() {
           const resolvedDate = timelineData.dates[resolvedIndex]?.date ?? timelineData.dates[timelineData.dates.length - 1].date;
 
           setSelectedIndex(resolvedIndex);
-          setSelectedYear(resolvedDate.slice(0, 4));
+          setSelectedYear(initialPhoto ? "all" : resolvedDate.slice(0, 4));
           setSelectedSeason("all");
           setStatusText("Klar.");
           return;
@@ -1716,7 +1723,7 @@ export default function App() {
     return () => {
       abortController.abort();
     };
-  }, [addLog, initialDate, isAdminAuthenticated, loadTimeline]);
+  }, [addLog, initialDate, initialPhoto, isAdminAuthenticated, loadTimeline]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1879,6 +1886,11 @@ export default function App() {
 
   useEffect(() => {
     if (autoAppliedLatestFiltersRef.current) return;
+    // A shared photo/date must remain reachable while its pages are loading.
+    if (hasExplicitDeepLink) {
+      autoAppliedLatestFiltersRef.current = true;
+      return;
+    }
     if (selectedYear !== "all" || selectedSeason !== "all") {
       autoAppliedLatestFiltersRef.current = true;
       return;
@@ -1888,7 +1900,7 @@ export default function App() {
     setSelectedYear(latestAvailableCapturedDate.slice(0, 4));
     setSelectedSeason(monthToSeason(latestAvailableCapturedDate.slice(5, 7)));
     autoAppliedLatestFiltersRef.current = true;
-  }, [latestAvailableCapturedDate, selectedSeason, selectedYear]);
+  }, [hasExplicitDeepLink, latestAvailableCapturedDate, selectedSeason, selectedYear]);
 
   useEffect(() => {
     if (selectedSeason === "all") return;
@@ -3225,6 +3237,7 @@ export default function App() {
         metadataEditMode={metadataEditMode}
         showTechnicalMetadata={showTechnicalMetadata}
         metadataBusyPhotoId={metadataBusyPhotoId}
+        metadataSaveError={metadataSaveError && metadataSaveError.photoId === selectedPhoto?.id ? metadataSaveError.message : null}
         analysisBusyPhotoId={analysisBusyPhotoId}
         isAdminAuthenticated={isAdminAuthenticated}
         metadataTagDraft={metadataTagDraft}

@@ -2,6 +2,7 @@ import { type Dispatch, type SetStateAction } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Pencil, RefreshCw } from "lucide-react";
 
 import {
+  editablePhotoTags,
   formatCapturedAt,
   formatConfidence,
   formatCoordinate,
@@ -11,6 +12,7 @@ import {
   formatPercent,
   formatQCRating,
   getAnalysisToneText,
+  isSystemPhotoTag,
   normalizeTagsInput,
   type ManualViewTarget,
 } from "@/lib/formatters";
@@ -36,6 +38,7 @@ interface PhotoInspectorProps {
   metadataEditMode: boolean;
   showTechnicalMetadata: boolean;
   metadataBusyPhotoId: string | null;
+  metadataSaveError: string | null;
   analysisBusyPhotoId: string | null;
   isAdminAuthenticated: boolean;
   metadataTagDraft: string;
@@ -150,6 +153,7 @@ export function PhotoInspector({
   metadataEditMode,
   showTechnicalMetadata,
   metadataBusyPhotoId,
+  metadataSaveError,
   analysisBusyPhotoId,
   isAdminAuthenticated,
   metadataTagDraft,
@@ -180,9 +184,9 @@ export function PhotoInspector({
   onSavePhotoMetadata,
 }: PhotoInspectorProps) {
   if (!open) return null;
-  const isSystemTag = (tag: string) => /^(meta|qc):/i.test(tag);
-  const visibleTags = metadataTagsDraft.filter((tag) => !isSystemTag(tag));
-  const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemTag);
+  const visibleTags = editablePhotoTags(metadataTagsDraft);
+  const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemPhotoTag);
+  const reservedTagDraft = isSystemPhotoTag(metadataTagDraft);
 
   const strip = (
     <PhotoStrip
@@ -378,6 +382,7 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataAltitudeDraft}
+                                  aria-label="Høyde i meter"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataAltitudeDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
@@ -398,6 +403,7 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataHeadingDraft}
+                                  aria-label="Kameraretning i grader"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataHeadingDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
@@ -418,6 +424,7 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataPitchDraft}
+                                  aria-label="Kameravinkel i grader"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataPitchDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
@@ -529,7 +536,7 @@ export function PhotoInspector({
                                   if (event.key !== "Enter") return;
                                   event.preventDefault();
                                   const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
+                                  if (!nextTag || reservedTagDraft) return;
                                   onSetMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
                                   onSetMetadataTagDraft("");
                                 }}
@@ -542,15 +549,18 @@ export function PhotoInspector({
                                 className="h-8"
                                 onClick={() => {
                                   const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
+                                  if (!nextTag || reservedTagDraft) return;
                                   onSetMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
                                   onSetMetadataTagDraft("");
                                 }}
-                                disabled={!metadataTagDraft.trim() || metadataBusyPhotoId === selectedPhoto.id}
+                                disabled={!metadataTagDraft.trim() || reservedTagDraft || metadataBusyPhotoId === selectedPhoto.id}
                               >
                                 Legg til
                               </Button>
                             </div>
+                          ) : null}
+                          {metadataEditMode && reservedTagDraft ? (
+                            <p role="alert" className="text-xs text-red-700 dark:text-red-300">Prefiksene meta: og qc: er reservert for systemdata. Velg en vanlig tag.</p>
                           ) : null}
                         </div>
 
@@ -594,6 +604,9 @@ export function PhotoInspector({
                               Lagre metadata
                             </Button>
                           </div>
+                        ) : null}
+                        {metadataSaveError ? (
+                          <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{metadataSaveError}</p>
                         ) : null}
                       </div>
 

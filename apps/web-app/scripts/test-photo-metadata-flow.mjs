@@ -5,7 +5,7 @@ import { build } from "esbuild";
 const bundle = await build({
   stdin: {
     contents: `
-      export { parseManualViewTarget } from "./src/lib/formatters.ts";
+      export { editablePhotoTags, isSystemPhotoTag, parseManualViewTarget } from "./src/lib/formatters.ts";
     `,
     resolveDir: new URL("..", import.meta.url).pathname,
     sourcefile: "photo-metadata-flow-test-entry.ts",
@@ -19,7 +19,17 @@ const bundle = await build({
 });
 
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`;
-const { parseManualViewTarget } = await import(moduleUrl);
+const { editablePhotoTags, isSystemPhotoTag, parseManualViewTarget } = await import(moduleUrl);
+
+assert.equal(isSystemPhotoTag(" qc:test "), true);
+assert.equal(isSystemPhotoTag("META:test"), true);
+assert.equal(isSystemPhotoTag("metadata"), false);
+
+assert.deepEqual(
+  editablePhotoTags(["dronefoto", " meta:heading_source=imu ", "QC:needs_manual_qc", " Meen gård ", "dronefoto"]),
+  ["dronefoto", "Meen gård"],
+  "editing an imported photo must send user tags without reserved metadata or QC tags",
+);
 
 assert.deepEqual(
   parseManualViewTarget([

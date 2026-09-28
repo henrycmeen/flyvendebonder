@@ -167,3 +167,12 @@ export function normalizeTagsInput(values: string[]): string[] {
   });
   return result;
 }
+
+// The metadata API owns meta:/qc: tags and accepts only editable user tags.
+export function isSystemPhotoTag(tag: string): boolean {
+  return /^(meta|qc):/i.test(tag.trim());
+}
+
+export function editablePhotoTags(values: string[]): string[] {
+  return normalizeTagsInput(values.filter((tag) => !isSystemPhotoTag(tag)));
+}

@@ -613,11 +613,11 @@ body {
   filter: drop-shadow(0 0 12px rgba(37, 99, 235, 0.22));
 }
 
-@media (max-width: 767px) {
-  .fb-photo-map .leaflet-top.leaflet-left {
-    top: 60px;
-  }
+.fb-photo-map .leaflet-top.leaflet-left {
+  top: 60px;
+}
 
+@media (max-width: 767px) {
   .fb-liquid-filter {
     max-width: min(320px, calc(100vw - 1.5rem));
   }
