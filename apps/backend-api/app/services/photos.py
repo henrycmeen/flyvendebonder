@@ -102,6 +102,10 @@ def _build_coverage_profile(
     for neighbor in (previous_photo, next_photo):
         if neighbor is None:
             continue
+        # Unknown camera direction cannot define front/side overlap. Zero is
+        # a valid north-facing heading and must still be measured.
+        if photo.heading_deg is None or not math.isfinite(photo.heading_deg):
+            continue
 
         neighbor_view = _derive_camera_view(neighbor)
         if neighbor_view[0] is None or neighbor_view[1] is None:

@@ -23,11 +23,13 @@ def degree_offset_from_offsets(latitude: float, north_m: float, east_m: float) -
 
 
 def rotate_vector(east_m: float, north_m: float, heading_deg: float | None) -> tuple[float, float]:
+    # Compass headings turn clockwise from north. A missing heading leaves the
+    # symmetric sampling grid aligned with the map; it is not a measured yaw.
     angle = math.radians((heading_deg or 0.0) % 360.0)
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
-    east_rot = east_m * cos_a - north_m * sin_a
-    north_rot = east_m * sin_a + north_m * cos_a
+    east_rot = east_m * cos_a + north_m * sin_a
+    north_rot = -east_m * sin_a + north_m * cos_a
     return east_rot, north_rot
 
 
