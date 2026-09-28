@@ -322,6 +322,7 @@ export default function App() {
   const [albumLoadedDate, setAlbumLoadedDate] = useState<string | null>(null);
   const [mapNavigationAnchorId, setMapNavigationAnchorId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [photoDeepLinkRevision, setPhotoDeepLinkRevision] = useState(0);
   const [hoverPreviewPhotoId, setHoverPreviewPhotoId] = useState<string | null>(null);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const {
@@ -517,6 +518,8 @@ export default function App() {
       }),
     [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
   );
+  const mapPhotoFilterRef = useRef(mapPhotoFilter);
+  mapPhotoFilterRef.current = mapPhotoFilter;
   const selectedPhoto = useMemo(() => {
     if (!selectedPhotoId) return null;
     return (
@@ -1127,10 +1130,14 @@ export default function App() {
     const replacePhoto = (previous: PhotoFeature[]) =>
       previous.map((photo) =>
         photoIdKey(photo.id) === photoIdKey(updatedPhoto.id) ? updatedPhoto : photo,
-      );
+      ).filter(mapPhotoFilterRef.current);
 
     setPhotoPool(replacePhoto);
-    setAlbumPhotos(replacePhoto);
+    setAlbumPhotos((previous) =>
+      previous.map((photo) =>
+        photoIdKey(photo.id) === photoIdKey(updatedPhoto.id) ? updatedPhoto : photo,
+      ),
+    );
   }, []);
 
   const updatePhotoMetadataState = useCallback(
@@ -2332,7 +2339,12 @@ export default function App() {
         (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
       );
       if (initialMapPhoto) {
-        if (photoIdKey(selectedPhotoId) === photoIdKey(initialMapPhoto.id)) {
+        const photoDateIndex = timeline.findIndex((entry) => entry.date === initialMapPhoto.captured_date);
+        const photoDateIsSynchronized = selectedDate === initialMapPhoto.captured_date;
+        if (photoDateIndex >= 0 && selectedIndex !== photoDateIndex) {
+          setSelectedIndex(photoDateIndex);
+        }
+        if (photoIdKey(selectedPhotoId) === photoIdKey(initialMapPhoto.id) && photoDateIsSynchronized) {
           initialPhotoRef.current = null;
         } else {
           setSelectedPhotoId(initialMapPhoto.id);
@@ -2358,8 +2370,11 @@ export default function App() {
     isMapPhotosLoading,
     mapPhotoPaginationComplete,
     photos,
+    selectedDate,
+    selectedIndex,
     selectedPhotoId,
     syncSelectionToUrl,
+    timeline,
   ]);
 
   useEffect(() => {
@@ -2372,7 +2387,12 @@ export default function App() {
       const initialDatePhoto = photos.find(
         (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
       );
-      if (!initialDatePhoto || photoIdKey(selectedPhotoId) !== photoIdKey(initialDatePhoto.id)) {
+      const photoDateIsSynchronized = initialDatePhoto && selectedDate === initialDatePhoto.captured_date;
+      if (
+        !initialDatePhoto ||
+        photoIdKey(selectedPhotoId) !== photoIdKey(initialDatePhoto.id) ||
+        !photoDateIsSynchronized
+      ) {
         return;
       }
     }
@@ -2385,7 +2405,7 @@ export default function App() {
       }
       return inSelectedDate[inSelectedDate.length - 1].id;
     });
-  }, [activeView, photos, selectedDate, hasExplicitDeepLink, selectedPhotoId, syncSelectionToUrl]);
+  }, [activeView, photos, selectedDate, hasExplicitDeepLink, selectedPhotoId, syncSelectionToUrl, timeline]);
 
   useEffect(() => {
     if (activeView !== "album") return;
@@ -2413,6 +2433,7 @@ export default function App() {
         return;
       }
       initialPhotoRef.current = null;
+      setPhotoDeepLinkRevision((revision) => revision + 1);
       setSelectedPhotoId(null);
       setIsPhotoViewerOpen(false);
       return;
@@ -2507,7 +2528,15 @@ export default function App() {
     const query = next.toString();
     const target = query ? `${window.location.pathname}?${query}` : window.location.pathname;
     window.history.replaceState({}, "", target);
-  }, [activeView, isPhotoViewerOpen, selectedDate, selectedPhotoExistsInMap, selectedPhotoId, syncSelectionToUrl]);
+  }, [
+    activeView,
+    isPhotoViewerOpen,
+    photoDeepLinkRevision,
+    selectedDate,
+    selectedPhotoExistsInMap,
+    selectedPhotoId,
+    syncSelectionToUrl,
+  ]);
 
   const handleSaveProfile = async (payload: {
     user: {
