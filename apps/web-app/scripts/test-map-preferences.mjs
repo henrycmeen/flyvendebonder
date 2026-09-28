@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { build } from "esbuild";
+const bundle = await build({
+  entryPoints: ["src/lib/map-preferences.ts"], bundle: true,
+  format: "esm", platform: "browser", write: false,
+});
 
 const {
   normalizeBaseMapStyle,
@@ -6,7 +11,7 @@ const {
   readStoredMapPreference,
   setMapTonePreference,
   writeStoredMapPreference,
-} = await import("../src/lib/map-preferences.ts");
+} = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
 const values = new Map();
 globalThis.window = {

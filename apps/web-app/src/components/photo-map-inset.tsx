@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
+import { photoAnalysisTarget, validMapPoint } from "@/lib/photo-map-geometry";
 import type { PhotoFeature } from "@/types";
 
 interface PhotoMapInsetProps {
@@ -9,6 +10,7 @@ interface PhotoMapInsetProps {
   baseMapStyle: BaseMapStyle;
   editable?: boolean;
   manualTarget?: { lat: number; lng: number } | null;
+  manualTargetCleared?: boolean;
   onManualTargetChange?: ((target: { lat: number; lng: number } | null) => void) | undefined;
 }
 
@@ -23,23 +25,13 @@ function normalizeHeading(headingDeg: number): number {
   return ((headingDeg % 360) + 360) % 360;
 }
 
-function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefined): [number, number] | null {
-  if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null;
-  return [point.lat, point.lng];
-}
+const toLatLngFromPoint = validMapPoint;
 
 function getAnalysisTarget(
   photo: PhotoFeature,
   manualTarget: { lat: number; lng: number } | null | undefined,
 ): [number, number] | null {
-  if (manualTarget && Number.isFinite(manualTarget.lat) && Number.isFinite(manualTarget.lng)) {
-    return [manualTarget.lat, manualTarget.lng];
-  }
-  if (photo.analysis_zone?.center_point) {
-    return toLatLngFromPoint(photo.analysis_zone.center_point);
-  }
-  if (photo.view_lat == null || photo.view_lng == null) return null;
-  return [photo.view_lat, photo.view_lng];
+  return validMapPoint(manualTarget) ?? photoAnalysisTarget(photo);
 }
 
 function toPolygonLatLngs(raw: number[][][] | null | undefined): [number, number][] {
@@ -90,6 +82,7 @@ export function PhotoMapInset({
   baseMapStyle,
   editable = false,
   manualTarget,
+  manualTargetCleared = false,
   onManualTargetChange,
 }: PhotoMapInsetProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
@@ -192,7 +185,12 @@ export function PhotoMapInset({
 
     const source = L.latLng(sourcePoint[0], sourcePoint[1]);
     const points: L.LatLng[] = [source];
-    const targetPointCoordinates = getAnalysisTarget(photo, manualTarget);
+    const targetPointCoordinates = manualTargetCleared ? null : getAnalysisTarget(photo, manualTarget);
+    const savedTarget = photoAnalysisTarget(photo);
+    const draftTarget = validMapPoint(manualTarget);
+    const targetChanged = draftTarget != null && (savedTarget == null
+      || Math.abs(draftTarget[0] - savedTarget[0]) > 1e-7
+      || Math.abs(draftTarget[1] - savedTarget[1]) > 1e-7);
 
     L.circleMarker(source, {
       radius: 4.5,
@@ -243,7 +241,7 @@ export function PhotoMapInset({
         }).addTo(overlay);
       }
 
-      if (photo.location_uncertainty_m != null && Number.isFinite(photo.location_uncertainty_m)) {
+      if (!targetChanged && photo.location_uncertainty_m != null && Number.isFinite(photo.location_uncertainty_m)) {
         const radius = Math.max(1.4, Math.min(photo.location_uncertainty_m, 50));
         L.circle(target, {
           radius,
@@ -256,7 +254,7 @@ export function PhotoMapInset({
         }).addTo(overlay);
       }
 
-      if (photo.analysis_zone?.footprint_polygon?.coordinates) {
+      if (!targetChanged && photo.analysis_zone?.footprint_polygon?.coordinates) {
         const footprint = toPolygonLatLngs(photo.analysis_zone.footprint_polygon.coordinates);
         if (footprint.length > 3) {
           footprint.forEach((point) => points.push(L.latLng(point[0], point[1])));
@@ -272,7 +270,7 @@ export function PhotoMapInset({
         }
       }
 
-      if (photo.analysis_zone?.sample_points?.length) {
+      if (!targetChanged && photo.analysis_zone?.sample_points?.length) {
         photo.analysis_zone.sample_points.forEach((samplePoint) => {
           const sample = toLatLngFromPoint(samplePoint);
           if (!sample) return;
@@ -288,18 +286,6 @@ export function PhotoMapInset({
           }).addTo(overlay);
         });
       }
-    } else if (photo.heading_deg != null && Number.isFinite(photo.heading_deg)) {
-      const headingPoint = projectByHeading(source, photo.heading_deg, 26);
-      points.push(headingPoint);
-
-      L.polyline([source, headingPoint], {
-        color: "var(--fb-map-analysis-line)",
-        weight: 2,
-        opacity: 0.9,
-        dashArray: "3 6",
-        lineCap: "round",
-        interactive: false,
-      }).addTo(overlay);
     }
 
     if (points.length <= 0) {
@@ -332,11 +318,14 @@ export function PhotoMapInset({
     } catch {
       mapRef.current.setView(source, 16, { animate: false });
     }
-  }, [photo, baseMapStyle, editable, manualTarget, onManualTargetChange]);
+  }, [photo, baseMapStyle, editable, manualTarget, manualTargetCleared, onManualTargetChange]);
 
   return (
-    <div className="photo-viewer-map-inset" aria-hidden="true">
+    <div className="photo-viewer-map-inset" aria-label="Droneposisjon, blikkpunkt og analysesone" role="group">
       <div ref={mapElementRef} className="photo-viewer-map-canvas" />
+      <span className="photo-viewer-map-legend">
+        {manualTargetCleared ? "Automatisk målpunkt beregnes ved lagring" : "Punkt: drone · Linje: blikkretning · Rute: analysesone"}
+      </span>
     </div>
   );
 }

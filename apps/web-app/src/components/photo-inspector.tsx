@@ -180,6 +180,9 @@ export function PhotoInspector({
   onSavePhotoMetadata,
 }: PhotoInspectorProps) {
   if (!open) return null;
+  const isSystemTag = (tag: string) => /^(meta|qc):/i.test(tag);
+  const visibleTags = metadataTagsDraft.filter((tag) => !isSystemTag(tag));
+  const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemTag);
 
   const strip = (
     <PhotoStrip
@@ -381,13 +384,13 @@ export function PhotoInspector({
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.altitude_m == null ? "ukjent" : `${selectedPhoto.altitude_m} m`}
+                                  {formatMeters(selectedPhoto.altitude_m)}
                                 </span>
                               )}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <dt>Retning (deg)</dt>
+                            <dt>Kameraretning (°)</dt>
                             <dd className="w-28">
                               {metadataEditMode ? (
                                 <input
@@ -401,13 +404,13 @@ export function PhotoInspector({
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg}°`}
+                                  {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg.toFixed(1)}°`}
                                 </span>
                               )}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <dt>Pitch (deg)</dt>
+                            <dt>Kameravinkel (°)</dt>
                             <dd className="w-28">
                               {metadataEditMode ? (
                                 <input
@@ -421,7 +424,7 @@ export function PhotoInspector({
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg}°`}
+                                  {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg.toFixed(1)}°`}
                                 </span>
                               )}
                             </dd>
@@ -486,8 +489,8 @@ export function PhotoInspector({
                         <div className="mt-2 space-y-2">
                           <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Tags</p>
                           <div className="flex flex-wrap gap-1.5">
-                            {metadataTagsDraft.length > 0 ? (
-                              metadataTagsDraft.map((tag) => (
+                            {visibleTags.length > 0 ? (
+                              visibleTags.map((tag) => (
                                 <span
                                   key={tag}
                                   className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle bg-fb-surface-ghost px-2.5 py-1 text-xs text-fb-text-primary"
@@ -602,6 +605,7 @@ export function PhotoInspector({
                             baseMapStyle={baseMapStyle}
                             editable={metadataEditMode}
                             manualTarget={activeInsetManualTarget}
+                            manualTargetCleared={metadataEditMode && selectedPhotoManualViewTarget != null && metadataManualViewTargetDraft == null}
                             onManualTargetChange={onSetMetadataManualViewTargetDraft}
                           />
                         </div>
@@ -635,7 +639,7 @@ export function PhotoInspector({
                               <dd className="text-right font-medium">{formatGsd(selectedPhoto.gsd_m)}</dd>
                             </div>
                             <div className="flex items-start justify-between gap-2">
-                              <dt>Bildeavtrykk</dt>
+                              <dt>Beregnet bildebredde på bakken</dt>
                               <dd className="text-right font-medium">{formatMeters(selectedPhoto.image_footprint_w_m)}</dd>
                             </div>
                             <div className="flex items-start justify-between gap-2">
@@ -696,6 +700,14 @@ export function PhotoInspector({
                                 <dt>QC-grunner</dt>
                                 <dd className="max-w-[13rem] text-right font-medium">
                                   <span className="text-xs">{selectedPhoto.confidence_reasons.join(", ")}</span>
+                                </dd>
+                              </div>
+                            ) : null}
+                            {systemTags.length > 0 ? (
+                              <div className="min-w-0">
+                                <dt>Systemmetadata</dt>
+                                <dd className="mt-1 space-y-1 break-all text-[11px] text-fb-text-secondary">
+                                  {systemTags.map((tag) => <div key={tag}>{tag}</div>)}
                                 </dd>
                               </div>
                             ) : null}

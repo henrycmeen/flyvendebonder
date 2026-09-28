@@ -590,6 +590,7 @@ export function SettingsDialog({
                         type="button"
                         size="sm"
                         variant={selected ? "default" : "outline"}
+                        aria-pressed={selected}
                         className={cn("h-8 rounded-full px-3", selected ? "bg-[color:var(--fb-chip-active-bg)] text-[color:var(--fb-chip-active-text)]" : "text-fb-text-primary")}
                         onClick={() => onChangeBaseMapStyle(styleKey)}
                       >
@@ -605,7 +606,7 @@ export function SettingsDialog({
                   <Label htmlFor="map-vintage" className="text-fb-text-primary">Vintage-kart</Label>
                   <p className="text-xs text-fb-text-secondary">Papiraktig bakgrunn for roligere kartvisning.</p>
                 </div>
-                <Switch id="map-vintage" checked={mapVintage} onCheckedChange={onChangeMapVintage} disabled={mapGrayscale} />
+                <Switch id="map-vintage" checked={mapVintage} onCheckedChange={onChangeMapVintage} />
               </div>
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
@@ -613,7 +614,7 @@ export function SettingsDialog({
                   <Label htmlFor="map-grayscale" className="text-fb-text-primary">Svart/hvitt</Label>
                   <p className="text-xs text-fb-text-secondary">Demper bakgrunnskartet når bildene skal være i fokus.</p>
                 </div>
-                <Switch id="map-grayscale" checked={mapGrayscale} onCheckedChange={onChangeMapGrayscale} disabled={mapVintage} />
+                <Switch id="map-grayscale" checked={mapGrayscale} onCheckedChange={onChangeMapGrayscale} />
               </div>
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
