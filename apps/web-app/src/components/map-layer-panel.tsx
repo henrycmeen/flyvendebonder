@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Filter, Map, MapPinned, Mountain, Pipette, Satellite } from "lucide-react";
+import { Ban, Compass, Filter, Map, MapPinned, Mountain, Pipette, Satellite, Sun } from "lucide-react";
 
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,15 @@ interface MapLayerPanelProps {
   onExpandedChange?: (expanded: boolean) => void;
 }
 
+const quickMapOptions: Array<{ id: BaseMapStyle; label: string; icon: typeof Map }> = [
+  { id: "none", label: "Ingen bakgrunn", icon: Ban },
+  { id: "osm", label: "Standard", icon: Map },
+  { id: "topo", label: "Topografisk", icon: Mountain },
+  { id: "voyager", label: "Illustrert", icon: Compass },
+  { id: "light", label: "Lys", icon: Sun },
+  { id: "satellite", label: "Satellitt", icon: Satellite },
+];
+
 export function MapLayerPanel({
   propertyCount,
   showPropertyLayer,
@@ -134,11 +143,6 @@ export function MapLayerPanel({
     [onExpandedChange],
   );
 
-  const quickMapOptions: Array<{ id: BaseMapStyle; label: string; icon: typeof Map }> = [
-    { id: "osm", label: "Standard", icon: Map },
-    { id: "topo", label: "Topografisk", icon: Mountain },
-    { id: "satellite", label: "Satellitt", icon: Satellite },
-  ];
   const activeQuickMap = quickMapOptions.find((option) => option.id === baseMapStyle) ?? quickMapOptions[0];
   const ActiveQuickMapIcon = activeQuickMap.icon;
   const hasProperties = propertyCount > 0;

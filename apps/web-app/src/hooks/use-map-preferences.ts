@@ -1,16 +1,18 @@
 import type { BaseMapStyle } from "@/lib/map-styles";
-import { BASE_MAP_STYLES } from "@/lib/map-styles";
-import { useEffect, useState } from "react";
+import {
+  normalizeBaseMapStyle,
+  normalizeMapTonePreferences,
+  readStoredMapPreference,
+  setMapTonePreference,
+  writeStoredMapPreference,
+  type MapTonePreferences,
+} from "@/lib/map-preferences";
+import { useCallback, useEffect, useState } from "react";
 
 const PREF_MAP_STYLE_KEY = "fb.map.baseStyle";
 const PREF_MAP_GRAYSCALE_KEY = "fb.map.grayscale";
 const PREF_MAP_VINTAGE_KEY = "fb.map.vintage";
 const PREF_MAP_ZOOM_CONTROLS_KEY = "fb.map.zoomControls";
-
-const normalizeBaseMapStyle = (value: string | null): BaseMapStyle | null => {
-  if (value === null) return null;
-  return value in BASE_MAP_STYLES ? (value as BaseMapStyle) : null;
-};
 
 interface UseMapPreferencesResult {
   baseMapStyle: BaseMapStyle;
@@ -25,43 +27,47 @@ interface UseMapPreferencesResult {
 
 export function useMapPreferences(): UseMapPreferencesResult {
   const [baseMapStyle, setBaseMapStyle] = useState<BaseMapStyle>(() => {
-    if (typeof window === "undefined") return "osm";
-    return normalizeBaseMapStyle(window.localStorage.getItem(PREF_MAP_STYLE_KEY)) ?? "osm";
+    return normalizeBaseMapStyle(readStoredMapPreference(PREF_MAP_STYLE_KEY)) ?? "osm";
   });
-  const [mapGrayscale, setMapGrayscale] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(PREF_MAP_GRAYSCALE_KEY) === "1";
-  });
-  const [mapVintage, setMapVintage] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(PREF_MAP_VINTAGE_KEY) === "1";
-  });
+  const [mapTonePreferences, setMapTonePreferences] = useState<MapTonePreferences>(() =>
+    normalizeMapTonePreferences(
+      readStoredMapPreference(PREF_MAP_GRAYSCALE_KEY) === "1",
+      readStoredMapPreference(PREF_MAP_VINTAGE_KEY) === "1",
+    ),
+  );
   const [showZoomControls, setShowZoomControls] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const stored = window.localStorage.getItem(PREF_MAP_ZOOM_CONTROLS_KEY);
+    const stored = readStoredMapPreference(PREF_MAP_ZOOM_CONTROLS_KEY);
     return stored == null ? true : stored === "1";
   });
 
   useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_STYLE_KEY, baseMapStyle);
+    writeStoredMapPreference(PREF_MAP_STYLE_KEY, baseMapStyle);
   }, [baseMapStyle]);
 
   useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_GRAYSCALE_KEY, mapGrayscale ? "1" : "0");
-  }, [mapGrayscale]);
+    writeStoredMapPreference(PREF_MAP_GRAYSCALE_KEY, mapTonePreferences.mapGrayscale ? "1" : "0");
+  }, [mapTonePreferences.mapGrayscale]);
 
   useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_VINTAGE_KEY, mapVintage ? "1" : "0");
-  }, [mapVintage]);
+    writeStoredMapPreference(PREF_MAP_VINTAGE_KEY, mapTonePreferences.mapVintage ? "1" : "0");
+  }, [mapTonePreferences.mapVintage]);
 
   useEffect(() => {
-    window.localStorage.setItem(PREF_MAP_ZOOM_CONTROLS_KEY, showZoomControls ? "1" : "0");
+    writeStoredMapPreference(PREF_MAP_ZOOM_CONTROLS_KEY, showZoomControls ? "1" : "0");
   }, [showZoomControls]);
+
+  const setMapGrayscale = useCallback((next: boolean) => {
+    setMapTonePreferences((current) => setMapTonePreference(current, "mapGrayscale", next));
+  }, []);
+
+  const setMapVintage = useCallback((next: boolean) => {
+    setMapTonePreferences((current) => setMapTonePreference(current, "mapVintage", next));
+  }, []);
 
   return {
     baseMapStyle,
-    mapGrayscale,
-    mapVintage,
+    mapGrayscale: mapTonePreferences.mapGrayscale,
+    mapVintage: mapTonePreferences.mapVintage,
     showZoomControls,
     setBaseMapStyle,
     setMapGrayscale,
