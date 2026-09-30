@@ -31,3 +31,7 @@ Status: kronologisk bibliotekavspilling er implementert og kontrollert med 12 bi
 - To opptak med forskjellig kameravinkel er korrekt merket og presenteres ikke som geometrisk justert sammenligning.
 
 Videre implementering og publisering følger samme review-, CI- og Henry-godkjenning som øvrig V2. Denne kontrakten endrer ikke produksjon eller den eksisterende publiseringsgodkjenningen.
+
+## Mobilkontroll 30. september
+
+På 320 × 740 CSS-piksler er den dupliserte spilleroverskriften, forklaringen og lukkeknappen fjernet; dialogens tittel, forklaring og lukkeknapp beholdes. Bildet bruker 32dvh på smal skjerm og fortsatt 48dvh fra sm. Forrige/Spill/Neste og visningstid er synlige uten scrolling. Ingen horisontal side-overflyt (scrollWidth = innerWidth = 320). Neste bilde oppdaterer tidspunkt og indeks; lukking returnerer fokus til «Vis opptak over tid». Kontrollert i separat nettleserfane, uten å endre hovedforhåndsvisningens størrelse eller kartdesign. Uavhengig lesende review fant ingen regresjoner.

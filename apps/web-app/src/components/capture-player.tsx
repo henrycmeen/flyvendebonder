@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw } from "lucide-react";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -12,7 +12,6 @@ export interface CapturePlayerProps {
   isLoadingMore: boolean;
   loadFailed: boolean;
   onLoadMore: () => void;
-  onClose: () => void;
 }
 
 export function CapturePlayer(props: CapturePlayerProps) {
@@ -22,7 +21,7 @@ export function CapturePlayer(props: CapturePlayerProps) {
   return <CapturePlayerSession key={sequenceKey} {...props} photos={sequence.photos} excludedCount={sequence.excludedCount} />;
 }
 
-function CapturePlayerSession({ photos, excludedCount, hasMore, isLoadingMore, loadFailed, onLoadMore, onClose }: CapturePlayerProps & { excludedCount: number }) {
+function CapturePlayerSession({ photos, excludedCount, hasMore, isLoadingMore, loadFailed, onLoadMore }: CapturePlayerProps & { excludedCount: number }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [seconds, setSeconds] = useState(2);
@@ -78,16 +77,9 @@ function CapturePlayerSession({ photos, excludedCount, hasMore, isLoadingMore, l
 
   return (
     <div className="min-w-0 space-y-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-fb-focus" tabIndex={0} onKeyDown={handleKeyDown} aria-label="Kronologisk bildeavspilling">
-      <div className="flex items-start justify-between gap-3 pr-6">
-        <div className="min-w-0">
-          <p className="text-lg font-semibold">Bilder over tid</p>
-          <p className="text-sm text-fb-text-secondary">Kronologisk avspilling av innlastede bilder. Kameravinkel og utsnitt kan endre seg; bildene er ikke geometrisk samstilt for sammenligning.</p>
-        </div>
-        <Button variant="ghost" size="icon" className="shrink-0" aria-label="Lukk bildeavspilling" onClick={onClose}><X className="h-4 w-4" /></Button>
-      </div>
       {unknownTimezone && <p className="text-xs text-fb-text-secondary">Bilder uten tidssone følger kameraets klokke; rekkefølge mellom tidssoner kan være usikker.</p>}
       <GlassSurface className="min-w-0 overflow-hidden p-2 sm:p-3">
-        <div className="relative flex h-[min(48dvh,32rem)] min-h-40 w-full items-center justify-center overflow-hidden rounded-xl bg-black/80" aria-busy={!!photo && !loaded && !failed}>
+        <div className="relative flex h-[min(32dvh,20rem)] min-h-40 sm:h-[min(48dvh,32rem)] w-full items-center justify-center overflow-hidden rounded-xl bg-black/80" aria-busy={!!photo && !loaded && !failed}>
           {photo && source && <img key={frameKey} src={source} alt={photo.title || `Bilde ${index + 1}`} className={`h-full w-full object-contain ${loaded ? "visible" : "invisible"}`} onLoad={(event) => { if (currentFrameKey.current === frameKey && event.currentTarget.naturalWidth > 0) setImageState({ key: frameKey, status: "loaded" }); }} onError={() => { if (currentFrameKey.current !== frameKey) return; setImageState({ key: frameKey, status: "error" }); setPlaying(false); }} />}
           {!photo ? <p className="p-4 text-center text-sm text-white">Ingen bilder med gyldig opptakstid i utvalget.</p> : failed ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">

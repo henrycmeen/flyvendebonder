@@ -283,7 +283,7 @@ export function AlbumPage({
       <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); playerTriggerRef.current?.focus(); }} className="max-h-[94dvh] max-w-5xl gap-3 overflow-y-auto p-3 sm:p-5">
         <DialogTitle className="pr-10">Opptak over tid</DialogTitle>
         <DialogDescription>Bilder i bibliotekutvalget vises fra eldste til nyeste. Ulike kameravinkler er ikke justert til samme utsnitt.</DialogDescription>
-        {playerOpen ? <CapturePlayer photos={filteredPhotos} hasMore={hasMore} isLoadingMore={isLoadingMore} loadFailed={loadFailed} onLoadMore={onLoadMore} onClose={() => setPlayerOpen(false)} /> : null}
+        {playerOpen ? <CapturePlayer photos={filteredPhotos} hasMore={hasMore} isLoadingMore={isLoadingMore} loadFailed={loadFailed} onLoadMore={onLoadMore} /> : null}
       </DialogContent>
     </Dialog>
     <div
