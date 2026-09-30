@@ -471,12 +471,12 @@ def test_photo_metadata_patch(client):
     assert patched["manual_view_lat"] == 59.168146
     assert patched["manual_view_lng"] == 9.662754
 
-    after = client.get(
-        "/api/v1/photos",
-        params={"date": date(2025, 7, 18).isoformat(), "mode": "day"},
-    )
+    after = client.get(f"/api/v1/photos/{photo_id}")
     assert after.status_code == 200
-    updated_photo = next(item for item in after.json()["photos"] if item["id"] == photo_id)
+    updated_photo = after.json()
+    assert updated_photo["id"] == photo_id
+    assert updated_photo["analysis_zone"]["center_point"] == {"lat": 59.168146, "lng": 9.662754}
+    assert client.get("/api/v1/photos/missing-photo").status_code == 404
     assert "meen-gard" in updated_photo["tags"]
     assert "test-tag" in updated_photo["tags"]
     assert "meta:manual_view_lat=59.168146" in updated_photo["tags"]

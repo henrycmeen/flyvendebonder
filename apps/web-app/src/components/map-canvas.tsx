@@ -10,6 +10,7 @@ import {
   type OrthophotoColorAnalysisOutcome,
   type RenderedOrthophotoCandidate,
 } from "@/lib/browser-orthophoto-sampler";
+import { photoAnalysisTarget, photoViewHeading, validMapPoint } from "@/lib/photo-map-geometry";
 import { formatPropertyReference } from "@/lib/formatters";
 import { BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
 import { DEV_ORTHOPHOTO_OVERLAYS, type OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
@@ -62,7 +63,6 @@ interface MapCanvasProps {
 }
 
 const fallbackCenter: [number, number] = [59.1708, 9.6607];
-const EARTH_RADIUS_M = 6_371_000;
 const SOIL_WMS_URL = "https://wms.nibio.no/cgi-bin/jordsmonn";
 const SOIL_WMS_LAYER = "Jordkvalitet";
 const SOIL_LAYER_OPACITY = 0.34;
@@ -172,15 +172,8 @@ function buildPinTitle(photo: PhotoFeature | null): string {
   return `${title} – ${pinStatusTitle(photo)} (${conf})`;
 }
 
-function toLatLngFromPoint(point: { lat: number; lng: number } | null | undefined): LatLngPair | null {
-  if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null;
-  return [point.lat, point.lng];
-}
-
-function toPhotoLatLng(photo: PhotoFeature): LatLngPair | null {
-  if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lng)) return null;
-  return [photo.lat, photo.lng];
-}
+const toLatLngFromPoint = validMapPoint;
+const toPhotoLatLng = validMapPoint;
 
 function toPolygonLatLngs(raw: number[][][] | null | undefined): LatLngPair[] {
   if (!raw || raw.length === 0 || !Array.isArray(raw[0])) return [];
@@ -230,61 +223,8 @@ function createPlainTextContent(text: string, className?: string): HTMLElement {
   return element;
 }
 
-function normalizeHeading(headingDeg: number): number {
-  return ((headingDeg % 360) + 360) % 360;
-}
-
-function projectByHeading(origin: L.LatLng, headingDeg: number, distanceM: number): L.LatLng {
-  const headingRad = (normalizeHeading(headingDeg) * Math.PI) / 180;
-  const latRad = (origin.lat * Math.PI) / 180;
-
-  const deltaLat = (Math.cos(headingRad) * distanceM) / EARTH_RADIUS_M;
-  const deltaLng = (Math.sin(headingRad) * distanceM) / (EARTH_RADIUS_M * Math.cos(latRad));
-
-  return L.latLng(origin.lat + (deltaLat * 180) / Math.PI, origin.lng + (deltaLng * 180) / Math.PI);
-}
-
-function getAnalysisTarget(photo: PhotoFeature): LatLngPair | null {
-  if (photo.analysis_zone?.center_point) {
-    return toLatLngFromPoint(photo.analysis_zone.center_point);
-  }
-  if (photo.view_lat == null || photo.view_lng == null) return null;
-  return [photo.view_lat, photo.view_lng];
-}
-
-function bearingFromPoints(source: LatLngPair, target: LatLngPair): number | null {
-  const lat1 = (source[0] * Math.PI) / 180;
-  const lat2 = (target[0] * Math.PI) / 180;
-  const deltaLng = ((target[1] - source[1]) * Math.PI) / 180;
-
-  const y = Math.sin(deltaLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || (Math.abs(x) < 1e-12 && Math.abs(y) < 1e-12)) {
-    return null;
-  }
-
-  return normalizeHeading((Math.atan2(y, x) * 180) / Math.PI);
-}
-
-function resolvePhotoHeading(photo: PhotoFeature | null): number | null {
-  if (!photo) return null;
-
-  const source = toPhotoLatLng(photo);
-  const target = getAnalysisTarget(photo);
-  if (source && target) {
-    const bearing = bearingFromPoints(source, target);
-    if (bearing != null) return bearing;
-  }
-
-  if (photo.heading_deg != null && Number.isFinite(photo.heading_deg)) {
-    return normalizeHeading(photo.heading_deg);
-  }
-
-  return null;
-}
-
 function buildDronePinVisual(active: boolean, photo: PhotoFeature | null): string {
-  const heading = resolvePhotoHeading(photo);
+  const heading = photoViewHeading(photo);
   const headingMarkup =
     heading == null
       ? ""
@@ -549,10 +489,6 @@ export function MapCanvas({
   onBaseMapTileError,
   onDropMissingVideoArtifact,
 }: MapCanvasProps) {
-  const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 767px)").matches;
-  });
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.MarkerClusterGroup | null>(null);
@@ -576,21 +512,11 @@ export function MapCanvas({
   const hasFitRef = useRef(false);
   const hasVideoFitRef = useRef(false);
   const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
-  const shouldShowZoomControls = showZoomControls && !isMobileViewport;
   const [colorAnalysisOutcome, setColorAnalysisOutcome] = useState<OrthophotoColorAnalysisOutcome | null>(null);
 
   const clearColorAnalysisOutcome = useCallback(() => {
     colorAnalysisRequestIdRef.current += 1;
     setColorAnalysisOutcome(null);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const query = window.matchMedia("(max-width: 767px)");
-    const sync = () => setIsMobileViewport(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
   }, []);
 
   const setMarkerActiveState = useCallback((photoId: string, active: boolean) => {
@@ -614,9 +540,12 @@ export function MapCanvas({
     let map: L.Map;
     try {
       map = L.map(mapElementRef.current, {
-        zoomControl: shouldShowZoomControls,
+        zoomControl: false,
         attributionControl: true,
         maxZoom: FALLBACK_MAX_ZOOM,
+        zoomSnap: 0.25,
+        zoomDelta: 0.5,
+        wheelPxPerZoomLevel: 120,
       }).setView(fallbackCenter, 13);
     } catch (error) {
       console.error("Kunne ikke initialisere Leaflet-kart", error);
@@ -783,17 +712,15 @@ export function MapCanvas({
         videoLayerRef.current = null;
       }
     };
-  }, [shouldShowZoomControls]);
+  }, []);
 
   useEffect(() => {
-    const map = mapRef.current as (L.Map & { zoomControl?: L.Control.Zoom }) | null;
-    if (!map?.zoomControl) return;
-    if (shouldShowZoomControls) {
-      map.zoomControl.addTo(map);
-    } else {
-      map.zoomControl.remove();
-    }
-  }, [shouldShowZoomControls]);
+    const map = mapRef.current;
+    if (!map || !showZoomControls) return;
+    const control = L.control.zoom({ zoomInTitle: "Zoom inn", zoomOutTitle: "Zoom ut" });
+    control.addTo(map);
+    return () => { control.remove(); };
+  }, [showZoomControls]);
 
   useEffect(() => {
     const container = mapElementRef.current;
@@ -823,6 +750,7 @@ export function MapCanvas({
     }
 
     const style = BASE_MAP_STYLES[baseMapStyle];
+    mapRef.current.setMaxZoom(style.maxZoom);
     if (!style.tileUrl) {
       return;
     }
@@ -1337,7 +1265,7 @@ export function MapCanvas({
     if (sourcePoint == null) return;
 
     const source = L.latLng(sourcePoint[0], sourcePoint[1]);
-    const target = getAnalysisTarget(selectedPhoto);
+    const target = photoAnalysisTarget(selectedPhoto);
     if (target != null) {
       const targetLatLng = L.latLng(target[0], target[1]);
       if (source.distanceTo(targetLatLng) >= 4) {
@@ -1365,87 +1293,57 @@ export function MapCanvas({
 
         viewLayerRef.current.addLayer(line);
         viewLayerRef.current.addLayer(targetPoint);
+      }
 
-        if (selectedPhoto.analysis_zone?.footprint_polygon?.coordinates) {
-          const footprint = toPolygonLatLngs(selectedPhoto.analysis_zone.footprint_polygon.coordinates);
-          if (footprint.length > 3) {
-            const footprintLayer = L.polygon(footprint, {
-              color: "var(--fb-map-analysis-line)",
-              fillColor: "var(--fb-map-analysis-line-soft)",
-              fillOpacity: 0.2,
-              weight: 1.4,
-              opacity: 0.8,
-              dashArray: "3 7",
-              interactive: false,
-              pane: "laserPane",
-            });
-            viewLayerRef.current.addLayer(footprintLayer);
-          }
-        }
-
-        if (selectedPhoto.location_uncertainty_m != null && Number.isFinite(selectedPhoto.location_uncertainty_m)) {
-          const radius = Math.max(1.4, Math.min(selectedPhoto.location_uncertainty_m, 50));
-          const uncertaintyCircle = L.circle(targetLatLng, {
-            radius,
+      if (selectedPhoto.analysis_zone?.footprint_polygon?.coordinates) {
+        const footprint = toPolygonLatLngs(selectedPhoto.analysis_zone.footprint_polygon.coordinates);
+        if (footprint.length > 3) {
+          const footprintLayer = L.polygon(footprint, {
             color: "var(--fb-map-analysis-line)",
-            fillColor: "var(--fb-map-analysis-line-soft-strong)",
-            fillOpacity: 0.12,
-            weight: 1.2,
+            fillColor: "var(--fb-map-analysis-line-soft)",
+            fillOpacity: 0.2,
+            weight: 1.4,
+            opacity: 0.8,
+            dashArray: "3 7",
             interactive: false,
             pane: "laserPane",
           });
-          viewLayerRef.current.addLayer(uncertaintyCircle);
-        }
-
-        if (selectedPhoto.analysis_zone?.sample_points?.length) {
-          for (const samplePoint of selectedPhoto.analysis_zone.sample_points) {
-            const sampleLatLng = toLatLngFromPoint(samplePoint);
-            if (!sampleLatLng) continue;
-            viewLayerRef.current.addLayer(
-              L.circleMarker(sampleLatLng, {
-                radius: 2.4,
-                color: "var(--fb-map-analysis-accent)",
-                fillColor: "var(--fb-map-analysis-fill)",
-                fillOpacity: 0.95,
-                weight: 1,
-                opacity: 0.9,
-                interactive: false,
-                pane: "laserPane",
-              }),
-            );
-          }
+          viewLayerRef.current.addLayer(footprintLayer);
         }
       }
-      return;
-    }
 
-    const fallbackHeading = resolvePhotoHeading(selectedPhoto);
-    if (fallbackHeading != null) {
-      const headingPoint = projectByHeading(source, fallbackHeading, 26);
-      viewLayerRef.current.addLayer(
-        L.polyline([source, headingPoint], {
-          className: "fb-media-viewline",
-          color: "#f08d4f",
-          weight: 2.4,
-          opacity: 0.88,
-          lineCap: "round",
+      if (selectedPhoto.location_uncertainty_m != null && Number.isFinite(selectedPhoto.location_uncertainty_m)) {
+        const radius = Math.max(1.4, Math.min(selectedPhoto.location_uncertainty_m, 50));
+        const uncertaintyCircle = L.circle(targetLatLng, {
+          radius,
+          color: "var(--fb-map-analysis-line)",
+          fillColor: "var(--fb-map-analysis-line-soft-strong)",
+          fillOpacity: 0.12,
+          weight: 1.2,
           interactive: false,
           pane: "laserPane",
-        }),
-      );
-      viewLayerRef.current.addLayer(
-        L.circleMarker(headingPoint, {
-          className: "fb-media-view-target",
-          radius: 3.6,
-          color: "var(--fb-map-analysis-accent)",
-          fillColor: "var(--fb-map-analysis-fill)",
-          fillOpacity: 0.98,
-          weight: 1.4,
-          opacity: 0.92,
-          interactive: false,
-          pane: "laserPane",
-        }),
-      );
+        });
+        viewLayerRef.current.addLayer(uncertaintyCircle);
+      }
+
+      if (selectedPhoto.analysis_zone?.sample_points?.length) {
+        for (const samplePoint of selectedPhoto.analysis_zone.sample_points) {
+          const sampleLatLng = toLatLngFromPoint(samplePoint);
+          if (!sampleLatLng) continue;
+          viewLayerRef.current.addLayer(
+            L.circleMarker(sampleLatLng, {
+              radius: 2.4,
+              color: "var(--fb-map-analysis-accent)",
+              fillColor: "var(--fb-map-analysis-fill)",
+              fillOpacity: 0.95,
+              weight: 1,
+              opacity: 0.9,
+              interactive: false,
+              pane: "laserPane",
+            }),
+          );
+        }
+      }
     }
   }, [hoveredPhotoId, photos, selectedPhotoId]);
 
@@ -1470,6 +1368,7 @@ export function MapCanvas({
       const mediaKind = inferMediaKind(photo);
       const marker = L.marker(point, {
         icon: mapMediaPinIcon(mediaKind, false, photo),
+        title: buildPinTitle(photo),
         bubblingMouseEvents: operatingAreaToolActive,
       });
       (marker as L.Marker & { _fbSeason?: MarkerSeason })._fbSeason = resolvePhotoSeason(photo);
@@ -1539,7 +1438,8 @@ export function MapCanvas({
     const hoverCapable = supportsHoverPointer();
     const nextActiveIds = new Set<string>();
     if (hoverCapable) {
-      if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
+      const activeId = hoveredPhotoId ?? selectedPhotoId;
+      if (activeId) nextActiveIds.add(activeId);
     } else {
       if (selectedPhotoId) nextActiveIds.add(selectedPhotoId);
       if (hoveredPhotoId) nextActiveIds.add(hoveredPhotoId);
@@ -1570,7 +1470,7 @@ export function MapCanvas({
 
     const focusAndOpen = () => {
       if (!mapRef.current) return;
-      mapRef.current.setView(latLng, targetZoom, { animate: true });
+      mapRef.current.setView(latLng, Math.max(mapRef.current.getZoom(), targetZoom), { animate: true });
       if (desktopHover) {
         marker.closePopup();
         return;
@@ -1928,7 +1828,7 @@ export function MapCanvas({
 
   return (
     <div className="absolute inset-0 z-0">
-      <div ref={mapElementRef} className="absolute inset-0" aria-label="Kart med geotaggede bilder" />
+      <div ref={mapElementRef} className="fb-photo-map absolute inset-0" aria-label="Kart med geotaggede bilder" />
       {mapVintage ? <div className="map-vintage-overlay" aria-hidden="true" /> : null}
       {colorAnalysisActive ? (
         <div className="fb-map-overlay-satellite-alert pointer-events-none absolute left-1/2 top-[4.25rem] z-[760] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-fb-border-subtle bg-fb-surface-page/95 px-3 py-2 text-center text-xs font-medium text-fb-text-primary shadow-fb-floating backdrop-blur">

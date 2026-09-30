@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.photos import _build_coverage_profile
+from app.services.quality_metrics import rotate_vector
 
 
 def _build_photo(**overrides):
@@ -42,3 +45,19 @@ def test_coverage_profile_is_unknown_without_neighbors():
     assert profile["front_gap"] is None
     assert profile["side_gap"] is None
     assert profile["quality"] == "unknown"
+
+
+@pytest.mark.parametrize("heading", [None, float("nan"), float("inf")])
+def test_missing_heading_does_not_invent_north_facing_overlap(heading):
+    center = _build_photo(heading_deg=heading, pitch_deg=None)
+    neighbor = _build_photo(lat=59.17 + 5 / 111_320, pitch_deg=None)
+    profile = _build_coverage_profile(center, neighbor, None)
+    assert profile["neighbor_count"] == 1
+    assert profile["actual_front"] is None
+    assert profile["actual_side"] is None
+    assert profile["quality"] == "unknown"
+
+
+@pytest.mark.parametrize("heading,expected", [(0, (0, 10)), (90, (10, 0)), (180, (0, -10)), (270, (-10, 0))])
+def test_analysis_samples_follow_clockwise_compass_heading(heading, expected):
+    assert rotate_vector(0, 10, heading) == pytest.approx(expected)

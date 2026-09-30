@@ -17,7 +17,7 @@ jobs:
   backend-python39:
     name: backend-python39
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Check out repository
         uses: actions/checkout@v5

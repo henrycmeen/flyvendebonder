@@ -293,9 +293,12 @@ export function PlanningMap({
     if (mapRef.current || !mapElementRef.current) return;
     resetLeafletContainer(mapElementRef.current as LeafletContainer);
     const map = L.map(mapElementRef.current, {
-      zoomControl: showZoomControls,
+      zoomControl: false,
       attributionControl: true,
       maxZoom: 21,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 120,
     }).setView([59.1708, 9.6607], 13);
 
     map.createPane("planningPane");
@@ -328,16 +331,14 @@ export function PlanningMap({
       suggestionLayerRef.current = null;
       playbackLayerRef.current = null;
     };
-  }, [showZoomControls]);
+  }, []);
 
   useEffect(() => {
-    const map = mapRef.current as (L.Map & { zoomControl?: L.Control.Zoom }) | null;
-    if (!map?.zoomControl) return;
-    if (showZoomControls) {
-      map.zoomControl.addTo(map);
-    } else {
-      map.zoomControl.remove();
-    }
+    const map = mapRef.current;
+    if (!map || !showZoomControls) return;
+    const control = L.control.zoom({ zoomInTitle: "Zoom inn", zoomOutTitle: "Zoom ut" });
+    control.addTo(map);
+    return () => { control.remove(); };
   }, [showZoomControls]);
 
   useEffect(() => {
@@ -348,6 +349,7 @@ export function PlanningMap({
       baseLayerRef.current = null;
     }
     const style = BASE_MAP_STYLES[baseMapStyle];
+    map.setMaxZoom(style.maxZoom);
     if (!style.tileUrl) return;
     const layerOptions: L.TileLayerOptions = {
       attribution: style.attribution,

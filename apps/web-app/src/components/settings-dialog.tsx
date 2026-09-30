@@ -242,7 +242,7 @@ export function SettingsDialog({
     setFormState(toFormState(profile));
     setAdditionalProperties(toAdditionalPropertyDrafts(profile));
     setSaveError(null);
-  }, [profile]);
+  }, [open, profile]);
 
   useEffect(() => {
     if (!adminStatus?.authenticated) {
@@ -251,11 +251,6 @@ export function SettingsDialog({
     setAdminCode("");
     setAdminError(null);
   }, [adminStatus?.authenticated]);
-
-  useEffect(() => {
-    if (open) return;
-    setSaveError(null);
-  }, [open]);
 
   const propertyLabel = useMemo(() => {
     if (!profile?.property) return "Ingen aktiv eiendom";
@@ -595,6 +590,7 @@ export function SettingsDialog({
                         type="button"
                         size="sm"
                         variant={selected ? "default" : "outline"}
+                        aria-pressed={selected}
                         className={cn("h-8 rounded-full px-3", selected ? "bg-[color:var(--fb-chip-active-bg)] text-[color:var(--fb-chip-active-text)]" : "text-fb-text-primary")}
                         onClick={() => onChangeBaseMapStyle(styleKey)}
                       >
@@ -607,7 +603,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Vintage-kart</p>
+                  <Label htmlFor="map-vintage" className="text-fb-text-primary">Vintage-kart</Label>
                   <p className="text-xs text-fb-text-secondary">Papiraktig bakgrunn for roligere kartvisning.</p>
                 </div>
                 <Switch id="map-vintage" checked={mapVintage} onCheckedChange={onChangeMapVintage} />
@@ -615,7 +611,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Svart/hvitt</p>
+                  <Label htmlFor="map-grayscale" className="text-fb-text-primary">Svart/hvitt</Label>
                   <p className="text-xs text-fb-text-secondary">Demper bakgrunnskartet når bildene skal være i fokus.</p>
                 </div>
                 <Switch id="map-grayscale" checked={mapGrayscale} onCheckedChange={onChangeMapGrayscale} />
@@ -623,7 +619,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Vis zoomknapper</p>
+                  <Label htmlFor="map-zoom-controls" className="text-fb-text-primary">Vis zoomknapper</Label>
                   <p className="text-xs text-fb-text-secondary">Vis pluss/minus-knappene i kartet.</p>
                 </div>
                 <Switch id="map-zoom-controls" checked={showZoomControls} onCheckedChange={onChangeShowZoomControls} />
@@ -633,7 +629,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Vis jordsmonn</p>
+                  <Label htmlFor="show-soil-layer" className="text-fb-text-primary">Vis jordsmonn</Label>
                   <p className="text-xs text-fb-text-secondary">{soilStatus}</p>
                 </div>
                 <Switch id="show-soil-layer" checked={showSoilLayer} onCheckedChange={onToggleSoilLayer} />
@@ -641,7 +637,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Vis eiendomsgrenser</p>
+                  <Label htmlFor="show-property-layer" className="text-fb-text-primary">Vis eiendomsgrenser</Label>
                   <p className="text-xs text-fb-text-secondary">{propertyStatus}</p>
                 </div>
                 <Switch id="show-property-layer" checked={showPropertyLayer} onCheckedChange={onTogglePropertyLayer} />
@@ -649,7 +645,7 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Kun manuell QC</p>
+                  <Label htmlFor="show-manual-qc" className="text-fb-text-primary">Kun manuell QC</Label>
                   <p className="text-xs text-fb-text-secondary">Vis bare bilder som trenger manuell vurdering.</p>
                 </div>
                 <Switch id="show-manual-qc" checked={showOnlyManualQc} onCheckedChange={onToggleManualQcFilter} />
@@ -657,8 +653,8 @@ export function SettingsDialog({
 
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
-                  <p className="text-sm text-fb-text-primary">Lav tillit</p>
-                  <p className="text-xs text-fb-text-secondary">Sorter frem bilder med svakest posisjon først.</p>
+                  <Label htmlFor="show-low-confidence" className="text-fb-text-primary">Lav tillit</Label>
+                  <p className="text-xs text-fb-text-secondary">Vis bare bilder med lav tillit til posisjonen.</p>
                 </div>
                 <Switch id="show-low-confidence" checked={showOnlyLowConfidence} onCheckedChange={onToggleLowConfidenceFilter} />
               </div>

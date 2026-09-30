@@ -102,6 +102,10 @@ def _build_coverage_profile(
     for neighbor in (previous_photo, next_photo):
         if neighbor is None:
             continue
+        # Unknown camera direction cannot define front/side overlap. Zero is
+        # a valid north-facing heading and must still be measured.
+        if photo.heading_deg is None or not math.isfinite(photo.heading_deg):
+            continue
 
         neighbor_view = _derive_camera_view(neighbor)
         if neighbor_view[0] is None or neighbor_view[1] is None:
@@ -307,6 +311,33 @@ def _decode_cursor(cursor: str) -> tuple[datetime, str]:
         return captured_at, photo_id
     except Exception as exc:  # noqa: BLE001
         raise ValueError("Ugyldig cursor-format") from exc
+
+
+def load_photo_by_id(db: Session, *, user_id: int, photo_id: str) -> dict | None:
+    photo = db.execute(
+        select(Photo)
+        .options(selectinload(Photo.assets), selectinload(Photo.analysis))
+        .where(Photo.id == photo_id, Photo.user_id == user_id)
+    ).scalars().first()
+    if photo is None:
+        return None
+
+    # Match cumulative serialization through the photo date, fetching only the
+    # immediate neighbors instead of loading the entire photo collection.
+    base = _base_photo_query(user_id, photo.captured_date, "cumulative")
+    previous_photo = db.execute(
+        base.where(or_(
+            Photo.captured_at < photo.captured_at,
+            and_(Photo.captured_at == photo.captured_at, Photo.id < photo.id),
+        )).order_by(desc(Photo.captured_at), desc(Photo.id)).limit(1)
+    ).scalars().first()
+    next_photo = db.execute(
+        base.where(or_(
+            Photo.captured_at > photo.captured_at,
+            and_(Photo.captured_at == photo.captured_at, Photo.id > photo.id),
+        )).order_by(asc(Photo.captured_at), asc(Photo.id)).limit(1)
+    ).scalars().first()
+    return _serialize_photo(photo, previous_photo=previous_photo, next_photo=next_photo)
 
 
 def load_photos_for_date(

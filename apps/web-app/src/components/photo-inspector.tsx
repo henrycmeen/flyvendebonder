@@ -2,6 +2,7 @@ import { type Dispatch, type SetStateAction } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Pencil, RefreshCw } from "lucide-react";
 
 import {
+  editablePhotoTags,
   formatCapturedAt,
   formatConfidence,
   formatCoordinate,
@@ -11,6 +12,7 @@ import {
   formatPercent,
   formatQCRating,
   getAnalysisToneText,
+  isSystemPhotoTag,
   normalizeTagsInput,
   type ManualViewTarget,
 } from "@/lib/formatters";
@@ -36,6 +38,7 @@ interface PhotoInspectorProps {
   metadataEditMode: boolean;
   showTechnicalMetadata: boolean;
   metadataBusyPhotoId: string | null;
+  metadataSaveError: string | null;
   analysisBusyPhotoId: string | null;
   isAdminAuthenticated: boolean;
   metadataTagDraft: string;
@@ -150,6 +153,7 @@ export function PhotoInspector({
   metadataEditMode,
   showTechnicalMetadata,
   metadataBusyPhotoId,
+  metadataSaveError,
   analysisBusyPhotoId,
   isAdminAuthenticated,
   metadataTagDraft,
@@ -180,6 +184,9 @@ export function PhotoInspector({
   onSavePhotoMetadata,
 }: PhotoInspectorProps) {
   if (!open) return null;
+  const visibleTags = editablePhotoTags(metadataTagsDraft);
+  const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemPhotoTag);
+  const reservedTagDraft = isSystemPhotoTag(metadataTagDraft);
 
   const strip = (
     <PhotoStrip
@@ -287,7 +294,7 @@ export function PhotoInspector({
                             </dd>
                           </div>
                           <div className="flex items-start justify-between gap-2">
-                            <dt>Confidence</dt>
+                            <dt>Tillit til analysen</dt>
                             <dd className="font-medium">
                               {selectedPhoto.analysis?.confidence == null
                                 ? "Ikke beregnet"
@@ -351,7 +358,7 @@ export function PhotoInspector({
                             <dt>QC-score</dt>
                             <dd className="text-right font-medium">
                               {formatConfidence(selectedPhoto.confidence_score)}
-                              {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
+                              {selectedPhoto.needs_manual_qc ? " (må vurderes manuelt)" : ""}
                             </dd>
                           </div>
                         </dl>
@@ -375,19 +382,20 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataAltitudeDraft}
+                                  aria-label="Høyde i meter"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataAltitudeDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.altitude_m == null ? "ukjent" : `${selectedPhoto.altitude_m} m`}
+                                  {formatMeters(selectedPhoto.altitude_m)}
                                 </span>
                               )}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <dt>Retning (deg)</dt>
+                            <dt>Kameraretning (°)</dt>
                             <dd className="w-28">
                               {metadataEditMode ? (
                                 <input
@@ -395,19 +403,20 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataHeadingDraft}
+                                  aria-label="Kameraretning i grader"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataHeadingDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg}°`}
+                                  {selectedPhoto.heading_deg == null ? "ukjent" : `${selectedPhoto.heading_deg.toFixed(1)}°`}
                                 </span>
                               )}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <dt>Pitch (deg)</dt>
+                            <dt>Kameravinkel (°)</dt>
                             <dd className="w-28">
                               {metadataEditMode ? (
                                 <input
@@ -415,13 +424,14 @@ export function PhotoInspector({
                                   inputMode="decimal"
                                   className="h-8 w-full rounded-lg border border-fb-border-subtle bg-fb-surface-ghost px-2 text-right text-xs text-fb-text-primary outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--fb-focus-ring)]"
                                   value={metadataPitchDraft}
+                                  aria-label="Kameravinkel i grader"
                                   placeholder="ukjent"
                                   onChange={(event) => onSetMetadataPitchDraft(event.target.value)}
                                   disabled={metadataBusyPhotoId === selectedPhoto.id}
                                 />
                               ) : (
                                 <span className="block text-right font-medium">
-                                  {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg}°`}
+                                  {selectedPhoto.pitch_deg == null ? "ukjent" : `${selectedPhoto.pitch_deg.toFixed(1)}°`}
                                 </span>
                               )}
                             </dd>
@@ -486,8 +496,8 @@ export function PhotoInspector({
                         <div className="mt-2 space-y-2">
                           <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Tags</p>
                           <div className="flex flex-wrap gap-1.5">
-                            {metadataTagsDraft.length > 0 ? (
-                              metadataTagsDraft.map((tag) => (
+                            {visibleTags.length > 0 ? (
+                              visibleTags.map((tag) => (
                                 <span
                                   key={tag}
                                   className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle bg-fb-surface-ghost px-2.5 py-1 text-xs text-fb-text-primary"
@@ -526,7 +536,7 @@ export function PhotoInspector({
                                   if (event.key !== "Enter") return;
                                   event.preventDefault();
                                   const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
+                                  if (!nextTag || reservedTagDraft) return;
                                   onSetMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
                                   onSetMetadataTagDraft("");
                                 }}
@@ -539,15 +549,18 @@ export function PhotoInspector({
                                 className="h-8"
                                 onClick={() => {
                                   const nextTag = metadataTagDraft.trim();
-                                  if (!nextTag) return;
+                                  if (!nextTag || reservedTagDraft) return;
                                   onSetMetadataTagsDraft((previous) => normalizeTagsInput([...previous, nextTag]));
                                   onSetMetadataTagDraft("");
                                 }}
-                                disabled={!metadataTagDraft.trim() || metadataBusyPhotoId === selectedPhoto.id}
+                                disabled={!metadataTagDraft.trim() || reservedTagDraft || metadataBusyPhotoId === selectedPhoto.id}
                               >
                                 Legg til
                               </Button>
                             </div>
+                          ) : null}
+                          {metadataEditMode && reservedTagDraft ? (
+                            <p role="alert" className="text-xs text-red-700 dark:text-red-300">Prefiksene meta: og qc: er reservert for systemdata. Velg en vanlig tag.</p>
                           ) : null}
                         </div>
 
@@ -592,6 +605,9 @@ export function PhotoInspector({
                             </Button>
                           </div>
                         ) : null}
+                        {metadataSaveError ? (
+                          <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{metadataSaveError}</p>
+                        ) : null}
                       </div>
 
                       <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
@@ -602,6 +618,7 @@ export function PhotoInspector({
                             baseMapStyle={baseMapStyle}
                             editable={metadataEditMode}
                             manualTarget={activeInsetManualTarget}
+                            manualTargetCleared={metadataEditMode && selectedPhotoManualViewTarget != null && metadataManualViewTargetDraft == null}
                             onManualTargetChange={onSetMetadataManualViewTargetDraft}
                           />
                         </div>
@@ -635,7 +652,7 @@ export function PhotoInspector({
                               <dd className="text-right font-medium">{formatGsd(selectedPhoto.gsd_m)}</dd>
                             </div>
                             <div className="flex items-start justify-between gap-2">
-                              <dt>Bildeavtrykk</dt>
+                              <dt>Beregnet bildebredde på bakken</dt>
                               <dd className="text-right font-medium">{formatMeters(selectedPhoto.image_footprint_w_m)}</dd>
                             </div>
                             <div className="flex items-start justify-between gap-2">
@@ -696,6 +713,14 @@ export function PhotoInspector({
                                 <dt>QC-grunner</dt>
                                 <dd className="max-w-[13rem] text-right font-medium">
                                   <span className="text-xs">{selectedPhoto.confidence_reasons.join(", ")}</span>
+                                </dd>
+                              </div>
+                            ) : null}
+                            {systemTags.length > 0 ? (
+                              <div className="min-w-0">
+                                <dt>Systemmetadata</dt>
+                                <dd className="mt-1 space-y-1 break-all text-[11px] text-fb-text-secondary">
+                                  {systemTags.map((tag) => <div key={tag}>{tag}</div>)}
                                 </dd>
                               </div>
                             ) : null}

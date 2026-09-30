@@ -5,6 +5,7 @@ import { AUTH_REJECTED_EVENT, apiDelete, apiGet, apiPatch, apiPost, ApiError, cl
 import { subscribeClientLogs } from "@/lib/client-logger";
 import {
   buildPhotoStatusText,
+  editablePhotoTags,
   formatPropertyReference,
   normalizeTagsInput,
   numbersEqual,
@@ -322,6 +323,7 @@ export default function App() {
   const [albumLoadedDate, setAlbumLoadedDate] = useState<string | null>(null);
   const [mapNavigationAnchorId, setMapNavigationAnchorId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [photoDeepLinkRevision, setPhotoDeepLinkRevision] = useState(0);
   const [hoverPreviewPhotoId, setHoverPreviewPhotoId] = useState<string | null>(null);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
   const {
@@ -360,6 +362,7 @@ export default function App() {
   const [pendingRequests, setPendingRequests] = useState(0);
   const [analysisBusyPhotoId, setAnalysisBusyPhotoId] = useState<string | null>(null);
   const [metadataBusyPhotoId, setMetadataBusyPhotoId] = useState<string | null>(null);
+  const [metadataSaveError, setMetadataSaveError] = useState<{ photoId: string; message: string } | null>(null);
   const [metadataEditMode, setMetadataEditMode] = useState(false);
   const [showTechnicalMetadata, setShowTechnicalMetadata] = useState(false);
   const [metadataTagDraft, setMetadataTagDraft] = useState("");
@@ -397,6 +400,7 @@ export default function App() {
   });
   const [photosLoadFailed, setPhotosLoadFailed] = useState(false);
   const [isMapPhotosLoading, setIsMapPhotosLoading] = useState(false);
+  const [mapPhotoPaginationComplete, setMapPhotoPaginationComplete] = useState(false);
   const [photoLoadRetryToken, setPhotoLoadRetryToken] = useState(0);
   const [albumLoadFailed, setAlbumLoadFailed] = useState(false);
   const [albumScrollSpin, setAlbumScrollSpin] = useState(false);
@@ -472,6 +476,9 @@ export default function App() {
   const albumAbortRef = useRef<AbortController | null>(null);
   const photoLoadSeqRef = useRef(0);
   const albumLoadSeqRef = useRef(0);
+  const selectedPhotoIdRef = useRef<string | null>(selectedPhotoId);
+  const metadataSaveSequenceRef = useRef(0);
+  const metadataSaveTokensRef = useRef(new Map<string, number>());
   const profileLoadSeqRef = useRef(0);
   const adminSessionLoadSeqRef = useRef(0);
   const timelineLoadSeqRef = useRef(0);
@@ -479,6 +486,10 @@ export default function App() {
   const gardskartJobLoadSeqRef = useRef(0);
   const bootstrapLoadSeqRef = useRef(0);
   const autoAppliedLatestFiltersRef = useRef(false);
+
+  useEffect(() => {
+    selectedPhotoIdRef.current = selectedPhotoId;
+  }, [selectedPhotoId]);
 
   const selectedDate = timeline[selectedIndex]?.date ?? null;
   const activeProperties = useMemo<Property[]>(() => {
@@ -509,6 +520,8 @@ export default function App() {
       }),
     [selectedSeason, selectedYear, showOnlyLowConfidence, showOnlyManualQc],
   );
+  const mapPhotoFilterRef = useRef(mapPhotoFilter);
+  mapPhotoFilterRef.current = mapPhotoFilter;
   const selectedPhoto = useMemo(() => {
     if (!selectedPhotoId) return null;
     return (
@@ -1115,6 +1128,20 @@ export default function App() {
     );
   }, []);
 
+  const replacePhotoState = useCallback((updatedPhoto: PhotoFeature) => {
+    const replacePhoto = (previous: PhotoFeature[]) =>
+      previous.map((photo) =>
+        photoIdKey(photo.id) === photoIdKey(updatedPhoto.id) ? updatedPhoto : photo,
+      ).filter(mapPhotoFilterRef.current);
+
+    setPhotoPool(replacePhoto);
+    setAlbumPhotos((previous) =>
+      previous.map((photo) =>
+        photoIdKey(photo.id) === photoIdKey(updatedPhoto.id) ? updatedPhoto : photo,
+      ),
+    );
+  }, []);
+
   const updatePhotoMetadataState = useCallback(
     (
       photoId: string,
@@ -1372,10 +1399,13 @@ export default function App() {
 
   const handleSavePhotoMetadata = useCallback(async () => {
     if (!selectedPhoto) return;
-    if (metadataBusyPhotoId === selectedPhoto.id) return;
     if (!ensureAdminAccess("metadataendring")) return;
 
-    const nextTags = normalizeTagsInput(metadataTagsDraft);
+    const photoId = selectedPhoto.id;
+    if (metadataSaveTokensRef.current.has(photoId)) return;
+
+    setMetadataSaveError(null);
+    const nextTags = editablePhotoTags(metadataTagsDraft);
     const nextCaption = metadataCaptionDraft.trim();
     const nextNeedsManualQc = metadataNeedsManualQcDraft;
     const manualTargetChanged = !sameManualViewTarget(selectedPhotoManualViewTarget, metadataManualViewTargetDraft);
@@ -1383,15 +1413,18 @@ export default function App() {
     const headingInput = parseDraftNumber(metadataHeadingDraft);
     const pitchInput = parseDraftNumber(metadataPitchDraft);
     if (!altitudeInput.valid || !headingInput.valid || !pitchInput.valid) {
+      setMetadataSaveError({ photoId, message: "Ugyldig tallformat. Bruk for eksempel 123,4." });
       setStatusText("Ugyldig tallformat i metadata. Bruk for eksempel 123.4");
       addLog("warn", "Ugyldig tallformat i metadata-redigering");
       return;
     }
 
-    setMetadataBusyPhotoId(selectedPhoto.id);
+    const saveToken = ++metadataSaveSequenceRef.current;
+    metadataSaveTokensRef.current.set(photoId, saveToken);
+    setMetadataBusyPhotoId(photoId);
     try {
       const { data, requestId } = await trackRequest(() =>
-        apiPatch<PhotoMetadataActionResponse>(`/api/v1/photos/${selectedPhoto.id}/metadata`, {
+        apiPatch<PhotoMetadataActionResponse>(`/api/v1/photos/${photoId}/metadata`, {
           tags: nextTags,
           caption: nextCaption,
           needs_manual_qc: nextNeedsManualQc,
@@ -1407,44 +1440,95 @@ export default function App() {
         }),
       );
 
-      updatePhotoMetadataState(
-        data.photo_id,
-        data.tags,
-        data.caption,
-        data.needs_manual_qc,
-        data.altitude_m,
-        data.heading_deg,
-        data.pitch_deg,
-      );
-      setMetadataTagsDraft(data.tags);
-      setMetadataCaptionDraft(data.caption ?? "");
-      setMetadataNeedsManualQcDraft(data.needs_manual_qc);
-      setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
-      setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
-      setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
-      setMetadataManualViewTargetDraft(
-        data.manual_view_lat != null && data.manual_view_lng != null
-          ? { lat: data.manual_view_lat, lng: data.manual_view_lng }
-          : null,
-      );
-      setMetadataTagDraft("");
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
+
+      let refreshedPhoto: PhotoFeature | null = null;
+      try {
+        const { data: refreshed } = await trackRequest(() =>
+          apiGet<PhotoFeature>(`/api/v1/photos/${encodeURIComponent(photoId)}`, {
+            cache: false,
+            dedupe: false,
+          }),
+        );
+        refreshedPhoto = refreshed;
+      } catch (refreshError) {
+        if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
+
+        updatePhotoMetadataState(
+          data.photo_id,
+          data.tags,
+          data.caption,
+          data.needs_manual_qc,
+          data.altitude_m,
+          data.heading_deg,
+          data.pitch_deg,
+        );
+        if (selectedPhotoIdRef.current === photoId) {
+          setMetadataTagsDraft(data.tags);
+          setMetadataCaptionDraft(data.caption ?? "");
+          setMetadataNeedsManualQcDraft(data.needs_manual_qc);
+          setMetadataAltitudeDraft(toDraftNumber(data.altitude_m));
+          setMetadataHeadingDraft(toDraftNumber(data.heading_deg));
+          setMetadataPitchDraft(toDraftNumber(data.pitch_deg));
+          setMetadataManualViewTargetDraft(
+            data.manual_view_lat != null && data.manual_view_lng != null
+              ? { lat: data.manual_view_lat, lng: data.manual_view_lng }
+              : null,
+          );
+          setMetadataTagDraft("");
+          setMetadataEditMode(false);
+        }
+
+        const refreshApiError = refreshError as ApiError;
+        addLog("warn", "Metadata lagret, men kartdata kunne ikke oppdateres", requestId, {
+          photoId,
+          detail: refreshApiError.detail ?? refreshApiError.message,
+        });
+        if (selectedPhotoIdRef.current === photoId) {
+          setStatusText("Metadata lagret, men kartdata kunne ikke oppdateres.");
+          setMetadataSaveError({ photoId, message: "Metadata er lagret, men kartdata kunne ikke oppdateres. Last siden på nytt." });
+        }
+        return;
+      }
+
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken || !refreshedPhoto) return;
+
+      replacePhotoState(refreshedPhoto);
+      if (selectedPhotoIdRef.current === photoId) {
+        setMetadataTagsDraft(refreshedPhoto.tags);
+        setMetadataCaptionDraft(refreshedPhoto.caption ?? "");
+        setMetadataNeedsManualQcDraft(refreshedPhoto.needs_manual_qc);
+        setMetadataAltitudeDraft(toDraftNumber(refreshedPhoto.altitude_m));
+        setMetadataHeadingDraft(toDraftNumber(refreshedPhoto.heading_deg));
+        setMetadataPitchDraft(toDraftNumber(refreshedPhoto.pitch_deg));
+        setMetadataManualViewTargetDraft(parseManualViewTarget(refreshedPhoto.tags));
+        setMetadataTagDraft("");
+        setMetadataEditMode(false);
+      }
       addLog("info", "Metadata lagret", requestId, {
-        photoId: data.photo_id,
-        tags: data.tags.length,
-        needs_manual_qc: data.needs_manual_qc,
+        photoId: refreshedPhoto.id,
+        tags: refreshedPhoto.tags.length,
+        needs_manual_qc: refreshedPhoto.needs_manual_qc,
       });
-      setStatusText("Metadata oppdatert.");
-      setMetadataEditMode(false);
+      if (selectedPhotoIdRef.current === photoId) {
+        setStatusText("Metadata oppdatert.");
+      }
     } catch (error) {
+      if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
       const apiError = error as ApiError;
       addLog("error", "Kunne ikke lagre metadata", apiError.requestId, apiError.detail);
-      setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
+      if (selectedPhotoIdRef.current === photoId) {
+        setStatusText(`Kunne ikke lagre metadata: ${apiError.message}`);
+        setMetadataSaveError({ photoId, message: `Kunne ikke lagre metadata: ${apiError.message}` });
+      }
     } finally {
-      setMetadataBusyPhotoId(null);
+      if (metadataSaveTokensRef.current.get(photoId) === saveToken) {
+        metadataSaveTokensRef.current.delete(photoId);
+        setMetadataBusyPhotoId((current) => (current === photoId ? null : current));
+      }
     }
   }, [
     addLog,
-    metadataBusyPhotoId,
     metadataAltitudeDraft,
     metadataCaptionDraft,
     metadataHeadingDraft,
@@ -1453,6 +1537,7 @@ export default function App() {
     selectedPhoto,
     selectedPhotoManualViewTarget,
     ensureAdminAccess,
+    replacePhotoState,
     trackRequest,
     updatePhotoMetadataState,
     metadataNeedsManualQcDraft,
@@ -1461,6 +1546,7 @@ export default function App() {
 
   const handleCancelMetadataEdit = useCallback(() => {
     if (!selectedPhoto) return;
+    setMetadataSaveError(null);
     setMetadataTagDraft("");
     setMetadataTagsDraft(selectedPhoto.tags ?? []);
     setMetadataCaptionDraft(selectedPhoto.caption ?? "");
@@ -1529,6 +1615,7 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedPhoto) {
+      setMetadataBusyPhotoId(null);
       setMetadataTagDraft("");
       setMetadataTagsDraft([]);
       setMetadataCaptionDraft("");
@@ -1541,6 +1628,7 @@ export default function App() {
       setShowTechnicalMetadata(false);
       return;
     }
+    setMetadataBusyPhotoId(metadataSaveTokensRef.current.has(selectedPhoto.id) ? selectedPhoto.id : null);
     setMetadataTagDraft("");
     setMetadataTagsDraft(selectedPhoto.tags ?? []);
     setMetadataCaptionDraft(selectedPhoto.caption ?? "");
@@ -1592,7 +1680,7 @@ export default function App() {
           const resolvedDate = timelineData.dates[resolvedIndex]?.date ?? timelineData.dates[timelineData.dates.length - 1].date;
 
           setSelectedIndex(resolvedIndex);
-          setSelectedYear(resolvedDate.slice(0, 4));
+          setSelectedYear(initialPhoto ? "all" : resolvedDate.slice(0, 4));
           setSelectedSeason("all");
           setStatusText("Klar.");
           return;
@@ -1626,7 +1714,7 @@ export default function App() {
     return () => {
       abortController.abort();
     };
-  }, [addLog, initialDate, isAdminAuthenticated, loadTimeline]);
+  }, [addLog, initialDate, initialPhoto, isAdminAuthenticated, loadTimeline]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1789,6 +1877,11 @@ export default function App() {
 
   useEffect(() => {
     if (autoAppliedLatestFiltersRef.current) return;
+    // A shared photo/date must remain reachable while its pages are loading.
+    if (hasExplicitDeepLink) {
+      autoAppliedLatestFiltersRef.current = true;
+      return;
+    }
     if (selectedYear !== "all" || selectedSeason !== "all") {
       autoAppliedLatestFiltersRef.current = true;
       return;
@@ -1798,7 +1891,7 @@ export default function App() {
     setSelectedYear(latestAvailableCapturedDate.slice(0, 4));
     setSelectedSeason(monthToSeason(latestAvailableCapturedDate.slice(5, 7)));
     autoAppliedLatestFiltersRef.current = true;
-  }, [latestAvailableCapturedDate, selectedSeason, selectedYear]);
+  }, [hasExplicitDeepLink, latestAvailableCapturedDate, selectedSeason, selectedYear]);
 
   useEffect(() => {
     if (selectedSeason === "all") return;
@@ -1890,6 +1983,8 @@ export default function App() {
     photosAbortRef.current = abortController;
 
     const loadPhotos = async () => {
+      let paginationComplete = false;
+      setMapPhotoPaginationComplete(false);
       if (!latestFilteredDate) {
         setPhotoPool([]);
         setPhotosLoadFailed(false);
@@ -1897,6 +1992,7 @@ export default function App() {
         setStatusText("Ingen bilder for valgt filter.");
         if (seq === photoLoadSeqRef.current) {
           setIsMapPhotosLoading(false);
+          setMapPhotoPaginationComplete(!initialPhotoRef.current);
         }
         return;
       }
@@ -1921,6 +2017,8 @@ export default function App() {
         const filteredPhotos = data.photos.filter(mapPhotoFilter);
         setPhotoPool(filteredPhotos);
         setPhotosLoadFailed(false);
+        paginationComplete = true;
+        setMapPhotoPaginationComplete(true);
         addLog("warn", "Bruker fallback for kartbilder", requestId, {
           reason,
           apiDate: latestFilteredDate,
@@ -1988,6 +2086,12 @@ export default function App() {
           cursor = data.next_cursor ?? null;
           hasMore = Boolean(cursor) && !shouldStopForSelectedYear;
         }
+        // The safety cap is a terminal load outcome, even if the API has more
+        // pages. Pending deep links must resolve or clear after loading stops.
+        paginationComplete = true;
+        if (hasMore) {
+          addLog("warn", "Kartets sidegrense er nådd", lastRequestId, { pages: pagesLoaded });
+        }
 
         if (mergedPhotos.length === 0 && filteredTimelineHasData && !showOnlyManualQc && !showOnlyLowConfidence) {
           const recovered = await loadFallbackPhotos("paged_load_returned_empty");
@@ -2031,6 +2135,7 @@ export default function App() {
       } finally {
         if (seq === photoLoadSeqRef.current) {
           setIsMapPhotosLoading(false);
+          setMapPhotoPaginationComplete(paginationComplete);
         }
       }
     };
@@ -2226,6 +2331,13 @@ export default function App() {
       return;
     }
     if (photos.length === 0) {
+      if (initialPhotoRef.current && (!mapPhotoPaginationComplete || isMapPhotosLoading)) {
+        return;
+      }
+      if (initialPhotoRef.current) {
+        initialPhotoRef.current = null;
+        setPhotoDeepLinkRevision((revision) => revision + 1);
+      }
       setSelectedPhotoId(null);
       return;
     }
@@ -2234,21 +2346,49 @@ export default function App() {
       return;
     }
 
-    setSelectedPhotoId((previous) => {
-      if (initialPhotoRef.current && photos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))) {
-        const first = initialPhotoRef.current;
-        initialPhotoRef.current = null;
-        return first;
+    if (initialPhotoRef.current) {
+      const initialMapPhoto = photos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      if (initialMapPhoto) {
+        const photoDateIndex = timeline.findIndex((entry) => entry.date === initialMapPhoto.captured_date);
+        const photoDateIsSynchronized = selectedDate === initialMapPhoto.captured_date;
+        if (photoDateIndex >= 0 && selectedIndex !== photoDateIndex) {
+          setSelectedIndex(photoDateIndex);
+        }
+        if (photoIdKey(selectedPhotoId) === photoIdKey(initialMapPhoto.id) && photoDateIsSynchronized) {
+          initialPhotoRef.current = null;
+        } else {
+          setSelectedPhotoId(initialMapPhoto.id);
+        }
+        return;
+      }
+      if (isMapPhotosLoading || !mapPhotoPaginationComplete) {
+        return;
       }
       initialPhotoRef.current = null;
+      setPhotoDeepLinkRevision((revision) => revision + 1);
+    }
 
+    setSelectedPhotoId((previous) => {
       if (previous && photos.some((photo) => photoIdKey(photo.id) === photoIdKey(previous))) {
         return previous;
       }
 
       return photos[photos.length - 1]?.id ?? null;
     });
-  }, [activeView, photos, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [
+    activeView,
+    hasExplicitDeepLink,
+    isMapPhotosLoading,
+    mapPhotoPaginationComplete,
+    photos,
+    selectedDate,
+    selectedIndex,
+    selectedPhotoId,
+    syncSelectionToUrl,
+    timeline,
+  ]);
 
   useEffect(() => {
     if (activeView === "album") {
@@ -2256,6 +2396,19 @@ export default function App() {
     }
     if (!selectedDate || photos.length === 0) return;
     if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
+    if (initialPhotoRef.current) {
+      const initialDatePhoto = photos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      const photoDateIsSynchronized = initialDatePhoto && selectedDate === initialDatePhoto.captured_date;
+      if (
+        !initialDatePhoto ||
+        photoIdKey(selectedPhotoId) !== photoIdKey(initialDatePhoto.id) ||
+        !photoDateIsSynchronized
+      ) {
+        return;
+      }
+    }
     const inSelectedDate = photos.filter((photo) => photo.captured_date === selectedDate);
     if (inSelectedDate.length === 0) return;
 
@@ -2265,31 +2418,78 @@ export default function App() {
       }
       return inSelectedDate[inSelectedDate.length - 1].id;
     });
-  }, [activeView, photos, selectedDate, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [activeView, photos, selectedDate, hasExplicitDeepLink, selectedPhotoId, syncSelectionToUrl, timeline]);
 
   useEffect(() => {
     if (activeView !== "album") return;
-    if (albumPhotos.length === 0) return;
+    if (!latestTimelineDate) return;
+    if (albumLoadedDate !== latestTimelineDate) return;
     if (!syncSelectionToUrl && !hasExplicitDeepLink) return;
 
-    setSelectedPhotoId((previous) => {
-      if (
-        initialPhotoRef.current &&
-        albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))
-      ) {
-        const initialAlbumPhoto = initialPhotoRef.current;
-        initialPhotoRef.current = null;
-        return initialAlbumPhoto;
+    if (initialPhotoRef.current) {
+      const initialAlbumPhoto = albumPhotos.find(
+        (photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current),
+      );
+      if (initialAlbumPhoto) {
+        if (
+          photoIdKey(selectedPhotoId) === photoIdKey(initialAlbumPhoto.id) &&
+          isPhotoViewerOpen
+        ) {
+          initialPhotoRef.current = null;
+        } else {
+          setSelectedPhotoId(initialAlbumPhoto.id);
+          setIsPhotoViewerOpen(true);
+        }
+        return;
+      }
+      if (albumLoadingInitial || albumLoadingMore || albumHasMore) {
+        return;
       }
       initialPhotoRef.current = null;
+      setPhotoDeepLinkRevision((revision) => revision + 1);
+      setSelectedPhotoId(null);
+      setIsPhotoViewerOpen(false);
+      return;
+    }
 
+    if (albumPhotos.length === 0) return;
+
+    setSelectedPhotoId((previous) => {
       if (previous && albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(previous))) {
         return previous;
       }
 
       return previous;
     });
-  }, [activeView, albumPhotos, hasExplicitDeepLink, syncSelectionToUrl]);
+  }, [
+    activeView,
+    albumHasMore,
+    albumLoadingInitial,
+    albumLoadingMore,
+    albumLoadedDate,
+    albumPhotos,
+    hasExplicitDeepLink,
+    isPhotoViewerOpen,
+    latestTimelineDate,
+    selectedPhotoId,
+    syncSelectionToUrl,
+  ]);
+
+  useEffect(() => {
+    if (activeView !== "album" || !latestTimelineDate || albumLoadFailed) return;
+    if (!initialPhotoRef.current || albumLoadingInitial || albumLoadingMore || !albumHasMore) return;
+    if (albumPhotos.some((photo) => photoIdKey(photo.id) === photoIdKey(initialPhotoRef.current))) return;
+    void loadAlbumPage({ reset: false });
+  }, [
+    activeView,
+    albumHasMore,
+    albumLoadFailed,
+    albumLoadingInitial,
+    albumLoadingMore,
+    albumPhotos,
+    latestTimelineDate,
+    loadAlbumPage,
+  ]);
 
   useEffect(() => {
     if (activeProperties.length === 0 || !showPropertyLayer) {
@@ -2326,8 +2526,11 @@ export default function App() {
       syncSelectionToUrl &&
       Boolean(selectedPhotoId) &&
       (isPhotoViewerOpen || (activeView === "map" && selectedPhotoExistsInMap));
+    const pendingPhotoParam = syncSelectionToUrl ? initialPhotoRef.current : null;
 
-    if (!shouldPersistPhotoParam) {
+    if (pendingPhotoParam) {
+      next.set("photo", pendingPhotoParam);
+    } else if (!shouldPersistPhotoParam) {
       next.delete("photo");
     } else if (selectedPhotoId) {
       next.set("photo", selectedPhotoId);
@@ -2338,7 +2541,15 @@ export default function App() {
     const query = next.toString();
     const target = query ? `${window.location.pathname}?${query}` : window.location.pathname;
     window.history.replaceState({}, "", target);
-  }, [activeView, isPhotoViewerOpen, selectedDate, selectedPhotoExistsInMap, selectedPhotoId, syncSelectionToUrl]);
+  }, [
+    activeView,
+    isPhotoViewerOpen,
+    photoDeepLinkRevision,
+    selectedDate,
+    selectedPhotoExistsInMap,
+    selectedPhotoId,
+    syncSelectionToUrl,
+  ]);
 
   const handleSaveProfile = async (payload: {
     user: {
@@ -3027,6 +3238,7 @@ export default function App() {
         metadataEditMode={metadataEditMode}
         showTechnicalMetadata={showTechnicalMetadata}
         metadataBusyPhotoId={metadataBusyPhotoId}
+        metadataSaveError={metadataSaveError && metadataSaveError.photoId === selectedPhoto?.id ? metadataSaveError.message : null}
         analysisBusyPhotoId={analysisBusyPhotoId}
         isAdminAuthenticated={isAdminAuthenticated}
         metadataTagDraft={metadataTagDraft}
