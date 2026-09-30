@@ -654,7 +654,7 @@ export function SettingsDialog({
               <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
                 <div>
                   <Label htmlFor="show-low-confidence" className="text-fb-text-primary">Lav tillit</Label>
-                  <p className="text-xs text-fb-text-secondary">Sorter frem bilder med svakest posisjon først.</p>
+                  <p className="text-xs text-fb-text-secondary">Vis bare bilder med lav tillit til posisjonen.</p>
                 </div>
                 <Switch id="show-low-confidence" checked={showOnlyLowConfidence} onCheckedChange={onToggleLowConfidenceFilter} />
               </div>

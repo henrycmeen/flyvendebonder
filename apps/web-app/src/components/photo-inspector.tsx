@@ -294,7 +294,7 @@ export function PhotoInspector({
                             </dd>
                           </div>
                           <div className="flex items-start justify-between gap-2">
-                            <dt>Confidence</dt>
+                            <dt>Tillit til analysen</dt>
                             <dd className="font-medium">
                               {selectedPhoto.analysis?.confidence == null
                                 ? "Ikke beregnet"
@@ -358,7 +358,7 @@ export function PhotoInspector({
                             <dt>QC-score</dt>
                             <dd className="text-right font-medium">
                               {formatConfidence(selectedPhoto.confidence_score)}
-                              {selectedPhoto.needs_manual_qc ? " (manual review)" : ""}
+                              {selectedPhoto.needs_manual_qc ? " (må vurderes manuelt)" : ""}
                             </dd>
                           </div>
                         </dl>

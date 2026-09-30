@@ -618,6 +618,12 @@ body {
 }
 
 @media (max-width: 767px) {
+  .fb-photo-map .leaflet-control-zoom a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+  }
+
   .fb-liquid-filter {
     max-width: min(320px, calc(100vw - 1.5rem));
   }
