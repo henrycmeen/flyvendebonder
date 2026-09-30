@@ -1444,22 +1444,13 @@ export default function App() {
 
       let refreshedPhoto: PhotoFeature | null = null;
       try {
-        const { data: refreshedPhotos } = await trackRequest(() =>
-          apiGet<PhotosResponse>("/api/v1/photos", {
-            query: {
-              date: selectedPhoto.captured_date,
-              mode: "cumulative",
-              include_analysis: false,
-            },
+        const { data: refreshed } = await trackRequest(() =>
+          apiGet<PhotoFeature>(`/api/v1/photos/${encodeURIComponent(photoId)}`, {
             cache: false,
             dedupe: false,
           }),
         );
-        refreshedPhoto =
-          refreshedPhotos.photos.find((photo) => photoIdKey(photo.id) === photoIdKey(photoId)) ?? null;
-        if (!refreshedPhoto) {
-          throw new Error("Backend returnerte ikke det oppdaterte bildet");
-        }
+        refreshedPhoto = refreshed;
       } catch (refreshError) {
         if (metadataSaveTokensRef.current.get(photoId) !== saveToken) return;
 
@@ -2095,7 +2086,12 @@ export default function App() {
           cursor = data.next_cursor ?? null;
           hasMore = Boolean(cursor) && !shouldStopForSelectedYear;
         }
-        paginationComplete = !hasMore;
+        // The safety cap is a terminal load outcome, even if the API has more
+        // pages. Pending deep links must resolve or clear after loading stops.
+        paginationComplete = true;
+        if (hasMore) {
+          addLog("warn", "Kartets sidegrense er nådd", lastRequestId, { pages: pagesLoaded });
+        }
 
         if (mergedPhotos.length === 0 && filteredTimelineHasData && !showOnlyManualQc && !showOnlyLowConfidence) {
           const recovered = await loadFallbackPhotos("paged_load_returned_empty");
@@ -2338,6 +2334,10 @@ export default function App() {
       if (initialPhotoRef.current && (!mapPhotoPaginationComplete || isMapPhotosLoading)) {
         return;
       }
+      if (initialPhotoRef.current) {
+        initialPhotoRef.current = null;
+        setPhotoDeepLinkRevision((revision) => revision + 1);
+      }
       setSelectedPhotoId(null);
       return;
     }
@@ -2367,6 +2367,7 @@ export default function App() {
         return;
       }
       initialPhotoRef.current = null;
+      setPhotoDeepLinkRevision((revision) => revision + 1);
     }
 
     setSelectedPhotoId((previous) => {
