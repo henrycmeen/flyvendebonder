@@ -3,7 +3,7 @@
 Status: kronologisk bibliotekavspilling er implementert og kontrollert med 12 bilder, stopp ved slutt, pause ved nettverksfeil og nytt forsøk. Dette dokumentet beholder hele videre kontrakten; områdespesifikt utvalg, delbar avspillingslenke og to-opptakssammenligning er fortsatt ikke implementert.
 
 ## Verifisert utgangspunkt
-- Original liquid-velger med år/årstider er gjenopprettet etter Henrys designrettelse. Ny direkte datovalg-UI er ikke akseptert og må bygge videre på originalen. Biblioteket har en egen kronologisk avspiller som starter pauset.
+- Original liquid-velger med år/årstider er gjenopprettet etter Henrys designrettelse. Henry har valgt dette panelet som grunnlag; direkte datovalg er nå en enkel rad med faktiske opptaksdager inne i originalpanelet. Biblioteket har en egen kronologisk avspiller som starter pauset.
 - Biblioteket navigerer bilder fra nyeste til eldste. Kartet kan bruke nærmeste-posisjon-rekkefølge (`buildNearestPath`). Ingen av disse er en tilstrekkelig kontrakt for kronologisk timelapse.
 - Foto har opptakstid, posisjon og bilde-/miniatyrreferanser. Tidslinjen har daglige arkivantall. Arkivantall dokumenterer ikke hvor mange bilder som dekker samme utsnitt.
 - Biblioteket har paginering. En avspiller må ikke presentere bare innlastede bilder som et komplett opptak.
@@ -35,3 +35,7 @@ Videre implementering og publisering følger samme review-, CI- og Henry-godkjen
 ## Mobilkontroll 30. september
 
 På 320 × 740 CSS-piksler er den dupliserte spilleroverskriften, forklaringen og lukkeknappen fjernet; dialogens tittel, forklaring og lukkeknapp beholdes. Bildet bruker 32dvh på smal skjerm og fortsatt 48dvh fra sm. Forrige/Spill/Neste og visningstid er synlige uten scrolling. Ingen horisontal side-overflyt (scrollWidth = innerWidth = 320). Neste bilde oppdaterer tidspunkt og indeks; lukking returnerer fokus til «Vis opptak over tid». Kontrollert i separat nettleserfane, uten å endre hovedforhåndsvisningens størrelse eller kartdesign. Uavhengig lesende review fant ingen regresjoner.
+
+## Avklart omfang
+
+Henry presiserte 30. september kl. 13 at poenget er opprydding i appen, ikke mer kompleksitet. Videre kontrakt over beskriver muligheter, ikke ekstra akseptansekrav eller bestilt implementering i denne leveransen. Områdeutvalg, delbare avspillingslenker og to-opptakssammenligning skal ikke legges til nå.
