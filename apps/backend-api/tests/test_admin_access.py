@@ -279,6 +279,7 @@ def test_bound_session_reads_only_its_fields_photos_and_property(client):
     secondary_fields = client.get("/api/v1/fields")
     secondary_property = client.get("/api/v1/properties/current")
     primary_assets = client.get(f"/api/v1/photos/{primary_photo_id}/assets")
+    primary_photo = client.get(f"/api/v1/photos/{primary_photo_id}")
 
     assert secondary_timeline.status_code == 200
     assert secondary_timeline.json()["dates"] == []
@@ -289,6 +290,7 @@ def test_bound_session_reads_only_its_fields_photos_and_property(client):
     assert secondary_property.status_code == 200
     assert secondary_property.json()["property"]["label"] == "Sekundær eiendom"
     assert primary_assets.status_code == 404
+    assert primary_photo.status_code == 404
 
 
 def test_bound_session_rejects_revoked_owner_membership(client):

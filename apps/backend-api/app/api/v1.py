@@ -112,6 +112,7 @@ from ..schemas import (
     ScoutingTaskOut,
     ScoutingTaskPatch,
     ScoutingTaskStatus,
+    PhotoFeature,
     PhotoPageResponse,
     PhotoResponse,
     ProfileOut,
@@ -200,7 +201,7 @@ from ..services.planning import (
     sync_planning_units,
 )
 from ..services.photo_reprocess import reprocess_photos_for_user
-from ..services.photos import load_photos_for_date, load_photos_page, timeline_dates
+from ..services.photos import load_photo_by_id, load_photos_for_date, load_photos_page, timeline_dates
 from ..services.processing import (
     artifact_public_url,
     build_capture_summary,
@@ -3702,6 +3703,18 @@ def get_photos_page(
         next_cursor=next_cursor,
         photos=photos,
     )
+
+
+@router.get("/photos/{photo_id}", response_model=PhotoFeature)
+def get_photo(
+    photo_id: str,
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> PhotoFeature:
+    photo = load_photo_by_id(db, user_id=user.id, photo_id=photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Fant ikke foto")
+    return PhotoFeature(**photo)
 
 
 @router.get("/photos/{photo_id}/assets", response_model=PhotoAssetListResponse)
