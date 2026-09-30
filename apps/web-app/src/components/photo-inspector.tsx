@@ -19,6 +19,7 @@ import {
 import { type BaseMapStyle } from "@/lib/map-styles";
 import { photoIdKey } from "@/lib/photo-ordering";
 import { PhotoMapInset } from "@/components/photo-map-inset";
+import { PhotoViewerImage } from "@/components/photo-viewer-image";
 import { Button } from "@/components/ui/button";
 import { CloseButton } from "@/components/ui/close-button";
 import type { PhotoFeature } from "@/types";
@@ -215,24 +216,11 @@ export function PhotoInspector({
               <>
                 <div className="photo-viewer-image-pane relative">
                   {selectedPhotoImageUrl ? (
-                    <>
-                      <img
-                        src={selectedPhotoImageUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="photo-viewer-backdrop pointer-events-none absolute inset-0 h-full w-full object-cover"
-                      />
-
-                      <div className="photo-viewer-image-wrap relative h-full w-full">
-                        <img
-                          src={selectedPhotoImageUrl}
-                          alt={selectedPhoto.title || "Foto"}
-                          className="photo-viewer-image h-full w-full cursor-zoom-out object-contain"
-                          onClick={onClose}
-                          title="Trykk for å lukke fullskjerm"
-                        />
-                      </div>
-                    </>
+                    <PhotoViewerImage
+                      src={selectedPhotoImageUrl}
+                      alt={selectedPhoto.title || "Foto"}
+                      onClose={onClose}
+                    />
                   ) : (
                     <div className="photo-viewer-image-wrap relative flex h-full w-full items-center justify-center bg-fb-surface-ghost text-center text-fb-text-secondary">
                       <div className="max-w-xs px-6">
