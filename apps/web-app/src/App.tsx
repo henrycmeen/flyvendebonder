@@ -30,7 +30,9 @@ import { AlbumPage } from "@/components/album-page";
 import { OrthophotoPage } from "@/components/orthophoto-page";
 import { AppSidebar } from "@/components/app-sidebar";
 import { FilterPanel } from "@/components/filter-panel";
+import { readCaptureScope, writeCaptureScope } from "@/lib/capture-timeline";
 import { MapLayerPanel } from "@/components/map-layer-panel";
+import { ImportReceipts } from "@/components/import-receipts";
 import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { OperatingAreaInspector } from "@/components/operating-area-inspector";
@@ -47,6 +49,7 @@ import type {
   GardskartJob,
   MediaFinalizeResult,
   MediaStagingEnvelope,
+  MediaStagingJob,
   MediaFinalizeEnvelope,
   VideoMapArtifact,
   PhotoAnalysis,
@@ -313,7 +316,8 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedSeason, setSelectedSeason] = useState<SeasonFilter>("all");
-  const [dayScope, setDayScope] = useState<DayScope>("all");
+  const [dayScope, setDayScope] = useState<DayScope>(() => readCaptureScope(params));
+  const [persistPhotoSelectionToUrl, setPersistPhotoSelectionToUrl] = useState(() => Boolean(initialPhoto));
   const [photoPool, setPhotoPool] = useState<PhotoFeature[]>([]);
   const [albumPhotos, setAlbumPhotos] = useState<PhotoFeature[]>([]);
   const [albumCursor, setAlbumCursor] = useState<string | null>(null);
@@ -376,6 +380,29 @@ export default function App() {
   const [mediaImportError, setMediaImportError] = useState("");
   const [mediaImportSummary, setMediaImportSummary] = useState("");
   const [isMediaImportSubmitting, setIsMediaImportSubmitting] = useState(false);
+  const [mediaStagingJobs, setMediaStagingJobs] = useState<MediaStagingJob[]>([]);
+  const [selectedMediaJob, setSelectedMediaJob] = useState<MediaStagingJob | null>(null);
+  const [mediaFinalizeResults, setMediaFinalizeResults] = useState<Record<string, MediaFinalizeResult>>({});
+  const [mediaReceiptsLoading, setMediaReceiptsLoading] = useState(false);
+  const mediaImportEpochRef = useRef(0);
+  const mediaReceiptLoadSeqRef = useRef(0);
+  const mediaImportOperationRef = useRef(false);
+  const mediaSessionRef = useRef(adminSession);
+  useEffect(() => {
+    mediaSessionRef.current = adminSession;
+    if (!hasActiveAdminSession(adminSession)) {
+      mediaImportEpochRef.current += 1;
+      mediaReceiptLoadSeqRef.current += 1;
+      mediaImportOperationRef.current = false;
+      setMediaStagingJobs([]);
+      setSelectedMediaJob(null);
+      setMediaFinalizeResults({});
+      setMediaReceiptsLoading(false);
+      setIsMediaImportSubmitting(false);
+      setMediaImportError("");
+      setMediaImportSummary("");
+    }
+  }, [adminSession]);
   const [initialVideoJobIds, setInitialVideoJobIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -828,6 +855,14 @@ export default function App() {
   }, [addLog, trackRequest]);
 
   const clearPrivateApplicationState = useCallback(() => {
+    mediaImportEpochRef.current += 1;
+    mediaReceiptLoadSeqRef.current += 1;
+    mediaImportOperationRef.current = false;
+    mediaSessionRef.current = null;
+    setMediaStagingJobs([]);
+    setSelectedMediaJob(null);
+    setMediaFinalizeResults({});
+    setMediaReceiptsLoading(false);
     clearApiCache();
     profileLoadSeqRef.current += 1;
     timelineLoadSeqRef.current += 1;
@@ -1570,6 +1605,7 @@ export default function App() {
   const selectPhoto = useCallback(
     (photoId: string, options?: { anchorMap?: boolean; focusMap?: boolean }) => {
       setSyncSelectionToUrl(true);
+      setPersistPhotoSelectionToUrl(true);
       setSelectedPhotoId(photoId);
       if (options?.focusMap !== false) {
         setMapFocusToken((value) => value + 1);
@@ -2521,11 +2557,14 @@ export default function App() {
       next.delete("date");
     }
 
+    writeCaptureScope(next, dayScope, Boolean(selectedDate) && syncSelectionToUrl && activeView === "map");
+
     const shouldPersistPhotoParam =
+      persistPhotoSelectionToUrl &&
       syncSelectionToUrl &&
       Boolean(selectedPhotoId) &&
       (isPhotoViewerOpen || (activeView === "map" && selectedPhotoExistsInMap));
-    const pendingPhotoParam = syncSelectionToUrl ? initialPhotoRef.current : null;
+    const pendingPhotoParam = syncSelectionToUrl && persistPhotoSelectionToUrl ? initialPhotoRef.current : null;
 
     if (pendingPhotoParam) {
       next.set("photo", pendingPhotoParam);
@@ -2544,6 +2583,8 @@ export default function App() {
     activeView,
     isPhotoViewerOpen,
     photoDeepLinkRevision,
+    dayScope,
+    persistPhotoSelectionToUrl,
     selectedDate,
     selectedPhotoExistsInMap,
     selectedPhotoId,
@@ -2780,124 +2821,132 @@ export default function App() {
     }
   }, [addLog, handleClosePhotoViewer, isAdminAuthenticated]);
 
+  const refreshMediaStagingJobs = useCallback(async () => {
+    if (!BROWSER_MEDIA_IMPORT_ENABLED || !hasActiveAdminSession(mediaSessionRef.current)) return;
+    const epoch = mediaImportEpochRef.current;
+    const seq = ++mediaReceiptLoadSeqRef.current;
+    const current = () => epoch === mediaImportEpochRef.current && seq === mediaReceiptLoadSeqRef.current && hasActiveAdminSession(mediaSessionRef.current);
+    setMediaReceiptsLoading(true);
+    try {
+      const response = await trackRequest(() => fetch("/api/v1/media-staging-jobs?limit=20", { credentials: "same-origin", headers: { Accept: "application/json" } }));
+      const payload = await readResponsePayload(response);
+      if (!current()) return;
+      if (!response.ok) throw new Error(responseErrorText(payload, response));
+      const jobs = (payload as { jobs?: MediaStagingJob[] } | null)?.jobs;
+      if (!Array.isArray(jobs)) throw new Error("Backend returnerte ikke opplastingskvitteringer.");
+      setMediaStagingJobs(jobs);
+      setMediaFinalizeResults((results) => ({ ...results, ...Object.fromEntries(jobs.filter((job) => job.finalize_result).map((job) => [job.job_id, job.finalize_result!])) }));
+      setSelectedMediaJob((selected) => jobs.find((job) => job.job_id === selected?.job_id) ?? jobs.find((job) => job.status !== "finalized") ?? jobs[0] ?? null);
+    } catch (error) {
+      if (current()) setMediaImportError(error instanceof Error ? error.message : "Kunne ikke hente opplastinger.");
+    } finally {
+      if (current()) setMediaReceiptsLoading(false);
+    }
+  }, [trackRequest]);
+
+  useEffect(() => {
+    if (activeView === "import" && isAdminAuthenticated) void refreshMediaStagingJobs();
+  }, [activeView, isAdminAuthenticated, refreshMediaStagingJobs]);
+
   const handleSubmitMediaImport = useCallback(
     async ({ images, videos }: MediaImportSelection): Promise<boolean> => {
-      if (!ensureAdminAccess("import")) {
-        setMediaImportError("Admin-tilgang kreves for import.");
-        return false;
-      }
-
-      if (!BROWSER_MEDIA_IMPORT_ENABLED) {
-        setMediaImportError(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
-        setStatusText(BROWSER_MEDIA_IMPORT_DISABLED_REASON);
-        addLog("warn", "Blokkerte browserimport mot manglende backend-kontrakt", null, { issue: 54 });
-        return false;
-      }
-
-      if (images.length === 0) {
-        setMediaImportError(videos.length > 0 ? VIDEO_WORKFLOW_DISABLED_REASON : "Velg minst én bildefil.");
-        return false;
-      }
-
-      if (videos.length > 0) {
-        setMediaImportError(VIDEO_WORKFLOW_DISABLED_REASON);
-        setStatusText(VIDEO_WORKFLOW_DISABLED_REASON);
-        addLog("warn", "Blokkerte videoimport fra bildeimport", null, { issue: 139 });
-        return false;
-      }
-
+      if (!ensureAdminAccess("opplasting")) { setMediaImportError("Admin-tilgang kreves for opplasting."); return false; }
+      if (!BROWSER_MEDIA_IMPORT_ENABLED) { setMediaImportError(BROWSER_MEDIA_IMPORT_DISABLED_REASON); return false; }
+      if (videos.length > 0) { setMediaImportError(VIDEO_WORKFLOW_DISABLED_REASON); return false; }
+      if (images.length === 0) { setMediaImportError("Velg minst én bildefil."); return false; }
+      if (mediaImportOperationRef.current) return false;
+      mediaImportOperationRef.current = true;
+      const epoch = mediaImportEpochRef.current;
+      const current = () => epoch === mediaImportEpochRef.current && hasActiveAdminSession(mediaSessionRef.current);
       setIsMediaImportSubmitting(true);
       setMediaImportError("");
       setMediaImportSummary("");
-
       try {
         const formData = new FormData();
-        images.forEach(({ file }) => {
-          formData.append("files", file, file.name);
-        });
+        images.forEach(({ file }) => formData.append("files", file, file.name));
+        formData.append("source_paths", JSON.stringify(images.map(({ relativePath }) => relativePath || null)));
+        const response = await trackRequest(() => fetch("/api/v1/media-staging-jobs", { method: "POST", credentials: "same-origin", headers: { Accept: "application/json" }, body: formData }));
+        const payload = await readResponsePayload(response);
+        if (!current()) return false;
+        if (!response.ok) throw new Error(responseErrorText(payload, response));
+        const job = (payload as MediaStagingEnvelope | null)?.job;
+        if (!job?.job_id) throw new Error("Backend returnerte ikke opplastingskvittering.");
+        mediaReceiptLoadSeqRef.current += 1;
+        setMediaReceiptsLoading(false);
+        setMediaStagingJobs((jobs) => [job, ...jobs.filter((entry) => entry.job_id !== job.job_id)].slice(0, 20));
+        setSelectedMediaJob(job);
+        setMediaImportSummary(`${job.counts.total} filer mottatt til kontroll · ${job.counts.rejected_count} avvist. Import til biblioteket krever bekreftelse nedenfor.`);
+        addLog("info", "Bilder lastet opp til kontroll", response.headers.get("X-Request-ID"), { jobId: job.job_id, files: job.counts.total, rejected: job.counts.rejected_count });
+        return true;
+      } catch (error) {
+        if (current()) setMediaImportError(error instanceof Error ? error.message : "Opplastingen feilet.");
+        return false;
+      } finally {
+        if (current()) { mediaImportOperationRef.current = false; setIsMediaImportSubmitting(false); }
+      }
+    }, [addLog, ensureAdminAccess, trackRequest],
+  );
 
-        const stagingResponse = await trackRequest(() =>
-          fetch("/api/v1/media-staging-jobs", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-              Accept: "application/json",
-            },
-            body: formData,
-          }),
-        );
-        const stagingPayload = await readResponsePayload(stagingResponse);
-        if (!stagingResponse.ok) {
-          throw new Error(responseErrorText(stagingPayload, stagingResponse));
-        }
-
-        const stagingJob = (stagingPayload as MediaStagingEnvelope | null)?.job;
-        if (!stagingJob?.job_id) {
-          throw new Error("Backend returnerte ikke stagingjobb for bildeimport.");
-        }
-
-        addLog("info", "Bildeimport staged", stagingResponse.headers.get("X-Request-ID"), {
-          jobId: stagingJob.job_id,
-          files: stagingJob.counts.total,
-          images: stagingJob.counts.image_count,
-          rejected: stagingJob.counts.rejected_count,
-        });
-
-        const finalizeResponse = await trackRequest(() =>
-          fetch(`/api/v1/media-staging-jobs/${encodeURIComponent(stagingJob.job_id)}/finalize`, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-              Accept: "application/json",
-            },
-          }),
-        );
-        const finalizePayload = await readResponsePayload(finalizeResponse);
-        if (!finalizeResponse.ok) {
-          throw new Error(responseErrorText(finalizePayload, finalizeResponse));
-        }
-
-        const result = (finalizePayload as MediaFinalizeEnvelope | null)?.result;
-        if (!result) {
-          throw new Error("Backend returnerte ikke importresultat.");
-        }
-
-        const summary = summarizeMediaFinalizeResult(result);
-        addLog("info", "Bildeimport finalisert", finalizeResponse.headers.get("X-Request-ID"), {
-          jobId: result.job_id,
-          importRunId: result.import_run_id,
-          imported: result.image_imported_count,
-          skipped: result.image_skipped_count,
-          rejected: result.rejected_count,
-        });
-
-        setMediaImportSummary(summary);
-        setStatusText(summary);
-
+  const handleFinalizeMediaImport = useCallback(async () => {
+    const job = selectedMediaJob;
+    if (!job || job.status === "finalized" || !ensureAdminAccess("import") || mediaImportOperationRef.current) return;
+    if (job.items.some((item) => item.media_kind === "video" && item.status === "staged")) { setMediaImportError(VIDEO_WORKFLOW_DISABLED_REASON); return; }
+    mediaImportOperationRef.current = true;
+    const epoch = mediaImportEpochRef.current;
+    const current = () => epoch === mediaImportEpochRef.current && hasActiveAdminSession(mediaSessionRef.current);
+    setIsMediaImportSubmitting(true);
+    setMediaImportError("");
+    setMediaImportSummary("");
+    try {
+      const response = await trackRequest(() => fetch(`/api/v1/media-staging-jobs/${encodeURIComponent(job.job_id)}/finalize`, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json" } }));
+      const payload = await readResponsePayload(response);
+      if (!current()) return;
+      if (!response.ok) throw new Error(responseErrorText(payload, response));
+      const result = (payload as MediaFinalizeEnvelope | null)?.result;
+      if (!result || result.job_id !== job.job_id) throw new Error("Backend returnerte ikke importresultat for valgt opplasting.");
+      // A finalized import can add photos to an existing or earlier date. Invalidate
+      // the library page even when the latest timeline date remains unchanged.
+      albumLoadSeqRef.current += 1;
+      albumAbortRef.current?.abort();
+      albumAbortRef.current = null;
+      clearApiCache();
+      setAlbumPhotos([]);
+      setAlbumCursor(null);
+      setAlbumHasMore(false);
+      setAlbumLoadedDate(null);
+      setAlbumLoadFailed(false);
+      setAlbumLoadingInitial(false);
+      setAlbumLoadingMore(false);
+      const updated = { ...job, status: result.status, finalize_result: result };
+      mediaReceiptLoadSeqRef.current += 1;
+      setMediaReceiptsLoading(false);
+      setMediaFinalizeResults((results) => ({ ...results, [job.job_id]: result }));
+      setSelectedMediaJob(updated);
+      setMediaStagingJobs((jobs) => jobs.map((entry) => entry.job_id === job.job_id ? updated : entry));
+      const summary = summarizeMediaFinalizeResult(result);
+      setMediaImportSummary(summary);
+      setStatusText(summary);
+      addLog("info", "Bildeimport behandlet", response.headers.get("X-Request-ID"), { jobId: result.job_id, imported: result.image_imported_count, skipped: result.image_skipped_count, rejected: result.rejected_count });
+      try {
         const timelineData = await loadTimeline();
+        if (!current()) return;
         if (timelineData.dates.length > 0) {
           const latestIndex = timelineData.dates.length - 1;
           const latestDate = timelineData.dates[latestIndex]?.date ?? null;
           setSelectedIndex(latestIndex);
-          if (latestDate) {
-            setSelectedYear(latestDate.slice(0, 4));
-          }
+          if (latestDate) setSelectedYear(latestDate.slice(0, 4));
           setSelectedSeason("all");
         }
-        setPhotoLoadRetryToken((current) => current + 1);
-        return true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Ukjent feil ved mediaimport.";
-        setMediaImportError(message);
-        setStatusText(`Mediaimport feilet: ${message}`);
-        addLog("error", "Mediaimport feilet", null, { message });
-        return false;
-      } finally {
-        setIsMediaImportSubmitting(false);
+        setPhotoLoadRetryToken((token) => token + 1);
+      } catch {
+        if (current()) setMediaImportError("Importresultatet er mottatt, men bibliotekvisningen kunne ikke oppdateres. Åpne biblioteket på nytt.");
       }
-    },
-    [addLog, ensureAdminAccess, loadTimeline, trackRequest],
-  );
+    } catch (error) {
+      if (current()) setMediaImportError(`${error instanceof Error ? error.message : "Importen feilet."} Opplastingskvitteringen er beholdt. Du kan prøve igjen.`);
+    } finally {
+      if (current()) { mediaImportOperationRef.current = false; setIsMediaImportSubmitting(false); }
+    }
+  }, [addLog, ensureAdminAccess, loadTimeline, selectedMediaJob, trackRequest]);
 
   const handlePropertyTileError = useCallback(
     (jobId: string) => {
@@ -3318,7 +3367,7 @@ export default function App() {
               addLog(
                 "info",
                 view === "album"
-                  ? "Album åpnet"
+                  ? "Bibliotek åpnet"
                   : view === "orthophotos"
                     ? "Ortofotoene åpnet"
                   : view === "forest"
@@ -3354,6 +3403,24 @@ export default function App() {
 
               {activeView === "map" ? (
                 <FilterPanel
+                  dates={filteredTimeline}
+                  selectedDate={selectedDate}
+                  dayScope={dayScope}
+                  onSelectIndex={(index) => {
+                    setSyncSelectionToUrl(true);
+                    setPersistPhotoSelectionToUrl(false);
+                    initialPhotoRef.current = null;
+                    setSelectedIndex(index);
+                    setDayScope("selected");
+                    handleClosePhotoViewer();
+                  }}
+                  onDayScopeChange={(scope) => {
+                    setSyncSelectionToUrl(true);
+                    setPersistPhotoSelectionToUrl(false);
+                    initialPhotoRef.current = null;
+                    setDayScope(scope);
+                    handleClosePhotoViewer();
+                  }}
                   selectedYear={selectedYear}
                   selectedSeason={selectedSeason}
                   availableYears={availableYears}
@@ -3576,6 +3643,7 @@ export default function App() {
                         : "Admin-tilgang kreves for import."
                       : BROWSER_MEDIA_IMPORT_DISABLED_REASON
                   }
+                  receiptPanel={isAdminAuthenticated ? <ImportReceipts jobs={mediaStagingJobs} selectedJob={selectedMediaJob} result={selectedMediaJob ? mediaFinalizeResults[selectedMediaJob.job_id] ?? selectedMediaJob.finalize_result ?? null : null} loading={mediaReceiptsLoading} busy={isMediaImportSubmitting} onSelect={(jobId) => { setSelectedMediaJob(mediaStagingJobs.find((job) => job.job_id === jobId) ?? null); setMediaImportError(""); setMediaImportSummary(""); }} onRefresh={() => void refreshMediaStagingJobs()} onFinalize={() => void handleFinalizeMediaImport()} /> : null}
                   onImport={handleSubmitMediaImport}
                 />
               ) : (

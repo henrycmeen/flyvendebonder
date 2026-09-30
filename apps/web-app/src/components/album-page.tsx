@@ -1,8 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock3, Loader2, Search } from "lucide-react";
+import { CalendarDays, Clock3, Images, Loader2, Search, SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GlassSurface } from "@/components/ui/glass-surface";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
 import { Divider, Grid, PageShell } from "@/components/ui/layout-primitives";
 import { splitCapturedDate } from "@/lib/formatters";
@@ -167,20 +169,25 @@ export function AlbumPage({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [qualityFilter, setQualityFilter] = useState<"all" | "review" | "checked">("all");
+  const [groupBy, setGroupBy] = useState<"day" | "month">("day");
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const sortedPhotos = useMemo(() => {
     return [...photos].sort((a, b) => {
       const diff = toTimestamp(b.captured_at) - toTimestamp(a.captured_at);
-      if (diff !== 0) return diff;
-      return b.id.localeCompare(a.id);
+      if (diff !== 0) return sortOrder === "newest" ? diff : -diff;
+      return sortOrder === "newest" ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
     });
-  }, [photos]);
+  }, [photos, sortOrder]);
 
   const parsedQuery = useMemo(() => parseAlbumQuery(deferredSearchQuery), [deferredSearchQuery]);
 
   const filteredPhotos = useMemo(() => {
     return sortedPhotos.filter((photo) => {
+      if (qualityFilter === "review" && !photo.needs_manual_qc) return false;
+      if (qualityFilter === "checked" && photo.needs_manual_qc) return false;
       const dateParts = splitCapturedDate(photo.captured_date);
       if (parsedQuery.yearTokens.size > 0 && (!dateParts || !parsedQuery.yearTokens.has(dateParts.year))) return false;
       if (parsedQuery.seasonTokens.size > 0 && (!dateParts || !parsedQuery.seasonTokens.has(monthToSeason(dateParts.month)))) return false;
@@ -191,13 +198,13 @@ export function AlbumPage({
       );
       return parsedQuery.textTokens.every((token) => haystack.includes(token));
     });
-  }, [parsedQuery, sortedPhotos]);
+  }, [parsedQuery, sortedPhotos, qualityFilter]);
 
   const groupedPhotos = useMemo<AlbumGroup[]>(() => {
     const groups = new Map<string, PhotoFeature[]>();
 
     filteredPhotos.forEach((photo) => {
-      const key = albumGroupKey(photo);
+      const key = groupBy === "day" && splitCapturedDate(photo.captured_date) ? photo.captured_date : albumGroupKey(photo);
       const existing = groups.get(key);
       if (existing) {
         existing.push(photo);
@@ -208,10 +215,10 @@ export function AlbumPage({
 
     return Array.from(groups.entries()).map(([key, items]) => ({
       key,
-      label: formatMonthLabel(key),
+      label: groupBy === "day" && key !== UNKNOWN_DATE_GROUP_KEY ? new Date(`${key}T12:00:00`).toLocaleDateString("nb-NO", {day: "numeric", month: "long", year: "numeric"}) : formatMonthLabel(key),
       photos: items,
     }));
-  }, [filteredPhotos]);
+  }, [filteredPhotos, groupBy]);
 
   const visibleYears = useMemo(() => {
     const fromProps = availableYears.filter((year) => year && year !== "all");
@@ -226,7 +233,7 @@ export function AlbumPage({
     return Array.from(new Set([...fromProps, ...fromLoadedPhotos]));
   }, [availableYears, sortedPhotos]);
 
-  const hasActiveFilters = deferredSearchQuery.trim() !== "";
+  const hasActiveFilters = deferredSearchQuery.trim() !== "" || qualityFilter !== "all";
   const visibleSuggestions = isSearchFocused || hasActiveFilters;
   const suggestedYears = visibleYears.slice(0, 4);
 
@@ -276,7 +283,18 @@ export function AlbumPage({
       <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
           <div className="space-y-5 pb-4">
-            <section className="sticky top-3 z-20 rounded-[24px] border border-fb-border-subtle/80 bg-fb-surface-base/95 px-3 py-3 shadow-[0_14px_34px_rgba(35,48,62,0.08)] backdrop-blur sm:px-4">
+            <header className="flex flex-wrap items-end justify-between gap-4 py-3">
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-fb-text-secondary"><Images className="h-4 w-4" /> Gårdens opptak</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-fb-text-primary sm:text-4xl">Mediebibliotek</h1>
+                <p className="mt-2 max-w-lg text-sm leading-relaxed text-fb-text-secondary">Bilder, opptaksdatoer og kvalitet samlet. Åpne et bilde for å undersøke posisjon og metadata.</p>
+              </div>
+              <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3 text-sm" role="status">
+                <strong>{photos.length.toLocaleString("nb-NO")}</strong> bilder lastet
+                <span className="mt-1 block text-xs text-fb-text-secondary">{hasMore ? "Eldre opptak lastes videre nedenfor" : "Alle tilgjengelige bilder er lastet"}</span>
+              </div>
+            </header>
+            <GlassSurface surface="floating" className="sticky top-3 z-20 px-3 py-3 sm:px-4">
               <div className="space-y-3">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
@@ -285,12 +303,32 @@ export function AlbumPage({
                     onChange={(event) => setSearchQuery(event.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
-                    placeholder="Søk i album, f.eks. 2025 høst eller gjødsling"
+                    placeholder="Søk etter filnavn, dato, sesong eller tagg"
                     className="rounded-xl border-transparent bg-fb-surface-ghost pl-9 shadow-none focus-visible:ring-1"
-                    aria-label="Søk i album"
+                    aria-label="Søk i mediebibliotek"
                   />
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3 border-t border-fb-border-subtle pt-3">
+                  <SlidersHorizontal className="h-4 w-4 text-fb-text-muted" aria-hidden="true" />
+                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Kvalitet
+                    <NativeSelect value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value as typeof qualityFilter)}>
+                      <option value="all">Alle bilder</option><option value="review">Må vurderes</option><option value="checked">Uten manuell QC</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Sorter
+                    <NativeSelect value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
+                      <option value="newest">Nyeste først</option><option value="oldest">Eldste først</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Grupper
+                    <NativeSelect value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}>
+                      <option value="day">Opptaksdato</option><option value="month">Måned</option>
+                    </NativeSelect>
+                  </label>
+                  <span className="text-xs text-fb-text-secondary">{filteredPhotos.length.toLocaleString("nb-NO")} treff blant lastede bilder</span>
+                  {hasActiveFilters ? <Button type="button" size="sm" variant="ghost" onClick={() => {setSearchQuery(""); setQualityFilter("all");}}>Nullstill</Button> : null}
+                </div>
                 {visibleSuggestions ? (
                   <div className="space-y-2 rounded-[20px] border border-fb-border-subtle bg-fb-surface-ghost/80 px-3 py-3">
                     <p className="text-xs text-fb-text-secondary">
@@ -342,12 +380,12 @@ export function AlbumPage({
                   </div>
                 ) : null}
               </div>
-            </section>
+            </GlassSurface>
 
             {loadFailed ? (
               <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-fb-text-primary">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p>Kunne ikke laste albumdata akkurat nå.</p>
+                  <p>Kunne ikke laste biblioteket akkurat nå.</p>
                   <Button type="button" size="sm" variant="outline" onClick={onLoadMore} disabled={isLoading || isLoadingMore}>
                     Prøv igjen
                   </Button>
@@ -365,7 +403,7 @@ export function AlbumPage({
               >
                 {Array.from({ length: 10 }).map((_, index) => (
                   <div key={index} className="overflow-hidden rounded-xl border border-fb-border-subtle bg-fb-surface-ghost">
-                    <div className="aspect-[4/5] animate-pulse bg-fb-surface-base" />
+                    <div className="aspect-[4/3] animate-pulse bg-fb-surface-base" />
                   </div>
                 ))}
               </Grid>
@@ -375,8 +413,8 @@ export function AlbumPage({
               <EmptyState
                 className="min-h-[220px]"
                 icon={<CalendarDays className="h-5 w-5" />}
-                title="Ingen bilder i albumet enda"
-                description="Albumet viser importerte bilder sortert etter tidspunkt, år og sesong. Gå til Import når første bildefangst skal inn."
+                title="Biblioteket er tomt"
+                description="Biblioteket viser importerte bilder etter opptaksdato. Gå til Import når første bildefangst skal inn."
               />
             ) : null}
 
@@ -393,13 +431,13 @@ export function AlbumPage({
                 actions={
                   <>
                     {hasActiveFilters ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => setSearchQuery("")}>
+                      <Button type="button" size="sm" variant="outline" onClick={() => { setSearchQuery(""); setQualityFilter("all"); }}>
                         Nullstill filter
                       </Button>
                     ) : null}
                     {hasMore ? (
                       <Button type="button" size="sm" onClick={onLoadMore} disabled={isLoadingMore}>
-                        Last eldre bilder
+                        Last flere opptak
                       </Button>
                     ) : null}
                   </>
@@ -437,13 +475,14 @@ export function AlbumPage({
                           alt={photo.title || "Foto"}
                           loading="lazy"
                           decoding="async"
-                          className="aspect-[4/5] w-full object-cover transition-transform duration-[var(--fb-motion-duration-small)] ease-[var(--fb-motion-easing-standard)] group-hover:scale-[1.02]"
+                          className="aspect-[4/3] w-full object-cover transition-transform duration-[var(--fb-motion-duration-small)] ease-[var(--fb-motion-easing-standard)] group-hover:scale-[1.02]"
                         />
                       ) : (
-                        <div className="aspect-[4/5] w-full bg-fb-surface-base" />
+                        <div className="aspect-[4/3] w-full bg-fb-surface-base" />
                       )}
 
-                      <div className="space-y-1 px-2.5 py-2">
+                      <div className="space-y-2 px-3 py-3">
+                        {photo.needs_manual_qc ? <span className="inline-flex rounded-md bg-fb-surface-base px-2 py-1 text-[10px] font-medium text-fb-text-secondary">Må vurderes</span> : null}
                         <p className="line-clamp-1 text-sm font-medium text-fb-text-primary">{photo.title || "Foto"}</p>
                         <div className="flex items-center justify-between gap-2 text-[11px] text-fb-text-muted">
                           <span className="inline-flex items-center gap-1">
@@ -476,7 +515,7 @@ export function AlbumPage({
               {!isLoadingMore && hasMore ? (
                 <div className="flex justify-center">
                   <Button type="button" variant="outline" onClick={onLoadMore}>
-                    Last flere
+                    Last flere opptak
                   </Button>
                 </div>
               ) : null}

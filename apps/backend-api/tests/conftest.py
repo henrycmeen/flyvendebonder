@@ -42,6 +42,12 @@ def client(tmp_path, monkeypatch):
     fresh_backend_modules()
 
     main_module = importlib.import_module("app.main")
+    # Ordinary API scenarios use deterministic offline terrain. DEM scenarios
+    # explicitly override this sampler to cover varying heights and failures.
+    monkeypatch.setattr(
+        "app.services.flight_missions.sample_terrain_elevations",
+        lambda points: [100.0] * len(points),
+    )
     from app.config import get_settings
     from app.database import SessionLocal
     from app.models import Photo, PhotoAsset, Property, User

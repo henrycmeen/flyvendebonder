@@ -1736,3 +1736,25 @@ summary:focus-visible,
     animation: none !important;
   }
 }
+
+/* The owned shadcn layer maps neutral library tokens onto Flyvendebønder. */
+:root {
+  --background: 0 0% 100%; --foreground: 203 23% 18%;
+  --card: 0 0% 100%; --card-foreground: 203 23% 18%;
+  --popover: 0 0% 100%; --popover-foreground: 203 23% 18%;
+  --primary: 181 89% 30%; --primary-foreground: 0 0% 100%;
+  --secondary: 210 25% 96%; --secondary-foreground: 203 23% 18%;
+  --muted: 210 25% 96%; --muted-foreground: 199 15% 40%;
+  --accent: 210 25% 94%; --accent-foreground: 203 23% 18%;
+  --destructive: 16 65% 40%; --destructive-foreground: 0 0% 100%;
+  --border: 210 15% 87%; --input: 210 15% 87%; --ring: 181 89% 30%; --radius: 0.75rem;
+  --fb-glass-content: rgba(255, 255, 255, .96);
+  --fb-glass-floating: rgba(250, 252, 248, .91);
+  --fb-glass-navigation: rgba(248, 251, 247, .82);
+  --fb-glass-border: rgba(255, 255, 255, .72);
+}
+.fb-glass-surface { border-color: var(--fb-border-subtle); }
+.fb-glass-surface--content { background: var(--fb-glass-content); box-shadow: var(--fb-shadow-subtle); }
+.fb-glass-surface--floating { background: var(--fb-glass-floating); backdrop-filter: blur(22px) saturate(1.15); -webkit-backdrop-filter: blur(22px) saturate(1.15); box-shadow: var(--fb-shadow-floating), inset 0 1px 0 var(--fb-glass-border); }
+.fb-glass-surface--navigation { background: var(--fb-glass-navigation); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); box-shadow: var(--fb-shadow-raised); }
+@supports not (backdrop-filter: blur(1px)) { .fb-glass-surface { background: var(--fb-surface-page); } }

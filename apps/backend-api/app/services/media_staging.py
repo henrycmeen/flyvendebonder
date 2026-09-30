@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import shutil
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -13,6 +15,49 @@ from sqlalchemy.orm import Session, selectinload
 from ..models import MediaStagingJob, MediaStagingItem
 from .imports import SUPPORTED_EXTS, run_photo_ingest
 from .video_jobs import create_video_job, find_video_job_by_staging_item
+
+
+# Intake defaults: 256 MiB per file and 1 GiB per staging job.
+MAX_STAGING_FILE_BYTES = 256 * 1024 * 1024
+MAX_STAGING_JOB_BYTES = 1024 * 1024 * 1024
+
+
+class StagingUploadTooLarge(ValueError):
+    pass
+
+
+def validate_source_paths(raw: str | None, files: list[UploadFile]) -> list[str | None]:
+    if raw is None:
+        return [None] * len(files)
+    try:
+        values = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("source_paths må være en JSON-liste") from exc
+    if not isinstance(values, list) or len(values) != len(files):
+        raise ValueError("source_paths må ha én oppføring per fil")
+    normalized = []
+    for value in values:
+        if value is None:
+            normalized.append(None)
+            continue
+        if not isinstance(value, str) or not value or len(value) > 2048:
+            raise ValueError("Ugyldig relativ kildebane")
+        value = value.replace("\\", "/")
+        parts = value.split("/")
+        if (PurePosixPath(value).is_absolute() or any(part in {"", ".", ".."} for part in parts)
+                or any(ord(char) < 32 for char in value) or ":" in value):
+            raise ValueError("Kildebanen må være relativ uten traversering")
+        normalized.append(PurePosixPath(value).as_posix())
+    return normalized
+
+
+def staging_source_paths(app_data_root: Path, job: MediaStagingJob) -> dict[int, str | None]:
+    manifest = staging_job_dir(app_data_root, job.id) / "source-manifest.json"
+    try:
+        entries = json.loads(manifest.read_text(encoding="utf-8"))["items"]
+        return {entry["item_order"]: entry.get("source_path") for entry in entries}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
@@ -73,60 +118,85 @@ async def create_media_staging_job(
     user_id: int,
     property_id: int | None,
     files: list[UploadFile],
+    source_paths: str | None = None,
 ) -> MediaStagingJob:
-    job_id = uuid4().hex
-    created_at = _utc_now()
-    root = staging_job_dir(app_data_root, job_id)
-    root.mkdir(parents=True, exist_ok=True)
+    created_root = None
+    try:
+        paths = validate_source_paths(source_paths, files)
+        job_id = uuid4().hex
+        created_at = _utc_now()
+        root = staging_job_dir(app_data_root, job_id)
+        root.mkdir(parents=True, exist_ok=False)
+        created_root = root
 
-    job = MediaStagingJob(
-        id=job_id,
-        user_id=user_id,
-        property_id=property_id,
-        source="upload",
-        status="staged",
-        created_at=created_at,
-        updated_at=created_at,
-    )
-    db.add(job)
-    db.flush()
-
-    for index, upload in enumerate(files):
-        filename = _normalized_filename(upload.filename, index)
-        media_kind, item_status, error_detail = _classify_media(filename=filename, mime=upload.content_type)
-        staged_name = f"{index:03d}-{filename}"
-        target = root / staged_name
-        digest = hashlib.sha256()
-        byte_count = 0
-
-        with target.open("wb") as handle:
-            while True:
-                chunk = await upload.read(1024 * 1024)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                digest.update(chunk)
-                byte_count += len(chunk)
-        await upload.close()
-
-        db.add(
-            MediaStagingItem(
-                job_id=job.id,
-                item_order=index,
-                filename=filename,
-                mime=upload.content_type,
-                bytes=byte_count,
-                checksum=digest.hexdigest() if byte_count else None,
-                media_kind=media_kind,
-                status=item_status,
-                error_detail=error_detail,
-                staged_path=str(target.relative_to(app_data_root)),
-                created_at=created_at,
-                updated_at=created_at,
-            )
+        job = MediaStagingJob(
+            id=job_id,
+            user_id=user_id,
+            property_id=property_id,
+            source="upload",
+            status="staged",
+            created_at=created_at,
+            updated_at=created_at,
         )
+        db.add(job)
+        db.flush()
 
-    db.commit()
+        total_bytes = 0
+        manifest_items = []
+        for index, upload in enumerate(files):
+            filename = _normalized_filename(upload.filename, index)
+            media_kind, item_status, error_detail = _classify_media(filename=filename, mime=upload.content_type)
+            staged_name = f"{index:03d}-{filename}"
+            target = root / staged_name
+            digest = hashlib.sha256()
+            byte_count = 0
+
+            with target.open("wb") as handle:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    byte_count += len(chunk)
+                    total_bytes += len(chunk)
+                    if byte_count > MAX_STAGING_FILE_BYTES or total_bytes > MAX_STAGING_JOB_BYTES:
+                        raise StagingUploadTooLarge("Opplastingen overskrider grensen på 256 MiB per fil eller 1 GiB per jobb")
+                    handle.write(chunk)
+                    digest.update(chunk)
+            await upload.close()
+
+            if byte_count == 0:
+                item_status = "rejected"
+                error_detail = "Filen er tom"
+            manifest_items.append({"item_order": index, "filename": filename, "source_path": paths[index]})
+            db.add(
+                MediaStagingItem(
+                    job_id=job.id,
+                    item_order=index,
+                    filename=filename,
+                    mime=upload.content_type,
+                    bytes=byte_count,
+                    checksum=digest.hexdigest() if byte_count else None,
+                    media_kind=media_kind,
+                    status=item_status,
+                    error_detail=error_detail,
+                    staged_path=str(target.relative_to(app_data_root)),
+                    created_at=created_at,
+                    updated_at=created_at,
+                )
+            )
+
+        (root / "source-manifest.json").write_text(
+            json.dumps({"version": 1, "items": manifest_items}, ensure_ascii=False), encoding="utf-8"
+        )
+        db.commit()
+    except (Exception, asyncio.CancelledError):
+        db.rollback()
+        if created_root is not None:
+            shutil.rmtree(created_root)
+        raise
+    finally:
+        for upload in files:
+            await upload.close()
     return get_media_staging_job(db, user_id=user_id, job_id=job_id)
 
 
@@ -178,8 +248,8 @@ def finalize_media_staging_job(
     if job.status != "staged":
         raise ValueError("Stagingjobben kan ikke finaliseres i nåværende status")
 
-    image_items = [item for item in job.items if item.media_kind == "image"]
-    video_items = [item for item in job.items if item.media_kind == "video"]
+    image_items = [item for item in job.items if item.media_kind == "image" and item.status == "staged"]
+    video_items = [item for item in job.items if item.media_kind == "video" and item.status == "staged"]
     rejected_items = [item for item in job.items if item.status == "rejected" or item.media_kind == "unknown"]
 
     from ..models import Photo  # local import to avoid broad module coupling
@@ -206,6 +276,8 @@ def finalize_media_staging_job(
             staging_root,
             user_id=job.user_id,
             property_id=job.property_id,
+            include_files=[Path(item.staged_path).name for item in image_items
+                           if Path(item.filename).suffix.lower() in SUPPORTED_EXTS],
         )
     import_errors_by_filename = _import_errors_by_staged_filename(import_run)
 
@@ -223,6 +295,7 @@ def finalize_media_staging_job(
     )
     imported_photo_by_checksum = {item.source_hash: item for item in imported_photos}
 
+    reported_photo_ids: set[str] = set()
     item_results: list[dict] = []
     for item in image_items:
         suffix = Path(item.filename).suffix.lower()
@@ -260,12 +333,16 @@ def finalize_media_staging_job(
                 }
             )
             continue
+        already_reported = photo.id in reported_photo_ids
+        if not was_existing and not already_reported:
+            photo.source_filename = item.filename
+        reported_photo_ids.add(photo.id)
         item_results.append(
             {
                 "staging_item_id": item.id,
                 "filename": item.filename,
                 "media_kind": item.media_kind,
-                "status": "skipped" if was_existing else "imported",
+                "status": "skipped" if was_existing or already_reported else "imported",
                 "photo_id": photo.id if photo is not None else None,
                 "video_job_id": None,
                 "detail": "Bildet fantes allerede" if was_existing else None,

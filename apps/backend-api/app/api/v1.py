@@ -90,6 +90,7 @@ from ..schemas import (
     MediaStagingCountsOut,
     MediaStagingEnvelope,
     MediaFinalizeEnvelope,
+    MediaFinalizeResultOut,
     MediaStagingItemOut,
     MediaStagingJobListResponse,
     MediaStagingJobOut,
@@ -153,6 +154,8 @@ from ..services.geonorge_teiger import (
 )
 from ..services.imports import ImportSelectionError, run_photo_ingest
 from ..services.media_staging import (
+    StagingUploadTooLarge,
+    staging_source_paths,
     create_media_staging_job as create_media_staging_job_record,
     finalize_media_staging_job as finalize_media_staging_job_record,
     get_media_staging_job as get_media_staging_job_record,
@@ -743,10 +746,21 @@ def _normalize_field_name(value: str | None) -> str | None:
 
 
 def _media_staging_job_out(job: MediaStagingJob) -> MediaStagingJobOut:
+    source_paths = staging_source_paths(settings.app_data_root, job)
+    finalize_result = None
+    if job.status == "finalized":
+        try:
+            finalize_result = MediaFinalizeResultOut.model_validate_json(job.finalize_result_json)
+            if finalize_result.job_id != job.id or finalize_result.status != "finalized":
+                finalize_result = None
+        except ValueError:
+            # Legacy or corrupt cached data must not break listing/recovery.
+            pass
     items = [
         MediaStagingItemOut(
             id=item.id,
             filename=item.filename,
+            source_path=source_paths.get(item.item_order),
             mime=item.mime,
             bytes=item.bytes,
             checksum=item.checksum,
@@ -764,13 +778,14 @@ def _media_staging_job_out(job: MediaStagingJob) -> MediaStagingJobOut:
         rejected_count=sum(1 for item in items if item.status == "rejected"),
     )
     return MediaStagingJobOut(
+        finalize_result=finalize_result,
         job_id=job.id,
         source=job.source,
         status=job.status,
         counts=counts,
         items=items,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
+        created_at=job.created_at.replace(tzinfo=timezone.utc) if job.created_at.tzinfo is None else job.created_at,
+        updated_at=job.updated_at.replace(tzinfo=timezone.utc) if job.updated_at.tzinfo is None else job.updated_at,
     )
 
 
@@ -4097,6 +4112,7 @@ def get_import_run(
 @router.post("/media-staging-jobs", response_model=MediaStagingEnvelope, status_code=status.HTTP_201_CREATED)
 async def create_media_staging_job(
     files: list[UploadFile] = File(...),
+    source_paths: str | None = Form(default=None),
     user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> MediaStagingEnvelope:
@@ -4104,13 +4120,19 @@ async def create_media_staging_job(
         raise HTTPException(status_code=400, detail="Minst én fil må lastes opp")
 
     property_obj = _current_property(db, user.id)
-    job = await create_media_staging_job_record(
-        db,
-        app_data_root=settings.app_data_root,
-        user_id=user.id,
-        property_id=property_obj.id if property_obj else None,
-        files=files,
-    )
+    try:
+        job = await create_media_staging_job_record(
+            db,
+            app_data_root=settings.app_data_root,
+            user_id=user.id,
+            property_id=property_obj.id if property_obj else None,
+            files=files,
+            source_paths=source_paths,
+        )
+    except StagingUploadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return MediaStagingEnvelope(job=_media_staging_job_out(job))
 
 

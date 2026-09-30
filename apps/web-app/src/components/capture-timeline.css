@@ -1,0 +1,45 @@
+.fb-capture-timeline {
+  position: absolute;
+  z-index: 860;
+  bottom: max(1rem, calc(env(safe-area-inset-bottom) + .5rem));
+  left: 1rem;
+  width: min(35rem, calc(100% - 2rem));
+  color: #172524;
+  border: 1px solid rgba(255,255,255,.75);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--fb-season-solid) 5%, rgba(250,252,251,.96));
+  box-shadow: 0 8px 28px rgba(13,35,30,.18), inset 0 1px 0 rgba(255,255,255,.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.fb-capture-timeline__summary { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; text-align: left; }
+.fb-capture-timeline__summary > svg:first-child { flex-shrink: 0; color: color-mix(in srgb, var(--fb-season-solid) 62%, #19322b); }
+.fb-capture-timeline__summary-copy { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.fb-capture-timeline__summary-copy strong { font-size: 14px; font-weight: 650; line-height: 1.35; }
+.fb-capture-timeline__eyebrow, .fb-capture-timeline__metadata { font-size: 11px; line-height: 1.4; color: #4c5c57; }
+.fb-capture-timeline__chevron { flex-shrink: 0; transition: transform var(--fb-motion-duration-medium) var(--fb-motion-easing-standard); }
+.fb-capture-timeline[data-expanded=true] .fb-capture-timeline__chevron { transform: rotate(180deg); }
+.fb-capture-timeline__panel { border-top: 1px solid #d5dfdb; padding: 12px 16px 16px; max-height: min(350px, 55dvh); overflow-y: auto; }
+.fb-capture-timeline__filters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fb-capture-timeline__filters label { display: grid; gap: 4px; font-size: 11px; font-weight: 600; color: #4c5c57; }
+.fb-capture-timeline__filters select { width: 100%; min-width: 0; height: 38px; padding: 0 9px; border: 1px solid #c9d5cf; border-radius: 7px; background: #fff; color: #172524; font-size: 13px; }
+.fb-capture-timeline__scope { display: flex; gap: 8px; margin-top: 12px; }
+.fb-capture-timeline__scope button, .fb-capture-timeline__navigation button { background: #fff; color: #263c32; border-color: #c9d5cf; }
+.fb-capture-timeline__scope button { flex: 1; padding: 0 8px; }
+.fb-capture-timeline__scope button[aria-pressed=true] { background: color-mix(in srgb, var(--fb-season-solid) 15%, #fff); border-color: #5e7769; color: #172524; }
+.fb-capture-timeline__navigation { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin: 12px 0 8px; }
+.fb-capture-timeline__navigation > span { font-size: 11px; color: #4c5c57; }
+.fb-capture-timeline__navigation > div { display: flex; flex-shrink: 0; gap: 6px; }
+.fb-capture-timeline__dates { display: flex; overflow-x: auto; gap: 8px; padding: 3px 2px 8px; scroll-padding-inline: 2px; }
+.fb-capture-timeline__date { display: grid; gap: 5px; flex: 0 0 auto; min-width: 122px; min-height: 62px; padding: 10px 12px; border: 1px solid #c9d5cf; border-radius: 8px; background: #fff; text-align: left; }
+.fb-capture-timeline__date strong { font-size: 12px; font-weight: 600; }
+.fb-capture-timeline__date span { font-size: 11px; color: #4c5c57; }
+.fb-capture-timeline__date[aria-current=date] { border-color: #5e7769; }
+.fb-capture-timeline__date[aria-pressed=true] { background: color-mix(in srgb, var(--fb-season-solid) 15%, #fff); box-shadow: inset 0 0 0 1px #5e7769; }
+.fb-capture-timeline button:focus-visible, .fb-capture-timeline select:focus-visible { outline: 2px solid #245c46; outline-offset: 2px; }
+.fb-capture-timeline__empty { margin: 0; font-size: 12px; line-height: 1.5; color: #4c5c57; }
+@media (max-width: 639px) { .fb-capture-timeline { left: .5rem; width: calc(100% - 1rem); } .fb-capture-timeline__summary { padding: 12px; gap: 8px; } .fb-capture-timeline__panel { padding: 12px; } }
+@media (prefers-reduced-motion: reduce) { .fb-capture-timeline__chevron { transition: none; } }
+
+.fb-capture-timeline__qualification { margin: 0 0 8px; font-size: 11px; line-height: 1.4; color: #4c5c57; }
