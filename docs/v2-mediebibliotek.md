@@ -6,7 +6,7 @@ Et shadcn-basert komponentgrunnlag med et konsistent liquid/glass-uttrykk. Behol
 ## Akseptanse
 - Knapper, fokus og glassflater bruker felles komponenter og tokens. Shadcn-konfigurasjon er eksplisitt og kompatibel med eksisterende Tailwind 3.
 - Mediebibliotek viser opptaksdato, grupperer og sorterer bilder, har søk og QC-filter og oppgir når visningen bare omfatter innlastede bilder.
-- Opptakstidslinjen beholder et lekent glassuttrykk: synlig skinne med årstidsfargede perler, valgt halo og direkte datovalg. Den viser faktiske datoer og bildeantall, med års-/sesongvalg og tydelig alle/valgt-dato-scope. Tastatur og smal skjerm fungerer.
+- Visuelt grunnlag er den opprinnelige liquid-velgeren fra main, med år og årstider. Henry avviste både den store lyse opptaksboksen og den mørke perleskinnen 30. september. Begge er fjernet fra forhåndsvisningen. Videre datovalg skal tilpasses originaluttrykket før det kan regnes som visuelt ferdig; URL-reglene for dato/scope beholdes i App.
 - Bibliotekutvalget kan åpnes som kronologisk bildesekvens med synlig opptakstid, manuell navigasjon og eksplisitt avspilling/pause. Ufullstendig utvalg og ukjent tidssone oppgis; lasting og feil stopper framdrift. Dialoglukking returnerer fokus til åpneknappen.
 - Filvalg bevarer relative kildebaner, viser størrelser og avvisninger, støtter fjerning og unngår lokale duplikater.
 - Opplasting og endelig import er to synlige steg. Jobbkvitteringer kan gjenfinnes etter refresh; filvise feil og duplikater skjules ikke av en overordnet fullført-status.

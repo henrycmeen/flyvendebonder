@@ -3,7 +3,7 @@
 Status: kronologisk bibliotekavspilling er implementert og kontrollert med 12 bilder, stopp ved slutt, pause ved nettverksfeil og nytt forsøk. Dette dokumentet beholder hele videre kontrakten; områdespesifikt utvalg, delbar avspillingslenke og to-opptakssammenligning er fortsatt ikke implementert.
 
 ## Verifisert utgangspunkt
-- Opptakstidslinjen velger dager og er alltid synlig som en glass-skinne. Biblioteket har en egen kronologisk avspiller som starter pauset.
+- Original liquid-velger med år/årstider er gjenopprettet etter Henrys designrettelse. Ny direkte datovalg-UI er ikke akseptert og må bygge videre på originalen. Biblioteket har en egen kronologisk avspiller som starter pauset.
 - Biblioteket navigerer bilder fra nyeste til eldste. Kartet kan bruke nærmeste-posisjon-rekkefølge (`buildNearestPath`). Ingen av disse er en tilstrekkelig kontrakt for kronologisk timelapse.
 - Foto har opptakstid, posisjon og bilde-/miniatyrreferanser. Tidslinjen har daglige arkivantall. Arkivantall dokumenterer ikke hvor mange bilder som dekker samme utsnitt.
 - Biblioteket har paginering. En avspiller må ikke presentere bare innlastede bilder som et komplett opptak.
