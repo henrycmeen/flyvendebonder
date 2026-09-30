@@ -451,8 +451,8 @@ export function AlbumPage({
                 className={index === 0 ? "space-y-3" : "space-y-3 border-t border-fb-border-subtle/60 pt-5"}
               >
                 <header className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-base font-semibold capitalize text-fb-text-primary">{group.label}</h2>
-                  <p className="text-xs text-fb-text-muted">{group.photos.length} bilder</p>
+                  <h2 className="text-base font-semibold text-fb-text-primary">{group.label}</h2>
+                  <p className="text-xs text-fb-text-muted">{group.photos.length} {group.photos.length === 1 ? "bilde" : "bilder"}</p>
                 </header>
                 <Grid
                   cols={ALBUM_GRID_PRESET.cols}
@@ -483,7 +483,7 @@ export function AlbumPage({
 
                       <div className="space-y-2 px-3 py-3">
                         {photo.needs_manual_qc ? <span className="inline-flex rounded-md bg-fb-surface-base px-2 py-1 text-[10px] font-medium text-fb-text-secondary">Må vurderes</span> : null}
-                        <p className="line-clamp-1 text-sm font-medium text-fb-text-primary">{photo.title || "Foto"}</p>
+                        <p className="line-clamp-2 break-words text-sm font-medium text-fb-text-primary">{photo.title.replace(/^Foto \d{4}-\d{2}-\d{2} · /, "") || "Foto"}</p>
                         <div className="flex items-center justify-between gap-2 text-[11px] text-fb-text-muted">
                           <span className="inline-flex items-center gap-1">
                             <CalendarDays className="h-3 w-3" />
