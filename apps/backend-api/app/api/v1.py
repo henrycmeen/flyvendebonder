@@ -1940,6 +1940,7 @@ def get_orthophoto_color_sample(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     sample_size_px: int = Query(21, ge=3, le=101),
+    allow_preview: bool = Query(False),
     _user: User = Depends(_request_owner_user),
 ) -> dict:
     try:
@@ -1948,6 +1949,7 @@ def get_orthophoto_color_sample(
             lat=lat,
             lng=lng,
             sample_size_px=sample_size_px,
+            allow_preview=allow_preview,
         )
     except OrthophotoNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
