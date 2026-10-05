@@ -1972,15 +1972,14 @@ def get_weather_season(
     user: User = Depends(_request_owner_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    from ..services.weather_season import season_context
+    from ..services.weather_context import property_weather
 
     property_obj = _require_active_property(db, user.id, property_id)
     if end > datetime.now(timezone.utc).date():
         raise HTTPException(status_code=422, detail="Historisk vær kan ikke hentes for framtidige datoer")
     try:
-        # No reviewed Frost station/series or client ID exists for this pilot.
-        # Keep the gate closed rather than return synthetic or estimated weather.
-        result = season_context(start, end, reason="source_pending_review")
+        reference = f"{property_obj.komm}-{property_obj.gnr}/{property_obj.bnr}/{property_obj.fnr}"
+        result = property_weather(start, end, reference, get_settings())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     response.headers["Cache-Control"] = "no-store"

@@ -84,3 +84,11 @@ def test_weather_gate_preserves_missing_data_and_property_access(client):
     assert client.get("/api/v1/weather/season?start=2026-03-31&end=2026-08-02&property_id=999999").status_code == 404
     assert client.get("/api/v1/weather/season?start=2026-08-02&end=2026-03-31").status_code == 422
     assert client.get("/api/v1/weather/season?start=2099-01-01&end=2099-01-02").status_code == 422
+
+
+def test_temperature_mean_and_raw_provenance_are_preserved_without_filling_holes():
+    record = observation(2, 3, element=TEMP, provenance={"raw_value":3,"reference_time":"2026-04-02T00:00:00Z"})
+    result = season_context(date(2026,4,2), date(2026,4,3), source=SOURCE, observations=[record])
+    assert result["temperature"] == {"mean_c":3,"complete":False,"covered_days":1,"expected_days":2}
+    assert result["days"][0]["temperature_provenance"]["raw_value"] == 3
+    assert result["days"][1]["temperature_c"] is None

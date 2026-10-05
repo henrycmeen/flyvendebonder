@@ -238,3 +238,19 @@ def test_invalid_canonical_georeferencing_never_falls_back(tmp_path):
     with pytest.raises(OrthophotoSourceUnavailable, match="CRS"):
         sample_orthophoto_color("test-orthophoto", lat=59.5, lng=9.5, overlay_root=root,
                                 allow_preview=True)
+
+
+def test_relative_canonical_path_is_resolved_from_manifest_not_process_cwd(tmp_path, monkeypatch):
+    overlay_root = tmp_path / "overlays"
+    metadata = _write_overlay_fixture(overlay_root)
+    metadata["source_file"] = "canonical.tif"
+    (overlay_root / "test-orthophoto.json").write_text(json.dumps(metadata), encoding="utf-8")
+    elsewhere = tmp_path / "cwd"
+    elsewhere.mkdir()
+    Image.new("RGB", (1, 1)).save(elsewhere / "canonical.tif")
+    monkeypatch.chdir(elsewhere)
+    modules = fresh_backend_modules()
+    service = importlib.import_module("app.services.orthophoto_sampling")
+    sample = service.sample_orthophoto_color(overlay_id="test-orthophoto", lat=59.5, lng=9.5, overlay_root=overlay_root, sample_size_px=3)
+    assert sample["source"]["kind"] == "canonical"
+    assert sample["source"]["canonical_width_px"] == 5

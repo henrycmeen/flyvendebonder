@@ -1,5 +1,6 @@
 import type { OrthophotoOverlayDefinition } from "./orthophoto-overlays";
-import type { PhotoFeature } from "../types";
+import { formatPropertyReference } from "./formatters";
+import type { PhotoFeature, Property } from "../types";
 
 export interface ComparisonImage {
   id: string;
@@ -7,6 +8,7 @@ export interface ComparisonImage {
   label: string;
   source: string;
   scope: string;
+  propertyId?: number | null;
   imageUrl: string | null;
   bounds?: OrthophotoOverlayDefinition["bounds"];
 }
@@ -18,8 +20,8 @@ export function overlappingBounds(a: ComparisonImage, b: ComparisonImage) {
   const bounds = {south: Math.max(a.bounds.south,b.bounds.south), north: Math.min(a.bounds.north,b.bounds.north), west: Math.max(a.bounds.west,b.bounds.west), east: Math.min(a.bounds.east,b.bounds.east)};
   return validBounds(bounds) ? bounds : null;
 }
-export function orthophotoComparisonImages(overlays: OrthophotoOverlayDefinition[]): ComparisonImage[] {
-  return overlays.map(item => ({id:item.id,date:item.capturedDate,label:item.label,source: `Ortofoto · webforhåndsvisning · ${item.label}`, scope:item.propertyReference,imageUrl:item.imageUrl,bounds:item.bounds}));
+export function orthophotoComparisonImages(overlays: OrthophotoOverlayDefinition[], properties: Property[] = []): ComparisonImage[] {
+  return overlays.map(item => ({id:item.id,date:item.capturedDate,label:item.label,source: `Ortofoto · webforhåndsvisning · ${item.label}`, scope:item.propertyReference,propertyId:properties.find(property => formatPropertyReference(property) === item.propertyReference)?.id ?? null,imageUrl:item.imageUrl,bounds:item.bounds}));
 }
 function hasCaptureDate(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
@@ -32,6 +34,6 @@ export function photoComparisonImages(photos: PhotoFeature[]): ComparisonImage[]
     const key = `${item.property_id}/${item.captured_date}`;
     const ordinal = (counts.get(key) ?? 0) + 1;
     counts.set(key, ordinal);
-    return {id:item.id,date:item.captured_date,label:`Bilde ${ordinal}`,source:`Foto · ${item.title}`,scope:`Eiendom ${item.property_id}`,imageUrl:item.image_url ?? item.thumbnail_url};
+    return {id:item.id,date:item.captured_date,label:`Bilde ${ordinal}`,source:`Foto · ${item.title}`,scope:`Eiendom ${item.property_id}`,propertyId:item.property_id,imageUrl:item.image_url ?? item.thumbnail_url};
   });
 }

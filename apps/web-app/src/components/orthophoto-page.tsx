@@ -8,7 +8,10 @@ import { PageShell } from "@/components/ui/layout-primitives";
 import { splitCapturedDate } from "@/lib/formatters";
 import type { OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
 
+import type { Property } from "@/types";
+
 interface OrthophotoPageProps {
+  properties: Property[];
   onChangeLibraryView: (view: "album" | "orthophotos") => void;
   overlays: OrthophotoOverlayDefinition[];
   onOpenInMap: (overlayId: string) => void;
@@ -42,7 +45,7 @@ function formatCapturedDate(value: string): string {
   });
 }
 
-export function OrthophotoPage({ overlays, onOpenInMap, onChangeLibraryView }: OrthophotoPageProps) {
+export function OrthophotoPage({ overlays, properties, onOpenInMap, onChangeLibraryView }: OrthophotoPageProps) {
   const groups = useMemo<OverlayGroup[]>(() => {
     const grouped = new Map<string, OrthophotoOverlayDefinition[]>();
 
@@ -76,7 +79,7 @@ export function OrthophotoPage({ overlays, onOpenInMap, onChangeLibraryView }: O
           <div className="space-y-6 pb-4">
             <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Bibliotek</h1>
             <LibraryNavigation active="orthophotos" onChange={onChangeLibraryView} />
-            <LibraryComparison kind="orthophoto" images={orthophotoComparisonImages(overlays)} />
+            <LibraryComparison kind="orthophoto" images={orthophotoComparisonImages(overlays, properties)} />
 
             {groups.map((group) => (
               <section key={group.key} className="space-y-4">

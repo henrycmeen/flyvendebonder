@@ -47,8 +47,8 @@ Normalisert aggregat godtar ett vurdert kilde-/serievalg per element, én
 24-timersperiode per verdi og kvalitetskode 0. Kode 1 kan inneholde korrigerte
 eller interpolerte verdier og krever senere eksplisitt støtte. Ugyldige verdier,
 konflikter, alternative sensorer og overlappende perioder blir hull.
-En dokumentert Frost-verdi -1 for ingen nedbør skal normaliseres til 0 i en
-senere provider-adapter, med råverdi bevart i provenance; andre negative verdier
+En dokumentert Frost-verdi -1 for ingen nedbør skal normaliseres til 0 i
+Frost-adapteren, med råverdi bevart i provenance; andre negative verdier
 avvises. Summen av tilgjengelige verdier er adskilt fra komplett periodesum.
 
 ## Konkret kildeavhengighet
@@ -82,3 +82,30 @@ Frontend testes med ekte manifestvalg og ugyldige URL-/bildetilstander.
 Repoets `validate-agent-worktree.sh` og isolerte `run-stack-smoke.sh` er
 påkrevd før PR, sammen med mobil/desktop-kontroll og uavhengig review.
 Henry prøver arbeidsflyten før produksjonsvalg og neste analysefunksjon.
+
+
+## Implementert kontekst i V3-kandidaten
+
+Sammenligningen viser registrerte feltobservasjoner mellom opptaksdatoene for
+samme eiendom. Observasjonsdato brukes med opprinnelig tidssoneoffset; ukjent
+område-/fototilknytning og senere redigering av oppgaven oppgis. Opprettelsesdato
+er ikke en observasjonsdato. Ingen observasjoner og utilgjengelig API er ulike
+situasjoner.
+
+Frost-adapteren er implementert og prøvd med syntetiske HTTP-responser. Den er
+stengt som standard. Serverinnstillingene `FROST_WEATHER_ENABLED`,
+`FROST_CLIENT_ID` og `FROST_REVIEWED_SOURCES` må være konfigurert før kall.
+Sistnevnte er et JSON-objekt med matrikkelreferanse som nøkkel, eksempel
+`4003-70/17/0`. Hvert vurdert valg må ha `approved`, `reviewed_at`, `distance_m`,
+`station_name`, `suitability_note` og `selections` med eksplisitt `element_id`,
+`source_id`, `time_series_id`, `time_offset` og `level`. Ingen klient-ID legges
+inn i repo eller frontend. Pilotens 50 km øvre avstandsgrense er en teknisk
+avgrensning, ikke dokumentasjon av representativt vær; stasjonens egnethet må
+fortsatt vurderes konkret. Ingen reell stasjon er godkjent i denne leveransen.
+
+UI viser sum av aksepterte nedbørsmålinger og middel av tilgjengelige døgn-
+temperaturer med dekning, stasjon, avstand, vurdering, faktiske måleperioder og
+råverdi ved konvertering. En ufullstendig periodesum er ikke total nedbør.
+Autentisert provider-kall, lisens/attribusjonsgjennomgang og fysisk feltprøve
+gjenstår før live aktivering. Request/response cache er deaktivert i første
+pilot; ingen værserie lagres i produksjonsdatabasen.

@@ -110,3 +110,9 @@ assert.equal(photoCandidates[0].bounds,undefined);
 assert.match(photoCandidates[0].source,/Original filename/);
 assert.equal(orthophotoComparisonImages([{...march,label:"Jorde 4",propertyReference:march.scope,capturedDate:march.date,imageUrl:"preview.webp"}])[0].imageUrl,"preview.webp");
 console.log("library comparison scope, coverage and source tests passed");
+
+// Matching a cadastral reference must retain the real numeric property identity.
+const scopedOrtho = orthophotoComparisonImages([{...march,label:"Jorde 4",propertyReference:"4003-70/17/0",capturedDate:march.date,imageUrl:"preview.webp"}], [{id:71,komm:"4003",gnr:70,bnr:17,fnr:0}]);
+assert.equal(scopedOrtho[0].propertyId,71);
+assert.equal(orthophotoComparisonImages([{...march,label:"Unknown",propertyReference:"4003-99/99/0",capturedDate:march.date,imageUrl:"preview.webp"}], [{id:71,komm:"4003",gnr:70,bnr:17,fnr:0}])[0].propertyId,null);
+assert.equal(photoCandidates[0].propertyId,1);

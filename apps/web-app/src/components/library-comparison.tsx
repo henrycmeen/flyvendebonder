@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { apiGet } from "@/lib/api";
+import { ComparisonWeather } from "./comparison-weather";
+import { ComparisonObservations } from "./comparison-observations";
 import { overlappingBounds, validBounds, type ComparisonImage } from "@/lib/library-comparison";
 import "./library-comparison.css";
 
@@ -39,23 +40,6 @@ function PhotoPanel({ item }: { item: ComparisonImage | undefined }) {
   const [failed, setFailed] = useState(false);
   if (!item?.imageUrl || failed) return <div className="fb-comparison-empty" role="status">{failed ? "Bildet kunne ikke lastes. Velg en annen kilde." : "Ingen tilgjengelig bildeflate for denne datoen. Velg en annen dato eller kilde."}</div>;
   return <a href={item.imageUrl} target="_blank" rel="noreferrer" aria-label={`Åpne ${item.label} i full størrelse`} className="fb-comparison-photo"><img src={item.imageUrl} alt={`${item.label}, ${dateLabel(item.date)}`} onError={() => setFailed(true)} /></a>;
-}
-
-function ComparisonWeather({ leftDate, rightDate }: { leftDate: string; rightDate: string }) {
-  const [status, setStatus] = useState("Henter værgrunnlag …");
-  useEffect(() => {
-    const controller = new AbortController();
-    const [start, end] = [leftDate, rightDate].sort();
-    apiGet<{status: string; precipitation: {observed_sum_mm: number | null; complete: boolean; covered_days: number; expected_days: number}}>("/api/v1/weather/season", {
-      query: {start, end}, signal: controller.signal, retries: 0, cache: false,
-    }).then(({data}) => {
-      if (controller.signal.aborted) return;
-      const rain = data.precipitation;
-      setStatus(data.status === "unavailable" || rain.observed_sum_mm == null ? "Værgrunnlag er ikke tilgjengelig for disse datoene ennå." : `${rain.observed_sum_mm.toLocaleString("nb-NO")} mm målt · ${rain.covered_days} av ${rain.expected_days} døgn${rain.complete ? "" : " · ufullstendig periode"}`);
-    }).catch(() => { if (!controller.signal.aborted) setStatus("Værgrunnlag er ikke tilgjengelig for disse datoene ennå."); });
-    return () => controller.abort();
-  }, [leftDate, rightDate]);
-  return <p className="fb-comparison-note" role="status">{status}</p>;
 }
 
 export function LibraryComparison({ images, kind, partial = false }: { images: ComparisonImage[]; kind: "photo" | "orthophoto"; partial?: boolean }) {
@@ -104,6 +88,7 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     <p className="fb-comparison-note">{kind === "photo" ? "Separate foto med ukjent dekning. Samme eiendom betyr ikke samme motiv eller geometrisk sammenstilling." : sync ? "Webforhåndsvisninger · utsnittene følger hverandre. Dekning og lys kan variere; dette er en visuell sammenligning." : "Webforhåndsvisninger · velg to ulike datoer med geografisk overlapp for synkroniserte utsnitt."}</p>
     {(left || right) && <details className="fb-comparison-note"><summary>Kildeinformasjon</summary>{[left, right].map((item, index) => item && <p key={`${index}/${item.id}`}>{dateLabel(item.date)} · {item.source}</p>)}</details>}
     {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Lukk sammenligningen og last inn flere bilder fra biblioteket for flere datoer og kilder.</p>}
-    {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} leftDate={left.date} rightDate={right.date} />}
+    {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
+    {left && right && left.date !== right.date && <ComparisonObservations propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
   </section>;
 }

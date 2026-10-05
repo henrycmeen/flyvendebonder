@@ -3627,6 +3627,7 @@ export default function App() {
                 />
               ) : activeView === "orthophotos" ? (
                 <OrthophotoPage
+                  properties={profile ? [...(profile.property ? [profile.property] : []), ...profile.additional_properties] : []}
                   onChangeLibraryView={handleChangeView}
                   overlays={activeOrthophotoOverlays}
                   onOpenInMap={(overlayId) => {

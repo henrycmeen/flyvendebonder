@@ -47,7 +47,25 @@ registrering mellom datoer, radiometrisk kalibrering eller avlingsnytte.
 
 Vær-API har eier-/eiendomskontroll og returnerer utilgjengelig inntil Frost-kilde
 og serie er vurdert og tilkoblet. Beregningskontrakten er testet med fixtures,
-men dette er ingen levert værserie. Før aktivering trengs adapter, kilde/perioder
-synlig i UI og godkjent stasjon/serie. Feltobservasjoner i sammenligningen gjenstår.
+men dette er ingen levert værserie. Adapter, kilde-/periodevisning og eksisterende feltobservasjoner er nå
+implementert. Godkjent stasjon/serie og autentisert live-kall gjenstår.
 
 Eksisterende bundlevarsel (ca. 1,88 MB / 548 kB gzip) gjenstår i #297.
+
+
+## Oppfølgende integrasjon
+
+- 70 målrettede tester for Frost, eiendomsgate, sesongaggregat og raster bestått.
+- Full kontroll: 362 backendtester, frontendtester, lint og build bestått.
+  `/tmp/flyvendebonder-v3-context-validation.log` på Mac mini.
+- Uavhengig lesende review fant ingen blokkerende funn i Frost/eiendom,
+  observasjonsdatoer eller stale state. Live provider var ikke del av review.
+- Preview viser faktisk tom observasjonstilstand (0 i valgt periode), kilde,
+  ukjent bildetilknytning og utilgjengelig vær. Ingen syntetiske værverdier er
+  presentert som faktiske målinger. Positiv værvisning gjenstår som nettleserprøve.
+- Relative GeoTIFF-stier løses nå fra manifestmappen, ikke prosessens arbeidsmappe.
+- Ny smoke ble startet på egne porter etter at tidligere portvalg var opptatt;
+  eksisterende tjenester ble ikke overtatt.
+
+- Oppfølgende stack smoke på 8840/5227: PASS. Logg `/tmp/flyvendebonder-v3-context-smoke.log`; beholdt isolert state `v3-integration/context-smoke-r3`.
+- Ny kontekstvisning prøvd ved 390 x 844: dokumentbredde 390 px, ingen horisontal overflyt.

@@ -146,6 +146,8 @@ def _resolve_source(metadata: dict[str, Any], overlay_root: Path, *, allow_previ
     source_file = _as_str(metadata.get("source_file"))
     if source_file:
         source_path = Path(source_file).expanduser()
+        if not source_path.is_absolute():
+            source_path = overlay_root / source_path
         if source_path.is_file():
             return source_path, "canonical"
 

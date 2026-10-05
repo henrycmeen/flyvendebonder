@@ -40,6 +40,7 @@ def season_context(
             "date": (start + timedelta(days=i)).isoformat(),
             "precipitation_mm": None, "temperature_c": None,
             "precipitation_period": None, "temperature_period": None,
+            "precipitation_provenance": None, "temperature_provenance": None,
         }
         for i in range(expected)
     }
@@ -73,6 +74,7 @@ def season_context(
             continue
         accepted.setdefault((label, field), []).append({
             "value": value, "start": a.isoformat(), "end": b.isoformat(),
+            "provenance": record.get("provenance"),
         })
     # Reject ambiguity instead of picking the first sensor or adding twice.
     candidates = {key: values[0] for key, values in accepted.items() if len(values) == 1}
@@ -97,6 +99,7 @@ def season_context(
         days[label][field.replace("_mm", "_period").replace("_c", "_period")] = {
             "start": record["start"], "end": record["end"],
         }
+        days[label][field.replace("_mm", "_provenance").replace("_c", "_provenance")] = record["provenance"]
     values = list(days.values())
     rain = [day["precipitation_mm"] for day in values if day["precipitation_mm"] is not None]
     temperatures = [day["temperature_c"] for day in values if day["temperature_c"] is not None]
@@ -109,7 +112,7 @@ def season_context(
         "source": source,
         "days": values,
         "precipitation": {"observed_sum_mm": round(sum(rain), 3) if rain else None, "complete": complete, "covered_days": len(rain), "expected_days": expected},
-        "temperature": {"covered_days": len(temperatures), "expected_days": expected},
+        "temperature": {"mean_c": round(sum(temperatures) / len(temperatures), 3) if temperatures else None, "complete": len(temperatures) == expected, "covered_days": len(temperatures), "expected_days": expected},
         "rejected_observations": rejected,
         "limitations": ["Stasjonsmålinger er ikke målt på jordet.", "Datoene er kildens referansedatoer; de faktiske måleperiodene følger hver verdi.", "Summen gjelder tilgjengelige, kontrollerte observasjoner og er ingen avlingsprognose."],
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,6 +60,11 @@ class Settings(BaseSettings):
     terrain_http_timeout_seconds: float = 20.0
     terrain_sample_batch_size: int = 200
     orthophoto_overlay_root: Path = DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT
+
+    frost_weather_enabled: bool = False
+    frost_client_id: str = Field(default="", repr=False)
+    frost_http_timeout_seconds: float = 10.0
+    frost_reviewed_sources: dict[str, dict] = Field(default_factory=dict)
 
     default_user_name: str = "Roar Meen"
     default_municipality_code: str = "4003"
