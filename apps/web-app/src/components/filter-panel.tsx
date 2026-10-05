@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, CloudSun, Flower2, Leaf, Snowflake, Sun } from "lucide-react";
 
 import { captureTimelineState, formatCaptureDate, type CaptureDate } from "@/lib/capture-timeline";
@@ -20,6 +20,7 @@ interface FilterPanelProps {
   };
   onYearChange: (year: string) => void;
   onSeasonChange: (season: SeasonFilter) => void;
+  expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   dates?: CaptureDate[];
   selectedDate?: string | null;
@@ -48,6 +49,7 @@ export function FilterPanel({
   seasonCounts,
   onYearChange,
   onSeasonChange,
+  expanded: controlledExpanded,
   onExpandedChange,
   dates = [],
   selectedDate,
@@ -55,7 +57,13 @@ export function FilterPanel({
   onSelectIndex,
   onDayScopeChange,
 }: FilterPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? localExpanded;
+  const setExpanded = useCallback((value: boolean | ((current: boolean) => boolean)) => {
+    const next = typeof value === "function" ? value(expanded) : value;
+    if (controlledExpanded === undefined) setLocalExpanded(next);
+    onExpandedChange?.(next);
+  }, [controlledExpanded, expanded, onExpandedChange]);
   const panelId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const timeline = useMemo(() => captureTimelineState(dates, selectedDate), [dates, selectedDate]);
@@ -80,6 +88,7 @@ export function FilterPanel({
     if (!expanded) return;
 
     const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-fb-map-filter-trigger]")) return;
       if (!rootRef.current?.contains(event.target as Node)) {
         setExpanded(false);
       }
@@ -98,12 +107,7 @@ export function FilterPanel({
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [expanded]);
-
-  useEffect(() => {
-    onExpandedChange?.(expanded);
-  }, [expanded, onExpandedChange]);
-
+  }, [expanded, setExpanded]);
 
   return (
     <div
@@ -144,7 +148,7 @@ export function FilterPanel({
               {dayScope === "selected" && timeline.selected && <span className="fb-filter-day mt-1 block text-xs text-fb-text-secondary">{formatCaptureDate(timeline.selected.date, true)}</span>}
             </span>
 
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-fb-text-secondary">
+            <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-fb-text-secondary md:inline-flex">
               <ChevronDown
                 className={cn(
                   "h-4 w-4 transition-transform duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)]",

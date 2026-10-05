@@ -91,6 +91,7 @@ interface AppSidebarProps {
   onChangeMapVintage: (next: boolean) => void;
   onChangeShowZoomControls: (next: boolean) => void;
   onChangeView: (view: AppView) => void;
+  onOpenMapFilters?: () => void;
   onStartMediaImport?: () => void;
   onSaveProfile: (payload: SavePayload) => Promise<void>;
   onAdminLogin: (code: string) => Promise<void>;
@@ -214,6 +215,7 @@ export function AppSidebar({
   onChangeMapVintage,
   onChangeShowZoomControls,
   onChangeView,
+  onOpenMapFilters,
   onStartMediaImport,
   onSaveProfile,
   onAdminLogin,
@@ -223,9 +225,9 @@ export function AppSidebar({
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} embedded />}>
+    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
       <SidebarHeader className="fb-sidebar-header px-5">
-        {isMobile ? <div className="fb-mobile-actions-heading"><span>Verktøy</span><span>{profile?.property?.label ?? "Meen gård"}</span></div> : <div className="flex items-center gap-2">
+        {isMobile ? <div className="fb-mobile-actions-heading"><span>Mer</span><span>{profile?.property?.label ?? "Meen gård"}</span></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
             <span
               className={cn(

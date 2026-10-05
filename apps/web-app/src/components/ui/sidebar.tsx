@@ -74,7 +74,7 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
         <SheetContent side="left" className="fb-mobile-menu bg-fb-surface-page" onCloseAutoFocus={(event) => { event.preventDefault(); mobileTriggerRef.current?.focus(); }}>
-          <DialogPrimitive.Title className="sr-only">Verktøy</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">Mer</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             Navigasjon og innstillinger for Flyvendebønder.
           </DialogPrimitive.Description>
@@ -205,25 +205,18 @@ function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDiv
   );
 }
 
-function MobileDock({ activeView, onChangeView, embedded = false }: { activeView: string; onChangeView: (view: "map" | "album") => void; embedded?: boolean }) {
+function MobileDock({ activeView, onChangeView, onOpenMapFilters, embedded = false }: { activeView: string; onChangeView: (view: "map" | "album") => void; onOpenMapFilters?: () => void; embedded?: boolean }) {
   const { isMobile, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar();
-  const [highlightIndex, setHighlightIndex] = React.useState<number | null>(null);
-  const selectedIndex = openMobile ? 2 : activeView === "map" ? 0 : activeView === "album" ? 1 : 2;
   if (!isMobile) return null;
   return (
-    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon"
-      style={{ "--fb-dock-index": highlightIndex ?? selectedIndex } as React.CSSProperties}
-      onPointerLeave={() => setHighlightIndex(null)}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setHighlightIndex(null); }}
-    >
-      <span className="fb-mobile-dock__highlight" aria-hidden="true" />
-      <Button onPointerEnter={() => setHighlightIndex(0)} onFocus={() => setHighlightIndex(0)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={(event) => { if (activeView === "map") { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile(true); } else { setOpenMobile(false); onChangeView("map"); } }}>
+    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon">
+      <Button data-fb-map-filter-trigger="" data-selected={!openMobile && activeView === "map"} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => { setOpenMobile(false); if (activeView === "map") { onOpenMapFilters?.(); } else { onChangeView("map"); } }}>
         <MapIcon className="h-5 w-5" /><span>Kart</span>
       </Button>
-      <Button onPointerEnter={() => setHighlightIndex(1)} onFocus={() => setHighlightIndex(1)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
+      <Button data-selected={!openMobile && activeView === "album"} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
         <Images className="h-5 w-5" /><span>Bibliotek</span>
       </Button>
-      <Button ref={embedded ? undefined : mobileTriggerRef} onPointerEnter={() => setHighlightIndex(2)} onFocus={() => setHighlightIndex(2)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={(event) => { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile((current) => !current); }}>
+      <Button ref={embedded ? undefined : mobileTriggerRef} data-selected={openMobile || (activeView !== "map" && activeView !== "album")} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={(event) => { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile((current) => !current); }}>
         <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
       </Button>
     </nav>

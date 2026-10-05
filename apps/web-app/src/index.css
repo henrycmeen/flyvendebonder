@@ -2075,30 +2075,15 @@ summary:focus-visible,
   .photo-viewer-meta-body button { min-height: 44px; }
 }
 
-/* Fluid Functionalism inspiration: one quiet navigation highlight. */
-.fb-mobile-dock__highlight { display: none; }
+/* Dock selection stays on the button rather than following focus or pointer. */
 @media (max-width: 767px) {
   button[data-fb-button] { min-height: 44px; }
-  .fb-mobile-dock__highlight {
-    display: block;
-    pointer-events: none;
-    position: absolute;
-    left: 6px;
-    top: 6px;
-    bottom: 6px;
-    width: calc((100% - 20px) / 3);
-    border-radius: 24px;
-    background: rgba(0, 0, 0, 0.055);
-    transform: translateX(calc(var(--fb-dock-index, 0) * (100% + 4px)));
-    transition: transform var(--fb-motion-duration-medium) var(--fb-motion-easing-standard);
-  }
-  .fb-mobile-dock__item { z-index: 1; }
+  .fb-mobile-dock__item { transition: none; }
   .fb-mobile-dock__item[aria-current="page"] { background: transparent; box-shadow: none; color: #a4471b; }
-  .fb-mobile-dock__item:hover { background: transparent; }
+  .fb-mobile-dock__item[data-selected="true"] { background: rgba(0, 0, 0, 0.055); }
+  .fb-mobile-dock__item:hover { background: rgba(0, 0, 0, 0.035); }
+  .fb-mobile-dock .fb-mobile-dock__item:focus-visible { box-shadow: none; outline: 2px solid #626262; outline-offset: -3px; }
   .fb-mobile-dock__item:active { transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fb-mobile-dock__highlight { transition: none; }
 }
 
 .photo-viewer-meta-column,

@@ -1,0 +1,163 @@
+/* Keep settings layout independent of the map's surfaces and fixed-size farm hero. */
+.fb-settings-dialog[role="dialog"] {
+  --fb-surface-base: #fff;
+  --fb-surface-ghost: #f5f5f5;
+  --fb-border-subtle: #e5e5e5;
+  width: calc(100vw - 24px);
+  max-width: 720px;
+  max-height: calc(100dvh - 32px);
+  min-width: 0;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 20px 64px rgb(0 0 0 / 18%);
+}
+
+.fb-settings-dialog :where(form, section, [role="tabpanel"], .grid, .flex, input) {
+  min-width: 0;
+}
+
+.fb-settings-dialog :where(p, label) {
+  overflow-wrap: anywhere;
+}
+
+.fb-settings-header {
+  padding-right: 36px;
+}
+
+.fb-settings-dialog .fb-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  height: auto;
+  gap: 4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: #f4f4f5;
+}
+
+.fb-settings-dialog .fb-settings-tab {
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #52525b;
+}
+
+.fb-settings-dialog .fb-settings-tab[data-state="active"] {
+  background: #fff;
+  color: #18181b;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.fb-settings-dialog .fb-settings-section,
+.fb-settings-dialog .fb-settings-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.fb-settings-dialog .fb-settings-section + .fb-settings-section {
+  padding-top: 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.fb-settings-dialog .fb-settings-panel {
+  gap: 12px;
+}
+
+.fb-settings-dialog .fb-settings-panel .fb-settings-panel {
+  padding-top: 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.fb-settings-note {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f5f5f5;
+  line-height: 1.5;
+}
+
+.fb-settings-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.fb-settings-option > :first-child {
+  min-width: 0;
+}
+
+.fb-settings-option > [role="switch"] {
+  flex-shrink: 0;
+}
+
+.fb-settings-extra-property {
+  padding: 12px 0;
+  border-top: 1px solid #e5e5e5;
+}
+
+.fb-settings-empty {
+  padding: 8px 0;
+}
+
+.fb-settings-farm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 0;
+}
+
+.fb-settings-farm-model {
+  min-width: 0;
+  width: 100%;
+}
+
+.fb-settings-dialog .fb-property-hero {
+  width: 100%;
+  max-width: 160px;
+  height: 112px;
+}
+
+.fb-settings-dialog .fb-property-hero__viewer {
+  animation: none;
+}
+
+.fb-settings-log {
+  min-width: 0;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  background: #fafafa;
+  padding: 8px;
+}
+
+@media (max-width: 479px) {
+  .fb-settings-dialog[role="dialog"] {
+    padding: 16px;
+    max-height: calc(100dvh - 24px);
+  }
+
+  .fb-settings-farm {
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 8px;
+  }
+
+  .fb-settings-dialog .fb-property-hero {
+    max-width: 112px;
+    height: 96px;
+  }
+}

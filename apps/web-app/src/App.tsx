@@ -3430,6 +3430,7 @@ export default function App() {
               addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
             }}
             onChangeView={handleChangeView}
+            onOpenMapFilters={() => setIsFilterExpanded((current) => !current)}
             onTogglePropertyLayer={handleTogglePropertyLayer}
             onSaveProfile={handleSaveProfile}
             onAdminLogin={handleAdminLogin}
@@ -3469,6 +3470,7 @@ export default function App() {
                   selectedSeason={selectedSeason}
                   availableYears={availableYears}
                   seasonCounts={seasonCounts}
+                  expanded={isFilterExpanded}
                   onExpandedChange={setIsFilterExpanded}
                   onYearChange={(year) => {
                     const nextSeason = resolveSeasonForYearChange(year);
@@ -3489,7 +3491,7 @@ export default function App() {
                 />
               ) : null}
               {activeView !== "map" && <div id="fb-mobile-page-controls" ref={setMobileControlsTarget} />}
-              <MobileDock activeView={activeView} onChangeView={handleChangeView} />
+              <MobileDock activeView={activeView} onChangeView={handleChangeView} onOpenMapFilters={() => setIsFilterExpanded((current) => !current)} />
               </div>
 
               {activeView === "map" ? (
