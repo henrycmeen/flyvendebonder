@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, CloudSun, Flower2, Leaf, Snowflake, Sun } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { captureTimelineState, formatCaptureDate, type CaptureDate } from "@/lib/capture-timeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -56,7 +55,6 @@ export function FilterPanel({
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
-  const dateRowRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const timeline = useMemo(() => captureTimelineState(dates, selectedDate), [dates, selectedDate]);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -104,11 +102,6 @@ export function FilterPanel({
     onExpandedChange?.(expanded);
   }, [expanded, onExpandedChange]);
 
-  useEffect(() => {
-    if (!expanded) return;
-    const date = timeline.selected?.date ?? timeline.dates.at(-1)?.date;
-    if (date) dateRowRef.current?.querySelector<HTMLButtonElement>(`[data-capture-date="${date}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [expanded, timeline]);
 
   return (
     <div
@@ -237,28 +230,44 @@ export function FilterPanel({
 
                   {onSelectIndex && onDayScopeChange && (
                     <section className="space-y-2 border-t border-white/20 pt-3" aria-label="Opptaksdatoer">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-fb-text-secondary">Opptak · {timeline.dates.length} {timeline.dates.length === 1 ? "dato" : "datoer"}</span>
-                        <Button variant="ghost" className={cn("h-9 rounded-full border px-3 text-xs", dayScope === "all" ? selectedChipClass : idleChipClass)} aria-pressed={dayScope === "all"} onClick={() => onDayScopeChange("all")}>
+                      <p className="text-xs font-semibold text-fb-text-secondary">
+                        Opptaksdager · {timeline.dates.length}
+                      </p>
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Velg opptaksdag">
+                        <button
+                          type="button"
+                          className={cn("min-h-11 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", dayScope === "all" ? selectedChipClass : idleChipClass)}
+                          aria-pressed={dayScope === "all"}
+                          onClick={() => onDayScopeChange("all")}
+                        >
                           Alle datoer
-                        </Button>
+                        </button>
+                        {timeline.dates.map((entry) => {
+                          const selected = dayScope === "selected" && selectedDate === entry.date;
+                          const dateLabel = new Intl.DateTimeFormat("nb-NO", {
+                            day: "numeric",
+                            month: "short",
+                            ...(selectedYear === "all" ? { year: "numeric" as const } : {}),
+                            timeZone: "UTC",
+                          }).format(new Date(`${entry.date}T00:00:00Z`));
+                          return (
+                            <button
+                              key={entry.date}
+                              type="button"
+                              data-capture-date={entry.date}
+                              className={cn("inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", selected ? selectedChipClass : idleChipClass)}
+                              aria-pressed={selected}
+                              aria-label={`Velg ${formatCaptureDate(entry.date)} · ${entry.count} ${entry.count === 1 ? "bilde" : "bilder"} i arkivet`}
+                              title={`${entry.count} ${entry.count === 1 ? "bilde" : "bilder"}`}
+                              onClick={() => onSelectIndex(entry.index)}
+                            >
+                              {dateLabel}
+                              <span className="text-xs font-normal text-fb-text-secondary">· {entry.count}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-                      {timeline.dates.length ? (
-                        <div ref={dateRowRef} className="flex gap-2 overflow-x-auto px-1 py-1" aria-label="Velg opptaksdato">
-                          {timeline.dates.map((entry) => {
-                            const selected = dayScope === "selected" && selectedDate === entry.date;
-                            return (
-                              <Button key={entry.date} data-capture-date={entry.date} variant="ghost" className={cn("h-auto min-h-11 shrink-0 rounded-2xl border px-3 py-2", selected ? selectedChipClass : idleChipClass)} aria-pressed={selected} aria-label={`Velg ${formatCaptureDate(entry.date)} · ${entry.count} ${entry.count === 1 ? "bilde" : "bilder"} i arkivet`} onClick={() => onSelectIndex(entry.index)}>
-                                <span className="flex flex-col items-start gap-0.5">
-                                  <span className="text-xs font-semibold">{formatCaptureDate(entry.date, true)}</span>
-                                  <span className="text-[11px] font-normal text-fb-text-secondary">{entry.count} {entry.count === 1 ? "bilde" : "bilder"}</span>
-                                </span>
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      ) : <p className="text-xs text-fb-text-secondary">Ingen opptak i dette utvalget.</p>}
-                      <p className="text-[11px] text-fb-text-secondary">{dayScope === "selected" && timeline.selected ? `Viser ${formatCaptureDate(timeline.selected.date, true)}` : "Viser alle datoer i valgt år og årstid"}</p>
+                      {!timeline.dates.length && <p className="text-xs text-fb-text-secondary">Ingen opptak i dette utvalget.</p>}
                     </section>
                   )}
                 </div>
