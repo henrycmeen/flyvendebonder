@@ -92,3 +92,21 @@ assert.deepEqual(
 );
 
 console.log("map overlay policy tests passed");
+
+// Comparison must never synchronize across property scope, disjoint extents or unknown bounds.
+const comparisonBundle = await build({ entryPoints: ["src/lib/library-comparison.ts"], bundle: true, format: "esm", platform: "browser", write: false });
+const { overlappingBounds, photoComparisonImages, orthophotoComparisonImages } = await import(`data:text/javascript;base64,${Buffer.from(comparisonBundle.outputFiles[0].text).toString("base64")}`);
+const march = {id:"march",scope:"4003-70/17/0",date:"2026-03-31",bounds:{south:59.172157286621996,west:9.664306674615593,north:59.17549895458715,east:9.676921499587127}};
+const august = {id:"august",scope:march.scope,date:"2026-08-02",bounds:{south:59.16761524724223,west:9.65982260728805,north:59.17664053427298,east:9.677903331908693}};
+assert.deepEqual(overlappingBounds(march,august),march.bounds);
+assert.equal(overlappingBounds(march,{...august,scope:"other-property"}),null);
+assert.equal(overlappingBounds(march,{...august,bounds:undefined}),null);
+assert.equal(overlappingBounds(march,{...august,bounds:{south:60,west:10,north:61,east:11}}),null);
+assert.equal(overlappingBounds(march,{...august,bounds:{...august.bounds,south:NaN}}),null);
+const photoCandidates = photoComparisonImages([{id:"invalid-calendar",property_id:1,captured_date:"2026-02-30",title:"Invalid",image_url:"photo.jpg"},{id:"unknown-date",property_id:1,captured_date:"",title:"Unknown",image_url:"photo.jpg"},{id:"unscoped",property_id:null,captured_date:"2026-03-31",title:"Unscoped"},{id:"valid",property_id:1,captured_date:"2026-03-31",title:"Original filename",image_url:null,thumbnail_url:"thumb.jpg"}]);
+assert.equal(photoCandidates.length,1);
+assert.equal(photoCandidates[0].imageUrl,"thumb.jpg");
+assert.equal(photoCandidates[0].bounds,undefined);
+assert.match(photoCandidates[0].source,/Original filename/);
+assert.equal(orthophotoComparisonImages([{...march,label:"Jorde 4",propertyReference:march.scope,capturedDate:march.date,imageUrl:"preview.webp"}])[0].imageUrl,"preview.webp");
+console.log("library comparison scope, coverage and source tests passed");

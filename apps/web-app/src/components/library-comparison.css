@@ -1,0 +1,22 @@
+.fb-comparison-open {padding: .65rem 0; font-weight: 600; text-decoration: underline; text-underline-offset: 4px;}
+.fb-comparison {padding: 1rem 0 2rem;}
+.fb-comparison-header {display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.2rem;}
+.fb-comparison-header h2 {font-size:1.35rem;font-weight:600;}
+.fb-comparison-header button {text-decoration:underline;text-underline-offset:4px;}
+.fb-comparison-panels {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;}
+.fb-comparison label {display:block;font-size:.85rem;font-weight:500;}
+.fb-comparison select {display:block;width:100%;padding:.65rem .5rem;margin:.25rem 0 .65rem;background:var(--fb-surface-base,white);border-bottom:1px solid #a5aaa3;border-radius:0;}
+.fb-comparison-scope {max-width:24rem;margin-bottom:.75rem;}
+.fb-comparison-controls {margin-bottom:1rem;}
+.fb-comparison-controls p,.fb-comparison-note {font-size:.8rem;color:var(--fb-text-secondary,#596054);line-height:1.6;}
+.fb-comparison-note {margin-top:1rem;max-width:70rem;}
+.fb-comparison-photo,.fb-comparison-empty,.fb-comparison-map {height:clamp(320px,55vh,650px);background:#e7e9e3;}
+.fb-comparison-photo {display:flex;align-items:center;justify-content:center;}
+.fb-comparison-photo img {width:100%;height:100%;object-fit:contain;}
+.fb-comparison-empty {display:flex;align-items:center;justify-content:center;padding:2rem;text-align:center;}
+.fb-comparison-map-wrap {position:relative;min-width:0;}
+.fb-comparison-map {width:100%;z-index:0;}
+.fb-comparison-error {position:absolute;inset:40% 1rem auto;background:white;padding:1rem;z-index:1;}
+@media(max-width:640px) {.fb-comparison-panels {grid-template-columns:1fr;} .fb-comparison-controls {grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;} .fb-comparison-photo,.fb-comparison-empty,.fb-comparison-map {height:320px;} .fb-comparison-header {align-items:flex-start;} .fb-comparison-header h2 {font-size:1.1rem;} .fb-comparison-header button {max-width:9rem;text-align:right;font-size:.85rem;}}
+
+.fb-comparison-caption {font-size:.9rem;font-weight:500;margin-bottom:.5rem;}

@@ -1,3 +1,5 @@
+import { LibraryComparison } from "@/components/library-comparison";
+import { photoComparisonImages } from "@/lib/library-comparison";
 import { LibraryNavigation } from "@/components/library-navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Loader2, Search } from "lucide-react";
@@ -270,6 +272,7 @@ export function AlbumPage({
               </div>
             </header>
             <LibraryNavigation active="album" onChange={onChangeLibraryView} />
+            <LibraryComparison kind="photo" images={photoComparisonImages(photos)} partial={hasMore} />
             <ResponsivePageControls active={hasActiveFilters}>
               <div className="fb-album-controls">
                 <div className="relative">
