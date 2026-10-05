@@ -163,3 +163,12 @@ utilgjengelig WebGL2 og blokkert modellfil beholder illustrert SVG.
 Normal settings- og mobilmenymodell beholder kamerautsnitt og lastes først
 ved synlig behov. Se v3-first-load.md for målte bytes og begrensninger.
 CI på ed9f7b5: run 37336581908 er grønn. Neste commit kontrolleres separat.
+
+## Gjeldende API-kontrakt med reelt raster
+
+På ec43870 ble isolert backend 8825 prøvd med lokal testautentisering:
+august-r13 returnerer 200, source.algorithm_version=native-crs-affine-rgb-v1,
+canonical EPSG:32632, originalens dimensjoner/affine transform og 441/441
+gyldige piksler. Jorde 4 vår returnerer 503 uten eksplisitt preview-valg.
+Bevis: work/v3-context/v3-current-raster-api.json på kontrollmaskinen.
+Ingen produksjonsdata eller provider-konfigurasjon endret.

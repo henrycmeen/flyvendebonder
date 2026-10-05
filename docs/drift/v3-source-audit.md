@@ -62,6 +62,9 @@ Gjenta-prøve mot den faktiske augustfilen: to direkte servicekall med samme
 kilde, 59.173828 / 9.670614 og 21×21 vindu ga identiske resultater; 441 gyldige
 piksler, middel-RGB 59,4 / 67,6 / 48,1 og `shadow_risk`. Rasterio 1.5.2.
 Vårens original ga fortsatt eksplisitt utilgjengelig kilde. Reproduksjonsresultat
-på kontrollmaskinen: `work/v3-context/v3-r13-repeat.json`. API-ruting ble prøvd
-separat på isolert 8825 før versjonsfeltet ble lagt til; eksisterende API-test
-kontrollerer at versjonsfeltet nå er med i responsen.
+på kontrollmaskinen: `work/v3-context/v3-r13-repeat.json`. API-ruting er også prøvd
+på isolert 8825 med ec43870: autentisert 200 fra august-r13 har
+source.algorithm_version=native-crs-affine-rgb-v1, canonical EPSG:32632,
+21×21/441 gyldige piksler og samme RGB-statistikk. Vårens jorde 4 gir 503
+og krever eksplisitt preview-valg. Bevis: work/v3-context/v3-current-raster-api.json
+på kontrollmaskinen. Dette er ett punkt og ikke registrering mellom datoene.
