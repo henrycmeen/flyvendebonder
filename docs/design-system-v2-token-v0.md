@@ -236,3 +236,12 @@ Målet er å bevise at primitives fungerer i innholdsflow (album), kontrollflow 
 - `Skeleton` respekterer `prefers-reduced-motion` via `motion-reduce:animate-none`.
 - `EmptyState` gir en felles standard for tomme kart-, album-, import- og inspeksjonsflater.
 - Se `docs/ui-audit.md` for oppdatert M2-status og resterende lukking av #31.
+
+
+## App pass 5. oktober 2026: enklere flater
+Referanse: https://www.fluidfunctionalism.com/docs/button og /docs/fluid-hover.
+Visuelt undersøkt desktop og mobil: nøytrale flater, kompakte knapper (målt 36 px høyde, 8 px radius), og ett flyttbart menyhøydepunkt.
+Appen gjenbruker egne shadcn/Radix-primitives: 36 px desktopknapp, 44 px minimum på mobil, svart primærhandling, rolige sekundærhandlinger.
+Mobilens dock får én delt markering for aktivt valg og peker-/tastaturfokus; CSS-overgang uten nye animasjonsavhengigheter. Dette er en tilpasning, ikke referansens framer-motion-baserte spring/nearest-item-motor.
+Biblioteket viser kun bilder og datogrupper, med filtre i docken på mobil og synlig verktøylinje på desktop.
+Faglige detaljer og videre arbeid på Skogbruk samles under «Om datagrunnlaget». Arealets begrensning står fortsatt ved hvert bilde.

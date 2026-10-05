@@ -1,3 +1,4 @@
+import { PageControlsContext } from "@/hooks/use-page-controls";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
@@ -302,6 +303,7 @@ function getPhotoImageUrl(photo: Pick<PhotoFeature, "image_url" | "thumbnail_url
 
 export default function App() {
   const isMobile = useIsMobile();
+  const [mobileControlsTarget, setMobileControlsTarget] = useState<HTMLElement | null>(null);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
   const initialPhoto = params.get("photo");
@@ -3383,6 +3385,7 @@ export default function App() {
       />
 
       <SidebarProvider>
+          <PageControlsContext.Provider value={mobileControlsTarget}>
         <div className="flex h-full overflow-hidden">
           <AppSidebar
             profile={profile}
@@ -3485,6 +3488,7 @@ export default function App() {
                   }}
                 />
               ) : null}
+              {activeView !== "map" && <div id="fb-mobile-page-controls" ref={setMobileControlsTarget} />}
               <MobileDock activeView={activeView} onChangeView={handleChangeView} />
               </div>
 
@@ -3682,7 +3686,8 @@ export default function App() {
             </div>
           </SidebarInset>
         </div>
-      </SidebarProvider>
+      </PageControlsContext.Provider>
+        </SidebarProvider>
     </div>
   );
 }

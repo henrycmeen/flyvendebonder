@@ -100,17 +100,16 @@ export function MediaImportPage({ receiptPanel, busy = false, errorMessage, succ
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
-      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="content" className="px-0">
-          <div className="mx-auto w-full max-w-3xl space-y-5 py-6 sm:py-10">
-            <header className="space-y-2 px-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-fb-text-primary">Import</h1>
-              <p className="max-w-xl text-sm text-fb-text-secondary">Samle bilder fra dronefangsten og last opp til kontroll før import til biblioteket.</p>
-              <p className="text-xs text-fb-text-secondary">Velg filer → Kontroller opplasting → Importer til bibliotek</p>
+          <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-2">
+            <header className="space-y-1 px-1">
+              <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Import</h1>
+              <p className="text-sm text-fb-text-secondary">Velg bilder → Last opp til kontroll → Importer til bibliotek</p>
               <p className="text-xs text-fb-text-muted">JPG, JPEG, TIF og TIFF. Andre formater og tomme filer hoppes over.</p>
             </header>
             <div
-              className={cn("rounded-[32px] border border-fb-border-subtle bg-fb-surface-ghost p-4 shadow-fb-raised sm:p-6", dragActive && !locked && "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)]/6")}
+              className={cn("rounded-xl border border-dashed border-fb-border-subtle p-3", dragActive && !locked && "border-[color:var(--fb-season-solid)] bg-[color:var(--fb-season-solid)]/6")}
               aria-busy={reading || submitting || busy}
               onDragEnter={(event) => { event.preventDefault(); if (!locked) setDragActive(true); }}
               onDragOver={(event) => { event.preventDefault(); if (!locked) setDragActive(true); }}
@@ -118,14 +117,14 @@ export function MediaImportPage({ receiptPanel, busy = false, errorMessage, succ
               onDrop={(event) => void handleDrop(event)}
             >
               {items.length === 0 ? (
-                <EmptyState className="min-h-[300px] rounded-[26px] border-2 bg-fb-surface-base px-6 py-10 sm:px-10" icon={<UploadCloud className="h-5 w-5" />} title="Velg bilder fra dronefangsten" description={disabledMessage || "Dra en mappe eller bildefiler hit, eller velg dem fra maskinen. Du kan se gjennom utvalget før opplasting."} actions={pickerActions} />
+                <EmptyState className="min-h-[180px] rounded-none border-0 bg-transparent px-2 py-4" icon={<UploadCloud className="h-5 w-5" />} title="Velg bilder" description={disabledMessage || "Dra en mappe eller bildefiler hit. Se gjennom utvalget før opplasting."} actions={pickerActions} />
               ) : (
                 <section aria-labelledby="selected-files-heading" className="space-y-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div><h2 id="selected-files-heading" className="font-medium text-fb-text-primary">Valgte filer</h2><p className="mt-1 text-sm text-fb-text-secondary">{items.length} bilder · {formatBytes(items.reduce((sum, item) => sum + item.file.size, 0))}</p></div>
                     <div className="flex flex-wrap gap-2">{pickerActions}</div>
                   </div>
-                  <ul className="max-h-[50vh] overflow-y-auto rounded-2xl border border-fb-border-subtle bg-fb-surface-base">
+                  <ul className="max-h-[50vh] overflow-y-auto">
                     {items.map((item) => (
                       <li key={item.id} className="flex items-center gap-3 border-b border-fb-border-subtle px-4 py-3 last:border-b-0">
                         <div className="min-w-0 flex-1"><p className="break-words text-sm font-medium text-fb-text-primary">{item.file.name}</p><p className="mt-1 break-all text-xs text-fb-text-secondary">{item.relativePath || "Enkeltfil"}</p><p className="mt-1 text-xs text-fb-text-muted">{imageFileType(item.file)} · {formatBytes(item.file.size)}</p></div>

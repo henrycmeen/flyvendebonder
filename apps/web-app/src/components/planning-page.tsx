@@ -1680,11 +1680,11 @@ export function PlanningPage({
   }, []);
 
   return (
-    <div className="grid h-full min-h-0 gap-4 p-3 md:grid-cols-[21rem,minmax(0,1fr)] md:p-4">
+    <div className="grid h-full min-h-0 gap-3 p-3 md:grid-cols-[21rem,minmax(0,1fr)] md:p-4">
       <aside className="flex min-h-0 flex-col overflow-hidden bg-fb-surface-page">
-        <div className="relative px-4 py-4">
+        <div className="relative px-4 py-3">
           <div className="flex items-start justify-between gap-3">
-            <p className="pt-1 text-[11px] uppercase tracking-[0.12em] text-fb-text-secondary">Områder</p>
+            <p className="pt-1 text-sm font-semibold text-fb-text-primary">Områder</p>
             <div className="flex shrink-0 items-center gap-2">
               <HoverActionButton
                 type="button"
@@ -1730,7 +1730,7 @@ export function PlanningPage({
           </p>
         </div>
 
-        <div className="px-4 py-3">
+        <div className="px-4 pb-3">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-secondary" />
             <input

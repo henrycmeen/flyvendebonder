@@ -201,16 +201,23 @@ function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDiv
 
 function MobileDock({ activeView, onChangeView }: { activeView: string; onChangeView: (view: "map" | "album") => void }) {
   const { isMobile, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar();
+  const [highlightIndex, setHighlightIndex] = React.useState<number | null>(null);
+  const selectedIndex = openMobile ? 2 : activeView === "map" ? 0 : activeView === "album" ? 1 : 2;
   if (!isMobile) return null;
   return (
-    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon">
-      <Button variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => onChangeView("map")}>
+    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon"
+      style={{ "--fb-dock-index": highlightIndex ?? selectedIndex } as React.CSSProperties}
+      onPointerLeave={() => setHighlightIndex(null)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setHighlightIndex(null); }}
+    >
+      <span className="fb-mobile-dock__highlight" aria-hidden="true" />
+      <Button onPointerEnter={() => setHighlightIndex(0)} onFocus={() => setHighlightIndex(0)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => onChangeView("map")}>
         <MapIcon className="h-5 w-5" /><span>Kart</span>
       </Button>
-      <Button variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => onChangeView("album")}>
+      <Button onPointerEnter={() => setHighlightIndex(1)} onFocus={() => setHighlightIndex(1)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => onChangeView("album")}>
         <Images className="h-5 w-5" /><span>Bibliotek</span>
       </Button>
-      <Button ref={mobileTriggerRef} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label="Mer – åpne meny" onClick={() => setOpenMobile((current) => !current)}>
+      <Button ref={mobileTriggerRef} onPointerEnter={() => setHighlightIndex(2)} onFocus={() => setHighlightIndex(2)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label="Mer – åpne meny" onClick={() => setOpenMobile((current) => !current)}>
         <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
       </Button>
     </nav>

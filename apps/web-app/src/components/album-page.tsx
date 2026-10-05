@@ -1,11 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock3, Images, Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, Loader2, Play, Search } from "lucide-react";
 
 import { CapturePlayer } from "@/components/capture-player";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { GlassSurface } from "@/components/ui/glass-surface";
+import { ResponsivePageControls } from "@/components/ui/responsive-page-controls";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
 import { Divider, Grid, PageShell } from "@/components/ui/layout-primitives";
@@ -72,30 +72,6 @@ function formatMonthLabel(value: string): string {
   return asDate.toLocaleDateString("nb-NO", {
     month: "long",
     year: "numeric",
-  });
-}
-
-function formatDayLabel(value: string): string {
-  const asDate = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(asDate.getTime())) {
-    return "Ukjent dato";
-  }
-  return asDate.toLocaleDateString("nb-NO", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatTimeLabel(value: string): string {
-  const asDate = new Date(value);
-  if (Number.isNaN(asDate.getTime())) {
-    return "Ukjent tid";
-  }
-  return asDate.toLocaleTimeString("nb-NO", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
   });
 }
 
@@ -292,22 +268,18 @@ export function AlbumPage({
         onScrollActivity?.();
       }}
     >
-      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
-          <div className="space-y-5 pb-4">
-            <header className="flex flex-wrap items-end justify-between gap-4 py-3">
-              <div>
-                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-fb-text-secondary"><Images className="h-4 w-4" /> Gårdens opptak</p>
-                <h1 className="text-3xl font-semibold tracking-tight text-fb-text-primary sm:text-4xl">Mediebibliotek</h1>
-                <p className="mt-2 max-w-lg text-sm leading-relaxed text-fb-text-secondary">Bilder, opptaksdatoer og kvalitet samlet. Åpne et bilde for å undersøke posisjon og metadata.</p>
+          <div className="space-y-4 pb-4">
+            <header className="flex items-center justify-between gap-3 py-1">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary sm:text-2xl">Bibliotek</h1>
+                <span className="text-xs text-fb-text-secondary" role="status" title={hasMore ? "Flere bilder lastes når du blar videre" : "Alle bilder er lastet"}>{filteredPhotos.length.toLocaleString("nb-NO")} av {photos.length.toLocaleString("nb-NO")} lastet</span>
               </div>
-              <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3 text-sm" role="status">
-                <strong>{photos.length.toLocaleString("nb-NO")}</strong> bilder lastet
-                <span className="mt-1 block text-xs text-fb-text-secondary">{hasMore ? "Eldre opptak lastes videre nedenfor" : "Alle tilgjengelige bilder er lastet"}</span>
-              </div>
+              <Button type="button" size="sm" variant="ghost" ref={playerTriggerRef} disabled={filteredPhotos.length === 0} onClick={() => setPlayerOpen(true)} aria-label="Vis opptak over tid"><Play className="h-4 w-4" /><span className="hidden sm:inline">Opptak over tid</span></Button>
             </header>
-            <GlassSurface surface="floating" className="sticky top-3 z-20 px-3 py-3 sm:px-4">
-              <div className="space-y-3">
+            <ResponsivePageControls active={hasActiveFilters}>
+              <div className="fb-album-controls">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
                   <Input
@@ -315,14 +287,13 @@ export function AlbumPage({
                     onChange={(event) => setSearchQuery(event.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
-                    placeholder="Søk etter filnavn, dato, sesong eller tagg"
+                    placeholder="Søk i bilder…"
                     className="rounded-xl border-transparent bg-fb-surface-ghost pl-9 shadow-none focus-visible:ring-1"
                     aria-label="Søk i mediebibliotek"
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 border-t border-fb-border-subtle pt-3">
-                  <SlidersHorizontal className="h-4 w-4 text-fb-text-muted" aria-hidden="true" />
+                <div className="fb-album-options flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Kvalitet
                     <NativeSelect value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value as typeof qualityFilter)}>
                       <option value="all">Alle bilder</option><option value="review">Må vurderes</option><option value="checked">Uten manuell QC</option>
@@ -338,14 +309,13 @@ export function AlbumPage({
                       <option value="day">Opptaksdato</option><option value="month">Måned</option>
                     </NativeSelect>
                   </label>
-                  <span className="text-xs text-fb-text-secondary">{filteredPhotos.length.toLocaleString("nb-NO")} treff blant lastede bilder</span>
-                  <Button type="button" size="sm" variant="outline" ref={playerTriggerRef} disabled={filteredPhotos.length === 0} onClick={() => setPlayerOpen(true)}>Vis opptak over tid</Button>
+
                   {hasActiveFilters ? <Button type="button" size="sm" variant="ghost" onClick={() => {setSearchQuery(""); setQualityFilter("all");}}>Nullstill</Button> : null}
                 </div>
                 {visibleSuggestions ? (
                   <div className="space-y-2 rounded-[20px] border border-fb-border-subtle bg-fb-surface-ghost/80 px-3 py-3">
                     <p className="text-xs text-fb-text-secondary">
-                      Legg til år eller sesong som fritekst eller hashtag, for eksempel <span className="font-medium text-fb-text-primary">2025 høst</span> eller <span className="font-medium text-fb-text-primary">#2025 #høst</span>.
+                      Velg år eller årstid:
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {suggestedYears.map((year) => {
@@ -393,7 +363,7 @@ export function AlbumPage({
                   </div>
                 ) : null}
               </div>
-            </GlassSurface>
+            </ResponsivePageControls>
 
             {loadFailed ? (
               <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-fb-text-primary">
@@ -412,7 +382,7 @@ export function AlbumPage({
                 smCols={ALBUM_GRID_PRESET.smCols}
                 lgCols={ALBUM_GRID_PRESET.lgCols}
                 xlCols={ALBUM_GRID_PRESET.xlCols}
-                gap={3}
+                gap={2}
               >
                 {Array.from({ length: 10 }).map((_, index) => (
                   <div key={index} className="overflow-hidden rounded-xl border border-fb-border-subtle bg-fb-surface-ghost">
@@ -472,13 +442,13 @@ export function AlbumPage({
                   smCols={ALBUM_GRID_PRESET.smCols}
                   lgCols={ALBUM_GRID_PRESET.lgCols}
                   xlCols={ALBUM_GRID_PRESET.xlCols}
-                  gap={3}
+                  gap={2}
                 >
                   {group.photos.map((photo) => (
                     <button
                       key={photo.id}
                       type="button"
-                      className="group fb-card-hover overflow-hidden rounded-xl border border-fb-border-subtle bg-fb-surface-ghost text-left transition-[transform,box-shadow,filter] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)]"
+                      className="group fb-album-photo overflow-hidden rounded-lg bg-fb-surface-ghost text-left transition-[transform,box-shadow,filter] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)]"
                       onClick={() => onOpenPhoto(photo.id)}
                       aria-label={`Åpne ${photo.title || "foto"} i fullskjerm`}
                     >
@@ -494,20 +464,7 @@ export function AlbumPage({
                         <div className="aspect-[4/3] w-full bg-fb-surface-base" />
                       )}
 
-                      <div className="space-y-2 px-3 py-3">
-                        {photo.needs_manual_qc ? <span className="inline-flex rounded-md bg-fb-surface-base px-2 py-1 text-[10px] font-medium text-fb-text-secondary">Må vurderes</span> : null}
-                        <p className="line-clamp-2 break-words text-sm font-medium text-fb-text-primary">{photo.title.replace(/^Foto \d{4}-\d{2}-\d{2} · /, "") || "Foto"}</p>
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-fb-text-muted">
-                          <span className="inline-flex items-center gap-1">
-                            <CalendarDays className="h-3 w-3" />
-                            {formatDayLabel(photo.captured_date)}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Clock3 className="h-3 w-3" />
-                            {formatTimeLabel(photo.captured_at)}
-                          </span>
-                        </div>
-                      </div>
+
                     </button>
                   ))}
                 </Grid>
