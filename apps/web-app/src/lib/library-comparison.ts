@@ -27,5 +27,11 @@ function hasCaptureDate(date: string) {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === date;
 }
 export function photoComparisonImages(photos: PhotoFeature[]): ComparisonImage[] {
-  return photos.filter(item => item.property_id != null && hasCaptureDate(item.captured_date)).map(item => ({id:item.id,date:item.captured_date,label:item.title,source:`Foto · ${item.title}`,scope:`Eiendom ${item.property_id}`,imageUrl:item.image_url ?? item.thumbnail_url}));
+  const counts = new Map<string, number>();
+  return photos.filter(item => item.property_id != null && hasCaptureDate(item.captured_date)).map(item => {
+    const key = `${item.property_id}/${item.captured_date}`;
+    const ordinal = (counts.get(key) ?? 0) + 1;
+    counts.set(key, ordinal);
+    return {id:item.id,date:item.captured_date,label:`Bilde ${ordinal}`,source:`Foto · ${item.title}`,scope:`Eiendom ${item.property_id}`,imageUrl:item.image_url ?? item.thumbnail_url};
+  });
 }
