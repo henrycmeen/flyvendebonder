@@ -2033,7 +2033,7 @@ summary:focus-visible,
   .fb-mobile-action__detail { display: block; margin-top: 2px; font-size: 11px; color: #626262; font-weight: 400; }
   .fb-mobile-menu .fb-mobile-action[data-active="true"] { background: rgba(223, 102, 42, 0.12); color: #8f3c17; border-color: rgba(170, 73, 28, 0.2); }
   .fb-mobile-menu .fb-mobile-action[data-active="true"] svg { color: inherit; }
-  .fb-mobile-menu .fb-sidebar-settings-trigger { padding: 12px; background: rgba(0, 0, 0, 0.03); }
+  .fb-mobile-menu .fb-sidebar-settings-trigger { padding: 10px; background: transparent; }
 }
 
 /* Keep page controls compact and let photographs carry the library. */
@@ -2130,9 +2130,10 @@ summary:focus-visible,
   .fb-mobile-dock__item { border-radius: 16px; }
   .fb-mobile-menu .fb-mobile-action { min-height: 60px; flex-direction: row; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; }
   .fb-mobile-action > svg { flex-shrink: 0; }
-  .fb-mobile-menu .fb-sidebar-header { padding: 16px 16px 12px; }
+  .fb-mobile-menu .fb-sidebar-header { padding: 16px 26px 12px; }
   .fb-mobile-menu .fb-sidebar-header + div { padding: 8px 16px; }
   .fb-mobile-menu .fb-sidebar-settings-trigger { border-radius: 12px; }
+  .fb-mobile-menu .fb-mobile-dock__item[aria-current="page"] { color: #414141; }
   .fb-filter-years .fb-filter-choice,
   .fb-filter-seasons .fb-filter-choice { min-height: 44px; font-size: 12px; }
   .fb-mobile-control-surface .fb-liquid-filter__panel { max-height: min(62dvh, calc(100dvh - 150px)); }

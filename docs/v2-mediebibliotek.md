@@ -27,3 +27,10 @@ Referansene er [Surfaces](https://www.fluidfunctionalism.com/docs/surfaces) og [
 - Respons: hover/trykk endrer farge uten skalering eller flyttende markering. Tastaturfokus og reduced motion beholdes.
 
 Ingen ny avhengighet eller registry-kode er hentet inn. Kartet, bildene og 3D-gården beholdes. Kontrollert ved 320/375 px mobil og 1440 px desktop; kartfilterets åpne/lukke-forløp, menynavigasjon, innstillingsfaner og bredde. Prosjektvalidering og isolert stack-smoke på 8814/5214 består. Dette er lokal V2-forhåndsvisning.
+
+## Detaljreview med Claude — 5. oktober 2026
+Claude Advisor (Opus-alias, high, lesende) gjennomgikk Henrys skjermbilde av innstillingsheaderen, Mer-menyen og avgrensede kildefiler. Åtte funn gjaldt overlapp, pillestiler, fanetilstander, kartvalg, konkurrerende dockmarkeringer, innrykk, scrolling og stilavvik.
+
+Bekreftet i nettleser: lukkeknappens 44 px flate overlappet fanene med 10 px. Rettet med egen 44 px header og felles padding. Faner bruker nå en lett understrek og separat hover/fokus; mobil beholder 44 px høyde fremfor rådgiverens foreslåtte 32 px. Kartvalg grupperes nøytralt. Legg til-knapp og feilboks følger kontrollradius; fjern-knapp er 44 × 44 px. Kun aktivt faneinnhold ruller, mens tittel/faner/lukking blir stående. Mer har samordnede innrykk, transparent innstillingsrad og én dockmarkering mens menyen er åpen.
+
+Kontrollert på 320/375 px mobil og 1280 px desktop: alle tre faner, ingen horisontal overflyt, 12 px avstand mellom lukkeflate og faner, kvadratisk fjern-knapp, innholdsscrolling, piltastnavigasjon, synlig fokus og Escape/fokusretur. Prosjektvalidering og stack-smoke på 8815/5215 består. Ingen profil lagret eller produksjonsdata endret. Gjennomgangen dekker disse flatene; fysisk iPhone/safe-area og full samordning av eldre globale CSS-overstyringer er fortsatt ikke verifisert.

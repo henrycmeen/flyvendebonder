@@ -15,7 +15,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BASE_MAP_STYLE_ORDER, BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
-import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
 interface LogEntry {
@@ -388,7 +387,7 @@ export function SettingsDialog({
           <DialogTitle>Innstillinger</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="profile" className="min-w-0 w-full">
+        <Tabs defaultValue="profile" className="fb-settings-body w-full">
           <TabsList className="fb-settings-tabs">
             <TabsTrigger value="profile" className="fb-settings-tab">Profil</TabsTrigger>
             <TabsTrigger value="layer" className="fb-settings-tab">Kartlag</TabsTrigger>
@@ -404,7 +403,7 @@ export function SettingsDialog({
                   </div>
                 ) : null}
                 {saveError ? (
-                  <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                  <div className="rounded-lg border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
                     {saveError}
                   </div>
                 ) : null}
@@ -442,7 +441,7 @@ export function SettingsDialog({
                   compact
                   title="Eiendom"
                   actions={
-                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full px-3" onClick={addAdditionalPropertyRow}>
+                    <Button type="button" variant="outline" size="sm" className="px-3" onClick={addAdditionalPropertyRow}>
                       <Plus className="h-3.5 w-3.5" />
                       Legg til eiendom
                     </Button>
@@ -505,7 +504,7 @@ export function SettingsDialog({
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 rounded-full text-fb-text-secondary"
+                                  className="text-fb-text-secondary"
                                   onClick={() => removeAdditionalPropertyRow(property.client_id)}
                                   aria-label={`Fjern ekstra eiendom ${index + 1}`}
                                 >
@@ -583,7 +582,7 @@ export function SettingsDialog({
             <Stack gap={4} className="fb-settings-panel">
               <div className="grid gap-2">
                 <Label className="text-xs uppercase tracking-[0.08em] text-fb-text-secondary">Bakgrunnskart</Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="fb-settings-map-styles">
                   {BASE_MAP_STYLE_ORDER.map((styleKey) => {
                     const selected = styleKey === baseMapStyle;
                     return (
@@ -591,9 +590,9 @@ export function SettingsDialog({
                         key={styleKey}
                         type="button"
                         size="sm"
-                        variant={selected ? "default" : "outline"}
+                        variant="ghost"
                         aria-pressed={selected}
-                        className={cn("h-8 rounded-full px-3", selected ? "bg-[color:var(--fb-chip-active-bg)] text-[color:var(--fb-chip-active-text)]" : "text-fb-text-primary")}
+                        className="fb-settings-map-style"
                         onClick={() => onChangeBaseMapStyle(styleKey)}
                       >
                         {BASE_MAP_STYLES[styleKey].label}
@@ -709,7 +708,7 @@ export function SettingsDialog({
                       />
                     </div>
                     {adminError ? (
-                      <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                      <div className="rounded-lg border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
                         {adminError}
                       </div>
                     ) : null}
