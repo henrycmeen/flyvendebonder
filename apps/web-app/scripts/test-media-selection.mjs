@@ -13,6 +13,7 @@ assert.equal(initial.empty, 1);
 assert.equal(initial.unsupported, 1);
 assert.equal(stageMedia(initial.items, [selection("a.JPG")]).duplicates, 1);
 assert.equal(stageMedia([], [{ file: file("fake.png", 12, { type: "image/jpeg" }), relativePath: null }]).unsupported, 1);
+assert.equal(stageMedia([], [{ file: file("extensionless", 12, { type: "image/jpeg" }), relativePath: null }]).unsupported, 1);
 assert.equal(fromPickedFiles([file("a.tiff", 12, { webkitRelativePath: "Flight/Nested/a.tiff" })])[0].relativePath, "Flight/Nested/a.tiff");
 const entryFile = (name, fullPath) => ({ name, fullPath, isFile: true, file: (resolve) => resolve(file(name)) });
 let reads = 0;

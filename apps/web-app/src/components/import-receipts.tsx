@@ -46,11 +46,11 @@ export function ImportReceipts({ jobs, selectedJob, result, loading, busy, onSel
               return <li key={item.id} className="space-y-1 border-b border-fb-border-subtle p-3 last:border-b-0"><p className="break-words text-sm font-medium">{item.filename}</p><p className="break-all text-xs text-fb-text-secondary">{item.source_path || "Enkeltfil"} · {new Intl.NumberFormat("nb-NO").format(item.bytes)} B</p><p className="text-xs text-fb-text-secondary">{outcome ? statuses[outcome.status] ?? `Ukjent status: ${outcome.status}` : item.status === "rejected" ? "Avvist ved opplasting" : selectedJob.status === "finalized" ? "Behandlet – serveren returnerte ikke detaljutfall for filen" : "Lastet opp, venter på import"}</p>{outcome?.detail || item.error_detail ? <p className="break-words text-xs text-fb-text-secondary">{outcome?.detail || item.error_detail}</p> : null}{outcome?.photo_id ? <p className="break-all text-xs text-fb-text-muted">Bilde-ID: {outcome.photo_id}</p> : null}</li>;
             })}
           </ul>
-          {selectedJob.status !== "finalized" ? <>
+          {selectedJob.status === "staged" ? <>
             <p className="text-sm text-fb-text-secondary">{eligibleImages} bildefiler kan importeres. Avviste filer blir ikke lagt i biblioteket.</p>
             {hasVideos ? <p role="status" className="text-sm text-fb-text-secondary">Denne opplastingen inneholder video. Videoprosessering støttes ikke i denne bildeflyten.</p> : null}
-            <Button disabled={busy || loading || eligibleImages === 0 || hasVideos} onClick={onFinalize}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{selectedJob.status === "failed" ? "Prøv import til bibliotek på nytt" : "Importer til bibliotek"}</Button>
-          </> : <p className="text-sm text-fb-text-secondary">Kvitteringen viser utfallet for hver fil. Bare importerte bilder er lagt i biblioteket.</p>}
+            <Button disabled={busy || loading || eligibleImages === 0 || hasVideos} onClick={onFinalize}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Importer til bibliotek</Button>
+          </> : selectedJob.status !== "finalized" ? <p role="status" className="text-sm text-fb-text-secondary">Opplastingen kunne ikke fullføres. Last opp filene på nytt.</p> : <p className="text-sm text-fb-text-secondary">Kvitteringen viser utfallet for hver fil. Bare importerte bilder er lagt i biblioteket.</p>}
         </section>
       ) : null}
     </GlassSurface>

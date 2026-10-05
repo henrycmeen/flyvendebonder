@@ -22,11 +22,6 @@ export function fromPickedFiles(files: File[]): MediaImportFile[] {
 export function imageFileType(file: File): "JPEG" | "TIFF" | null {
   if (/\.(jpe?g)$/i.test(file.name)) return "JPEG";
   if (/\.(tiff?)$/i.test(file.name)) return "TIFF";
-  // MIME alone is useful for files with no extension. A conflicting extension is rejected.
-  if (!file.name.includes(".")) {
-    if (file.type === "image/jpeg") return "JPEG";
-    if (file.type === "image/tiff") return "TIFF";
-  }
   return null;
 }
 
