@@ -194,7 +194,7 @@ def test_canonical_uses_rotated_geotransform_and_masks_not_metadata_bounds(tmp_p
     metadata["width_px"] = 999
     metadata["utm_bounds"] = {}
     (root / "test-orthophoto.json").write_text(json.dumps(metadata))
-    x, y = affine @ (2.5, 2.5)
+    x, y = affine * (2.5, 2.5)
     lngs, lats = transform("EPSG:32632", "EPSG:4326", [x], [y])
     from app.services.orthophoto_sampling import sample_orthophoto_color, OrthophotoPointOutsideBounds
     sample = sample_orthophoto_color("test-orthophoto", lat=lats[0], lng=lngs[0],
@@ -207,7 +207,7 @@ def test_canonical_uses_rotated_geotransform_and_masks_not_metadata_bounds(tmp_p
     assert sample["source"]["canonical_width_px"] == 5
     assert sample["source"]["transform"] == list(affine)[:6]
     assert sample["source"]["gsd_m_per_px"] == {"x": 8.2462, "y": 9.4868}
-    x, y = affine @ (-1, 2)
+    x, y = affine * (-1, 2)
     lngs, lats = transform("EPSG:32632", "EPSG:4326", [x], [y])
     with pytest.raises(OrthophotoPointOutsideBounds):
         sample_orthophoto_color("test-orthophoto", lat=lats[0], lng=lngs[0], overlay_root=root)

@@ -335,7 +335,7 @@ def _sample_canonical(source_path: Path, lat: float, lng: float, sample_size_px:
             if len(bands) != 3 or any(dataset.dtypes[index - 1] != "uint8" for index in bands):
                 raise OrthophotoSourceUnavailable("Fargeprøver krever eksplisitte RGB-bånd med 8-bit verdier.")
             xs, ys = transform("EPSG:4326", dataset.crs, [lng], [lat])
-            col, row = ~dataset.transform @ (xs[0], ys[0])
+            col, row = ~dataset.transform * (xs[0], ys[0])
             if not math.isfinite(col) or not math.isfinite(row):
                 raise OrthophotoPointOutsideBounds("Punktet kan ikke projiseres til ortofotoets raster.")
             if not (0 <= col < dataset.width and 0 <= row < dataset.height):
