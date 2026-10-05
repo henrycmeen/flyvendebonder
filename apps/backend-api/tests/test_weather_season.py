@@ -69,3 +69,18 @@ def test_rejects_inverted_and_excessive_periods():
         season_context(date(2026, 4, 3), date(2026, 4, 2))
     with pytest.raises(ValueError):
         season_context(date(2025, 1, 1), date(2026, 4, 2))
+
+
+def test_weather_gate_preserves_missing_data_and_property_access(client):
+    response = client.get("/api/v1/weather/season?start=2026-03-31&end=2026-08-02")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["property_id"] > 0
+    assert result["status"] == "unavailable"
+    assert result["reason"] == "source_pending_review"
+    assert result["source"] is None
+    assert result["precipitation"]["observed_sum_mm"] is None
+    assert response.headers["cache-control"] == "no-store"
+    assert client.get("/api/v1/weather/season?start=2026-03-31&end=2026-08-02&property_id=999999").status_code == 404
+    assert client.get("/api/v1/weather/season?start=2026-08-02&end=2026-03-31").status_code == 422
+    assert client.get("/api/v1/weather/season?start=2099-01-01&end=2099-01-02").status_code == 422

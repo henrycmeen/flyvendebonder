@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
+import { apiGet } from "@/lib/api";
 import { overlappingBounds, validBounds, type ComparisonImage } from "@/lib/library-comparison";
 import "./library-comparison.css";
 
@@ -13,7 +14,7 @@ function ComparisonMaps({ left, right }: { left: ComparisonImage; right: Compari
   useEffect(() => {
     const overlap = overlappingBounds(left, right);
     if (!leftRef.current || !rightRef.current || !overlap) return;
-    const maps = [leftRef.current, rightRef.current].map(container => L.map(container, { attributionControl: false, zoomControl: true, scrollWheelZoom: false, maxZoom: 22 }));
+    const maps = [leftRef.current, rightRef.current].map(container => L.map(container, { attributionControl: false, zoomControl: false, scrollWheelZoom: true, maxZoom: 22 }));
     const images = [left, right];
     const layers = images.map((item, i) => {
       const bounds = item.bounds!;
@@ -40,12 +41,37 @@ function PhotoPanel({ item }: { item: ComparisonImage | undefined }) {
   return <a href={item.imageUrl} target="_blank" rel="noreferrer" aria-label={`Åpne ${item.label} i full størrelse`} className="fb-comparison-photo"><img src={item.imageUrl} alt={`${item.label}, ${dateLabel(item.date)}`} onError={() => setFailed(true)} /></a>;
 }
 
+function ComparisonWeather({ leftDate, rightDate }: { leftDate: string; rightDate: string }) {
+  const [status, setStatus] = useState("Henter værgrunnlag …");
+  useEffect(() => {
+    const controller = new AbortController();
+    const [start, end] = [leftDate, rightDate].sort();
+    apiGet<{status: string; precipitation: {observed_sum_mm: number | null; complete: boolean; covered_days: number; expected_days: number}}>("/api/v1/weather/season", {
+      query: {start, end}, signal: controller.signal, retries: 0, cache: false,
+    }).then(({data}) => {
+      if (controller.signal.aborted) return;
+      const rain = data.precipitation;
+      setStatus(data.status === "unavailable" || rain.observed_sum_mm == null ? "Værgrunnlag er ikke tilgjengelig for disse datoene ennå." : `${rain.observed_sum_mm.toLocaleString("nb-NO")} mm målt · ${rain.covered_days} av ${rain.expected_days} døgn${rain.complete ? "" : " · ufullstendig periode"}`);
+    }).catch(() => { if (!controller.signal.aborted) setStatus("Værgrunnlag er ikke tilgjengelig for disse datoene ennå."); });
+    return () => controller.abort();
+  }, [leftDate, rightDate]);
+  return <p className="fb-comparison-note" role="status">{status}</p>;
+}
+
 export function LibraryComparison({ images, kind, partial = false }: { images: ComparisonImage[]; kind: "photo" | "orthophoto"; partial?: boolean }) {
   const prefix = `compare_${kind}_`;
   const [selection, setSelection] = useState(() => {
     const query = new URLSearchParams(window.location.search);
     return { open: query.get(prefix + "open") === "1", left: query.get(prefix + "left") ?? "", right: query.get(prefix + "right") ?? "" };
   });
+  useEffect(() => {
+    const restore = () => {
+      const query = new URLSearchParams(window.location.search);
+      setSelection({open: query.get(prefix + "open") === "1", left: query.get(prefix + "left") ?? "", right: query.get(prefix + "right") ?? ""});
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [prefix]);
   const scopes = useMemo(() => Array.from(new Set(images.map(item => item.scope))), [images]);
   const left = images.find(item => item.id === selection.left);
   const right = images.find(item => item.id === selection.right);
@@ -56,7 +82,8 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     setSelection(next);
     const url = new URL(window.location.href);
     for (const [key, value] of Object.entries(next)) url.searchParams.set(prefix + key, key === "open" ? (value ? "1" : "0") : String(value));
-    window.history.replaceState(window.history.state, "", url);
+    if (next.open && !selection.open) window.history.pushState(window.history.state, "", url);
+    else window.history.replaceState(window.history.state, "", url);
   };
   const open = () => {
     const first = left ?? images.find(item => item.id === "jorde-4-orthophoto") ?? images[0];
@@ -76,5 +103,6 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     {sync ? <ComparisonMaps key={`${left.id}/${right.id}`} left={left} right={right} /> : <div className="fb-comparison-panels">{[left,right].map((item,index) => <div key={item?.id ?? index}><p className="fb-comparison-caption">{item ? `${dateLabel(item.date)} · ${item.label}` : "Dato eller kilde mangler"}</p><PhotoPanel item={item} /></div>)}</div>}
     <p className="fb-comparison-note">{kind === "photo" ? "Fotoene vises uavhengig. Samme eiendom betyr ikke samme motiv; skråfoto er ikke geometrisk sammenstilt. Åpne et bilde for å undersøke originalvisningen." : sync ? "Panorering og zoom er synkronisert innen geografisk overlapp. Webvisningene kan ha ulik oppløsning, lys og dekning; felttilknytning er ikke verifisert." : "Velg to ulike datoer med geografisk overlapp for synkronisert panorering og zoom. Tilgjengelige bilder kan fortsatt åpnes hver for seg."}</p>
     {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Lukk sammenligningen og last inn flere bilder fra biblioteket for flere datoer og kilder.</p>}
+    {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} leftDate={left.date} rightDate={right.date} />}
   </section>;
 }

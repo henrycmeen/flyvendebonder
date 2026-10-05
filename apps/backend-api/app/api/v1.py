@@ -1963,6 +1963,30 @@ def get_orthophoto_color_sample(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/weather/season")
+def get_weather_season(
+    response: Response,
+    start: date_type = Query(...),
+    end: date_type = Query(...),
+    property_id: int | None = Query(None, ge=1),
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from ..services.weather_season import season_context
+
+    property_obj = _require_active_property(db, user.id, property_id)
+    if end > datetime.now(timezone.utc).date():
+        raise HTTPException(status_code=422, detail="Historisk vær kan ikke hentes for framtidige datoer")
+    try:
+        # No reviewed Frost station/series or client ID exists for this pilot.
+        # Keep the gate closed rather than return synthetic or estimated weather.
+        result = season_context(start, end, reason="source_pending_review")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return {"property_id": property_obj.id, **result}
+
+
 @router.get("/logs", response_model=BackendLogsResponse)
 def get_logs(
     limit: int = Query(default=200, ge=1, le=1000),

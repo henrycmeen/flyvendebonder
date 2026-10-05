@@ -70,6 +70,8 @@ export function OrthophotoColorAnalysisPopup({ outcome, onClose }: OrthophotoCol
             ) : null}
           </div>
 
+          {outcome.source.sourceKind === "preview" && <p className="mt-3 text-xs leading-5 text-fb-text-secondary">Omtrentlig prøve fra forhåndsvisningen. Kan ikke brukes som presis måling eller tallfestet endring mellom datoer.</p>}
+
           <div className="mt-3 rounded-xl bg-fb-surface-ghost p-3">
             <div className="grid grid-cols-2 gap-2 text-xs">
               <span className="text-fb-text-secondary">Mean RGB</span>
