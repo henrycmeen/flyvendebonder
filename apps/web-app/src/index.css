@@ -2113,3 +2113,30 @@ summary:focus-visible,
     border-radius: 0; background: transparent; box-shadow: none;
   }
 }
+
+/* Fluid-inspired hierarchy: one raised surface, quiet grouped controls. */
+.fb-filter-group-label { margin: 0; font-size: 11px; line-height: 16px; font-weight: 500; color: var(--fb-text-secondary); }
+.fb-filter-years { padding: 4px; border-radius: 12px; background: rgba(0, 0, 0, 0.035); }
+.fb-filter-years .fb-filter-choice,
+.fb-filter-seasons .fb-filter-choice { min-height: 36px; padding: 6px 10px; border-radius: 8px; border-color: transparent; box-shadow: none; font-weight: 500; }
+.fb-filter-choice { transition-property: background-color, color, border-color; }
+.fb-filter-choice:focus-visible { outline: 2px solid var(--fb-text-secondary); outline-offset: -3px; box-shadow: none; }
+@media (max-width: 767px) {
+  .fb-mobile-control-surface, .fb-mobile-menu {
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  .fb-mobile-dock__item { border-radius: 16px; }
+  .fb-mobile-menu .fb-mobile-action { min-height: 60px; flex-direction: row; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; }
+  .fb-mobile-action > svg { flex-shrink: 0; }
+  .fb-mobile-menu .fb-sidebar-header { padding: 16px 16px 12px; }
+  .fb-mobile-menu .fb-sidebar-header + div { padding: 8px 16px; }
+  .fb-mobile-menu .fb-sidebar-settings-trigger { border-radius: 12px; }
+  .fb-filter-years .fb-filter-choice,
+  .fb-filter-seasons .fb-filter-choice { min-height: 44px; font-size: 12px; }
+  .fb-mobile-control-surface .fb-liquid-filter__panel { max-height: min(62dvh, calc(100dvh - 150px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-filter-choice { transition: none; }
+}

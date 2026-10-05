@@ -17,3 +17,13 @@ Et shadcn-basert komponentgrunnlag med et konsistent liquid/glass-uttrykk. Behol
 Dette er første sammenhengende V2-leveranse. Browserimporten støtter bilder; video og bilder uten nødvendig geometri krever fortsatt eksisterende eller senere arbeidsflyter. Filstørrelsesgrensene gjelder varig lagring etter multipart-parsing; ingress/spooling trenger separat driftsgrense. Søking og filtrering i biblioteket er eksplisitt begrenset til innlastede bilder.
 
 V2 forhåndsvises med isolerte data på Mac mini. Bredt redesign publiseres etter at Henry har sett det konkrete resultatet og godkjent publisering. Den tidligere godkjenningen gjelder ferdig kontrollerte små kart-/innstillingsrettelser.
+
+## Fluid Functionalism — videreføring 5. oktober 2026
+Referansene er [Surfaces](https://www.fluidfunctionalism.com/docs/surfaces) og [Button](https://www.fluidfunctionalism.com/docs/button), visuelt undersøkt i nettleser. Referansens hovedknapp ble målt til 36 px høyde, 13 px tekst og 8 px radius. Vi bruker prinsippene i eksisterende shadcn/Radix-komponenter, med minst 44 px trykkhøyde på mobil.
+
+- Hierarki: én hevet glassflate for mobilmeny og filter, roligere grupper inni flaten.
+- Gruppering: år i fast rutenett; årstider som enkle valg; opptaksdager beholder synlig dato og antall.
+- Konsistens: felles knappestørrelser, felt, faner og hjørner. Mer bruker kompakte rader med ikon og tekst.
+- Respons: hover/trykk endrer farge uten skalering eller flyttende markering. Tastaturfokus og reduced motion beholdes.
+
+Ingen ny avhengighet eller registry-kode er hentet inn. Kartet, bildene og 3D-gården beholdes. Kontrollert ved 320/375 px mobil og 1440 px desktop; kartfilterets åpne/lukke-forløp, menynavigasjon, innstillingsfaner og bredde. Prosjektvalidering og isolert stack-smoke på 8814/5214 består. Dette er lokal V2-forhåndsvisning.

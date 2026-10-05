@@ -171,11 +171,12 @@ export function FilterPanel({
                   <div
                     className={cn(
                       "space-y-2 transition-[opacity,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
-                      expanded ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
+                      expanded ? "opacity-100" : "opacity-0",
                     )}
-                    style={{ transitionDelay: expanded ? "40ms" : "0ms" }}
+
                   >
-                    <div className="flex flex-wrap gap-2">
+                    <p className="fb-filter-group-label">År</p>
+                    <div className="fb-filter-years grid grid-cols-4 gap-1 sm:grid-cols-8">
                       {years.map((year) => {
                         const selected = selectedYear === year;
                         const label = year === "all" ? "Alle" : year;
@@ -184,7 +185,7 @@ export function FilterPanel({
                             key={year}
                             type="button"
                             className={cn(
-                              "fb-filter-choice rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              "fb-filter-choice rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)]",
                               selected ? selectedChipClass : idleChipClass,
                             )}
                             aria-pressed={selected}
@@ -200,11 +201,12 @@ export function FilterPanel({
                   <div
                     className={cn(
                       "space-y-2 transition-[opacity,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
-                      expanded ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                      expanded ? "opacity-100" : "opacity-0",
                     )}
-                    style={{ transitionDelay: expanded ? "90ms" : "0ms" }}
+
                   >
-                    <div className="flex flex-wrap gap-2">
+                    <p className="fb-filter-group-label">Årstid</p>
+                    <div className="fb-filter-seasons flex flex-wrap gap-1">
                       {seasonButtons.map((item) => {
                         const Icon = item.icon;
                         const disabled = item.key !== "all" && seasonCounts[item.key] === 0;
@@ -215,7 +217,7 @@ export function FilterPanel({
                             type="button"
                             disabled={disabled}
                             className={cn(
-                              "fb-filter-choice inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              "fb-filter-choice inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)]",
                               selected ? selectedChipClass : idleChipClass,
                               disabled && "cursor-not-allowed opacity-40",
                             )}

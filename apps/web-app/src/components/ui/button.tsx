@@ -5,20 +5,20 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-    "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-[13px] font-medium transition-[transform,background-color,color,border-color,box-shadow,opacity] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none enabled:active:scale-[0.98] enabled:active:ease-[var(--fb-motion-easing-accelerate)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-fb-surface-base disabled:pointer-events-none disabled:opacity-50 data-[loading=true]:cursor-wait data-[state=loading]:cursor-wait data-[state=success]:!bg-[color:var(--fb-accent-emerald)] data-[state=success]:!text-fb-surface-base data-[state=error]:!bg-[color:var(--fb-accent-danger)] data-[state=error]:!text-fb-surface-base data-[state=error]:!focus-visible:ring-[color:var(--fb-accent-danger)]",
+    "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-[13px] font-medium transition-[background-color,color,border-color,box-shadow,filter] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 data-[loading=true]:cursor-wait data-[state=loading]:cursor-wait data-[state=success]:!bg-[color:var(--fb-accent-emerald)] data-[state=success]:!text-fb-surface-base data-[state=error]:!bg-[color:var(--fb-accent-danger)] data-[state=error]:!text-fb-surface-base data-[state=error]:!focus-visible:ring-[color:var(--fb-accent-danger)]",
   {
     variants: {
       variant: {
-        default: "bg-fb-text-primary text-white hover:opacity-90 focus-visible:ring-fb-season-solid",
+        default: "bg-fb-text-primary text-white enabled:hover:brightness-95 enabled:active:brightness-90 focus-visible:ring-fb-season-solid",
         outline:
-          "border border-fb-border-subtle bg-fb-surface-base text-fb-text-primary hover:bg-fb-surface-ghost focus-visible:ring-fb-season-solid",
-        ghost: "text-fb-text-secondary hover:bg-fb-surface-ghost focus-visible:ring-fb-season-solid",
-        secondary: "border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base focus-visible:ring-fb-focus",
-        destructive: "bg-[color:var(--fb-accent-danger)] text-white hover:brightness-95 focus-visible:ring-fb-focus",
+          "border border-fb-border-subtle bg-fb-surface-base text-fb-text-primary enabled:hover:bg-fb-surface-ghost enabled:active:bg-fb-border-subtle focus-visible:ring-fb-season-solid",
+        ghost: "text-fb-text-secondary enabled:hover:bg-fb-surface-ghost enabled:active:bg-fb-border-subtle focus-visible:ring-fb-season-solid",
+        secondary: "border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary enabled:hover:bg-fb-surface-base enabled:active:bg-fb-border-subtle focus-visible:ring-fb-focus",
+        destructive: "bg-[color:var(--fb-accent-danger)] text-white enabled:hover:brightness-95 enabled:active:brightness-90 focus-visible:ring-fb-focus",
       },
       size: {
-        default: "h-9 px-3.5 py-2",
-        sm: "h-8 rounded-lg px-3 text-xs",
+        default: "h-9 px-3.5 py-2 max-sm:h-11",
+        sm: "h-8 rounded-lg px-3 text-xs max-sm:h-11",
         lg: "h-11 rounded-lg px-5",
         icon: "h-11 w-11",
       },

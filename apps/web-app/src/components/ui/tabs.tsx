@@ -12,7 +12,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md border border-fb-border-subtle bg-fb-surface-ghost p-1 text-fb-text-secondary",
+      "inline-flex min-h-10 items-center justify-center rounded-lg max-sm:min-h-[50px] max-sm:p-0.5 border border-fb-border-subtle bg-fb-surface-ghost p-1 text-fb-text-secondary",
       className,
     )}
     {...props}
@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-[transform,background-color,color,box-shadow] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none enabled:hover:scale-[1.01] enabled:active:scale-[0.98] enabled:active:ease-[var(--fb-motion-easing-accelerate)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[state=active]:bg-fb-surface-base data-[state=active]:text-fb-text-primary data-[state=active]:shadow-sm",
+      "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md max-sm:h-11 px-3 py-1.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--fb-motion-duration-micro)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none enabled:hover:bg-fb-surface-base enabled:hover:text-fb-text-primary enabled:active:bg-fb-border-subtle disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[state=active]:bg-fb-surface-base data-[state=active]:text-fb-text-primary",
       className,
     )}
     {...props}
