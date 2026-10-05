@@ -74,7 +74,7 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
         <SheetContent side="left" className="fb-mobile-menu bg-fb-surface-page" onCloseAutoFocus={(event) => { event.preventDefault(); mobileTriggerRef.current?.focus(); }}>
-          <DialogPrimitive.Title className="sr-only">Hovedmeny</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">Verktøy</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             Navigasjon og innstillinger for Flyvendebønder.
           </DialogPrimitive.Description>
@@ -98,11 +98,15 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
         setDesktopHovered(false);
       }}
       className={cn(
-        "fb-sidebar hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] md:flex md:flex-col",
-        effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
+        "fb-sidebar relative z-20 hidden h-screen w-[5.5rem] shrink-0 md:block",
       )}
     >
-      {content}
+      <div className={cn(
+        "absolute inset-y-0 left-0 flex flex-col border-r border-fb-border-subtle bg-fb-surface-base transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
+        effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
+      )}>
+        {content}
+      </div>
     </aside>
   );
 }
@@ -120,7 +124,7 @@ function SidebarFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElem
 }
 
 function SidebarInset({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
-  return <main className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden", className)} {...props} />;
+  return <main className={cn("relative isolate flex min-w-0 flex-1 flex-col overflow-hidden", className)} {...props} />;
 }
 
 function SidebarMenu({ className, ...props }: React.HTMLAttributes<HTMLUListElement>) {
@@ -143,8 +147,9 @@ function SidebarMenuButton({ className, active = false, closeOnClick = false, on
     <button
       type="button"
       data-active={active ? "true" : "false"}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-3 text-left text-sm font-medium text-fb-text-secondary transition-[background-color,color,box-shadow,transform] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:bg-white/34 hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[active=true]:bg-white/72 data-[active=true]:text-fb-text-primary data-[active=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.52),0_8px_18px_rgba(35,48,56,0.08)]",
+        "flex w-full items-center gap-3 text-left text-sm font-medium text-fb-text-secondary transition-[background-color,color] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:bg-black/[0.035] hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[active=true]:bg-black/[0.055] data-[active=true]:text-fb-text-primary data-[active=true]:[&_svg]:text-fb-text-primary",
         className,
       )}
       onClick={(event) => {

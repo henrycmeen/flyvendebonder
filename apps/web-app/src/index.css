@@ -2027,7 +2027,8 @@ summary:focus-visible,
   .fb-mobile-actions-heading > span:first-child { font-size: 17px; font-weight: 600; }
   .fb-mobile-actions-heading > span:last-child { font-size: 12px; color: #626262; }
   .fb-mobile-menu ul.fb-mobile-actions { gap: 8px; }
-  .fb-mobile-menu .fb-mobile-action { min-height: 80px; padding: 12px; align-items: flex-start; flex-direction: column; gap: 8px; border-radius: 18px; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(0, 0, 0, 0.05); color: #171717; }
+  .fb-mobile-menu .fb-mobile-action { min-height: 72px; padding: 12px; align-items: flex-start; flex-direction: column; gap: 8px; border-radius: 14px; background: transparent; border: 1px solid transparent; color: #171717; }
+  .fb-mobile-menu .fb-mobile-action:hover { background: rgba(0, 0, 0, 0.035); }
   .fb-mobile-action__title { display: block; font-size: 13px; font-weight: 600; }
   .fb-mobile-action__detail { display: block; margin-top: 2px; font-size: 11px; color: #626262; font-weight: 400; }
   .fb-mobile-menu .fb-mobile-action[data-active="true"] { background: rgba(223, 102, 42, 0.12); color: #8f3c17; border-color: rgba(170, 73, 28, 0.2); }
