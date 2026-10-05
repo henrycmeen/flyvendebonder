@@ -19,6 +19,14 @@ ORTHOPHOTO_SAMPLE_SIZE_PX = 21
 ALPHA_VALID_THRESHOLD = 16
 EPSILON = 0.0001
 
+# Version the full sampling/statistics contract, not radiometric calibration.
+# Native: WGS84 -> native CRS -> inverse affine, containing-pixel window,
+# uint8 RGB with band masks/alpha, then shared RGB statistics and indices.
+NATIVE_ALGORITHM_VERSION = "native-crs-affine-rgb-v1"
+# Preview: linear WGS84 bounds -> preview pixels, rounded containing-pixel
+# window, Pillow RGBA/alpha, then the same uncalibrated RGB statistics.
+PREVIEW_ALGORITHM_VERSION = "preview-wgs84-rgb-v1"
+
 
 class OrthophotoSamplingError(Exception):
     """Base class for expected orthophoto sampling failures."""
@@ -366,7 +374,8 @@ def _sample_canonical(source_path: Path, lat: float, lng: float, sample_size_px:
             if dataset.crs.is_projected and dataset.crs.linear_units == "metre":
                 gsd = {"x": _round(math.hypot(affine.a, affine.d), 4),
                        "y": _round(math.hypot(affine.b, affine.e), 4)}
-            provenance = {"crs": dataset.crs.to_string(),
+            provenance = {"algorithm_version": NATIVE_ALGORITHM_VERSION,
+                          "crs": dataset.crs.to_string(),
                           "transform": list(affine)[:6],
                           "coordinate_mapping": "crs_affine",
                           "quantitative_eligible": True,
@@ -415,7 +424,8 @@ def sample_orthophoto_color(
                 pixels = list(image.crop((left, top, right, bottom)).convert("RGBA").getdata())
         except (UnidentifiedImageError, OSError) as exc:
             raise OrthophotoSourceUnavailable("Forhåndsvisning kan ikke leses.") from exc
-        provenance = {"crs": None, "transform": None,
+        provenance = {"algorithm_version": PREVIEW_ALGORITHM_VERSION,
+                      "crs": None, "transform": None,
                       "coordinate_mapping": "approximate_wgs84_bounds",
                       "quantitative_eligible": False,
                       "fallback_reason": "canonical_source_unavailable",

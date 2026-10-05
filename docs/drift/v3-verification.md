@@ -116,3 +116,39 @@ backend-python39, validate og stack-smoke, run 37330333076.
 - Full validate + stack smoke før siste vedlikeholdsretting: PASS, /tmp/flyvendebonder-v3-r13-validation.log.
 
 - Sluttkontroll etter regenereringsretting: full validate + isolert stack smoke PASS, logg `/tmp/flyvendebonder-v3-r13-final-validation.log`. 362 backendtester, frontendtester, lint og build. Uavhengig review bekrefter at registrert preview ikke kan kollidere med et annet produkts output; ugyldige felt stoppes før builder/mutasjon. Eksisterende CLI-test prøver bevaring, ID-kollisjon og feilforløp med uendrede filer.
+
+## Sesongvisning og prøvens algoritmeversjon
+
+En separat fixture `browser-season-fixture.db` og harness
+`work/v3-context/browser-season-fixture.py` prøver de samme syntetiske
+Frost-responsene gjennom normalisering/gate/aggregat. Ingen live værdata.
+
+Observerte UI-resultater 5. oktober 2026:
+
+- År til dato: 1. januar–5. oktober UTC, 5 mm tilgjengelig sum, 13 °C,
+  2 av 278 døgn. Januar har 2/31 døgn; måneder uten målinger viser Mangler,
+  oktober er merket del av måned (0/5 valgte døgn).
+- Tilpasset 31. mars–1. april: 2/2 døgn, 5 mm og 13 °C. Mars har målt
+  0 mm (1/1 valgt døgn), april 5 mm (1/1); begge er del av måned.
+- Valgte ortofoto forblir jorde 4 31. mars / august-r13 2. august.
+  Feltobservasjonen følger fortsatt opptaksdatoene, ikke den separate værperioden.
+- Daglige stolper og akkumulert tilgjengelig nedbør vises. Manglende
+  døgn gir hull i kurven; ingen målinger blir gjort om til null.
+- 390×844 dokumentbredde/scrollbredde er begge 390 px med åpne graf- og
+  kildedetaljer. Bilder: `v3-season-fixture-mobile.png` og
+  `v3-season-fixture-desktop.png` i kontrollmaskinens `work/v3-context`.
+- Dagens dato og validering bruker UTC som API-et. Fixture dekker Oslo
+  rett etter lokal midnatt. Skjema validerer faktisk innsendte datofelt,
+  også når native date/autofill ikke oppdaterer React-draft før submit.
+- Uavhengig slutt-review: ingen gjenstående blokkere i UTC/FormData-rettingen.
+
+To identiske prøver fra det faktiske august-TIFF-et returnerer 441 gyldige
+piksler og samme RGB-statistikk ved 59.173828 / 9.670614. Responsen inkluderer
+`native-crs-affine-rgb-v1`; eksplisitt preview har `preview-wgs84-rgb-v1`.
+Dette versjonerer prøvemetoden, ikke radiometrisk kalibrering eller avlingsnytte.
+Bevisinput/resultat: `work/v3-context/v3-r13-repeat.json`.
+
+Sluttkontroll: full validate + isolert stack smoke PASS, 362 backendtester,
+frontendtester (inkludert weather-series), lint og build. Logg på Mac mini:
+`/tmp/flyvendebonder-v3-season-final-validation.log`. Midlertidige
+fixture-servere 8860/5240 og smoke-servere 8840/5227 er stoppet etter prøven.

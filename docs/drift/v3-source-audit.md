@@ -48,3 +48,20 @@ Vårens originaler må gjenfinnes og knyttes til riktig manifest med egen filhas
 CRS/transform og gyldighetsmasker. Deretter trengs konkret kontroll av gyldig
 pikseldekning på jorde 4 og registrering mellom datoene. En bbox eller korrekt
 native prøvetaking alene er ikke nok til tallfestet endringsanalyse.
+
+## Sampling-versjon
+
+Kandidatens API oppgir `native-crs-affine-rgb-v1` for originalens CRS/affine
+prøvetaking og `preview-wgs84-rgb-v1` for eksplisitt omtrentlig preview.
+`quantitative_eligible` betyr her at et georeferert uint8 RGB-originalraster kan
+prøvetas teknisk. Det godkjenner ikke skygger, radiometrisk kalibrering eller
+kvantitativ sammenligning mellom datoer; kvalitetsflagg og kildebegrensninger
+må vurderes separat. Ingen datodelta eller agronomisk konklusjon beregnes.
+
+Gjenta-prøve mot den faktiske augustfilen: to direkte servicekall med samme
+kilde, 59.173828 / 9.670614 og 21×21 vindu ga identiske resultater; 441 gyldige
+piksler, middel-RGB 59,4 / 67,6 / 48,1 og `shadow_risk`. Rasterio 1.5.2.
+Vårens original ga fortsatt eksplisitt utilgjengelig kilde. Reproduksjonsresultat
+på kontrollmaskinen: `work/v3-context/v3-r13-repeat.json`. API-ruting ble prøvd
+separat på isolert 8825 før versjonsfeltet ble lagt til; eksisterende API-test
+kontrollerer at versjonsfeltet nå er med i responsen.

@@ -80,6 +80,7 @@ def test_sample_orthophoto_color_prefers_available_canonical_source(tmp_path):
 
     assert sample["source"]["kind"] == "canonical"
     assert sample["source"]["coordinate_mapping"] == "crs_affine"
+    assert sample["source"]["algorithm_version"] == "native-crs-affine-rgb-v1"
     assert sample["source"]["crs"] == "EPSG:32632"
     assert sample["source"]["quantitative_eligible"] is True
     assert sample["source"]["path_basename"] == "canonical.tif"
@@ -161,6 +162,7 @@ def test_orthophoto_color_sample_api_maps_bounds_error(tmp_path, monkeypatch):
         success = client.get("/api/v1/orthophotos/test-orthophoto/color-sample",
                              params={"lat": 59.5, "lng": 9.5, "sample_size_px": 3})
         assert success.status_code == 200
+        assert success.json()["source"]["algorithm_version"] == "native-crs-affine-rgb-v1"
         assert success.json()["source"]["coordinate_mapping"] == "crs_affine"
         assert success.json()["source"]["quantitative_eligible"] is True
         response = client.get(
@@ -176,6 +178,8 @@ def test_orthophoto_color_sample_api_maps_bounds_error(tmp_path, monkeypatch):
                              params={"lat": 59.5, "lng": 9.5, "allow_preview": True})
         assert preview.status_code == 200
         assert preview.json()["source"]["quantitative_eligible"] is False
+        assert preview.json()["source"]["algorithm_version"] == "preview-wgs84-rgb-v1"
+        assert preview.json()["source"]["algorithm_version"] != success.json()["source"]["algorithm_version"]
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Punktet ligger utenfor ortofotoets raster."
@@ -225,6 +229,7 @@ def test_preview_requires_opt_in_and_discloses_approximation(tmp_path):
     assert sample["source"]["kind"] == "preview"
     assert sample["source"]["quantitative_eligible"] is False
     assert sample["source"]["coordinate_mapping"] == "approximate_wgs84_bounds"
+    assert sample["source"]["algorithm_version"] == "preview-wgs84-rgb-v1"
     assert sample["source"]["fallback_reason"] == "canonical_source_unavailable"
     assert sample["source"]["gsd_m_per_px"] is None
     assert "approximate_preview_not_quantitative" in sample["analysis"]["quality_flags"]
