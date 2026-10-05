@@ -1,3 +1,4 @@
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
@@ -41,7 +42,7 @@ import { PhotoInspector } from "@/components/photo-inspector";
 import { SkogbrukPage } from "@/components/skogbruk-page";
 import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { MobileDock, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
   FlightMission,
@@ -300,6 +301,7 @@ function getPhotoImageUrl(photo: Pick<PhotoFeature, "image_url" | "thumbnail_url
 }
 
 export default function App() {
+  const isMobile = useIsMobile();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialDate = params.get("date");
   const initialPhoto = params.get("photo");
@@ -3269,6 +3271,68 @@ export default function App() {
     );
   }
 
+  const handleChangeView = (view: AppView) => {
+    handleClosePhotoViewer();
+    setActiveView(view);
+    addLog(
+      "info",
+      view === "album"
+        ? "Bibliotek åpnet"
+        : view === "orthophotos"
+          ? "Ortofotoene åpnet"
+        : view === "forest"
+          ? "Skogbruk åpnet"
+        : view === "planning"
+          ? "Planlegging åpnet"
+        : view === "import"
+          ? "Import åpnet"
+          : view === "video"
+            ? "Video åpnet"
+            : "Kart åpnet",
+    );
+  };
+
+  const mapTools = mapControlVisibility.showLayerPanel ? (
+    <MapLayerPanel
+      propertyCount={activeProperties.length}
+      showPropertyLayer={showPropertyLayer}
+      propertyStatus={propertyStatus}
+      onTogglePropertyLayer={handleTogglePropertyLayer}
+      showSoilLayer={showSoilLayer}
+      soilStatus={soilStatus}
+      onToggleSoilLayer={handleToggleSoilLayer}
+      showForestLayer={showForestLayer}
+      forestStatus={forestStatus}
+      onToggleForestLayer={handleToggleForestLayer}
+      colorAnalysisActive={colorAnalysisActive}
+      colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
+      colorAnalysisStatus={colorAnalysisStatus}
+      onToggleColorAnalysis={(next) => {
+        if (operatingAreaTool.state.phase === "confirming") return;
+        if (next) operatingAreaTool.deactivate();
+        setColorAnalysisActive(next);
+        addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
+      }}
+      operatingAreaToolActive={operatingAreaTool.state.active}
+      onToggleOperatingAreaTool={(next) => {
+        if (operatingAreaTool.state.phase === "confirming") return;
+        if (next) setColorAnalysisActive(false);
+        operatingAreaTool.toggle(next);
+        addLog("info", next ? "Jordeverktøy skrudd på" : "Jordeverktøy skrudd av");
+      }}
+      baseMapStyle={baseMapStyle}
+      onChangeQuickBaseMap={(nextStyle) => {
+        if (baseMapStyle === nextStyle) {
+          return;
+        }
+        baseMapTileErrorRef.current = null;
+        setBaseMapStyle(nextStyle);
+        addLog("info", "Bakgrunnskart endret", null, { style: nextStyle, source: "quick-toggle" });
+      }}
+      onExpandedChange={setIsMapLayerPanelExpanded}
+    />
+  ) : null;
+
   return (
     <div
       data-season={activeUiSeason}
@@ -3362,26 +3426,7 @@ export default function App() {
               setShowZoomControls(next);
               addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
             }}
-            onChangeView={(view) => {
-              handleClosePhotoViewer();
-              setActiveView(view);
-              addLog(
-                "info",
-                view === "album"
-                  ? "Bibliotek åpnet"
-                  : view === "orthophotos"
-                    ? "Ortofotoene åpnet"
-                  : view === "forest"
-                    ? "Skogbruk åpnet"
-                  : view === "planning"
-                    ? "Planlegging åpnet"
-                  : view === "import"
-                    ? "Import åpnet"
-                    : view === "video"
-                      ? "Video åpnet"
-                      : "Kart åpnet",
-              );
-            }}
+            onChangeView={handleChangeView}
             onTogglePropertyLayer={handleTogglePropertyLayer}
             onSaveProfile={handleSaveProfile}
             onAdminLogin={handleAdminLogin}
@@ -3395,8 +3440,10 @@ export default function App() {
             <div data-view={activeView} className="fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
 
 
+              <div className="fb-mobile-control-surface">
               {activeView === "map" ? (
                 <FilterPanel
+                  mapTools={isMobile ? mapTools : undefined}
                   dates={filteredTimeline}
                   selectedDate={selectedDate}
                   dayScope={dayScope}
@@ -3438,6 +3485,8 @@ export default function App() {
                   }}
                 />
               ) : null}
+              <MobileDock activeView={activeView} onChangeView={handleChangeView} />
+              </div>
 
               {activeView === "map" ? (
                 <div className="pointer-events-none absolute right-3 top-3 z-[920] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2 sm:right-4 sm:top-4">
@@ -3450,46 +3499,7 @@ export default function App() {
                       </Button>
                     </div>
                   ) : null}
-                  {mapControlVisibility.showLayerPanel ? (
-                    <MapLayerPanel
-                      propertyCount={activeProperties.length}
-                      showPropertyLayer={showPropertyLayer}
-                      propertyStatus={propertyStatus}
-                      onTogglePropertyLayer={handleTogglePropertyLayer}
-                      showSoilLayer={showSoilLayer}
-                      soilStatus={soilStatus}
-                      onToggleSoilLayer={handleToggleSoilLayer}
-                      showForestLayer={showForestLayer}
-                      forestStatus={forestStatus}
-                      onToggleForestLayer={handleToggleForestLayer}
-                      colorAnalysisActive={colorAnalysisActive}
-                      colorAnalysisAvailable={visibleMapOrthophotoOverlays.length > 0}
-                      colorAnalysisStatus={colorAnalysisStatus}
-                      onToggleColorAnalysis={(next) => {
-                        if (operatingAreaTool.state.phase === "confirming") return;
-                        if (next) operatingAreaTool.deactivate();
-                        setColorAnalysisActive(next);
-                        addLog("info", next ? "Fargeanalyse skrudd på" : "Fargeanalyse skrudd av");
-                      }}
-                      operatingAreaToolActive={operatingAreaTool.state.active}
-                      onToggleOperatingAreaTool={(next) => {
-                        if (operatingAreaTool.state.phase === "confirming") return;
-                        if (next) setColorAnalysisActive(false);
-                        operatingAreaTool.toggle(next);
-                        addLog("info", next ? "Jordeverktøy skrudd på" : "Jordeverktøy skrudd av");
-                      }}
-                      baseMapStyle={baseMapStyle}
-                      onChangeQuickBaseMap={(nextStyle) => {
-                        if (baseMapStyle === nextStyle) {
-                          return;
-                        }
-                        baseMapTileErrorRef.current = null;
-                        setBaseMapStyle(nextStyle);
-                        addLog("info", "Bakgrunnskart endret", null, { style: nextStyle, source: "quick-toggle" });
-                      }}
-                      onExpandedChange={setIsMapLayerPanelExpanded}
-                    />
-                  ) : null}
+                  {isMobile ? null : mapTools}
                   {mapControlVisibility.showOperatingAreaInspector ? (
                     <OperatingAreaInspector
                       state={operatingAreaTool.state}

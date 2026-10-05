@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Images, Map as MapIcon, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -17,24 +18,6 @@ interface SidebarContextValue {
 }
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
-
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = React.useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < breakpoint;
-  });
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const query = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
-    const sync = () => setIsMobile(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, [breakpoint]);
-
-  return isMobile;
-}
 
 function SidebarProvider({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();

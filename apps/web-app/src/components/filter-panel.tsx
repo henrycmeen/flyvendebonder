@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, CloudSun, Flower2, Leaf, Snowflake, Sun } from "lucide-react";
 
 import { captureTimelineState, formatCaptureDate, type CaptureDate } from "@/lib/capture-timeline";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 type SeasonFilter = "all" | "spring" | "summer" | "autumn" | "winter";
 
 interface FilterPanelProps {
+  mapTools?: ReactNode;
   selectedYear: string;
   selectedSeason: SeasonFilter;
   availableYears: string[];
@@ -40,6 +41,7 @@ const seasonButtons: Array<{
 ];
 
 export function FilterPanel({
+  mapTools,
   selectedYear,
   selectedSeason,
   availableYears,
@@ -126,20 +128,20 @@ export function FilterPanel({
             aria-controls={panelId}
           >
             <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[color:var(--fb-text-primary)] transition-transform duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)]"
+              className="fb-filter-season-icon inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[color:var(--fb-text-primary)] transition-transform duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)]"
               style={{ color: "color-mix(in srgb, var(--fb-season-solid) 72%, var(--fb-text-primary))" }}
             >
               <seasonMeta.Icon className="h-7 w-7" strokeWidth={2.25} />
             </span>
 
-            <span className="min-w-0 flex-1">
+            <span className="fb-filter-summary min-w-0 flex-1">
               <span className="block text-[1.2rem] font-semibold leading-none tracking-[-0.05em] text-[color:var(--fb-season-solid)] transition-[font-size] duration-[var(--fb-motion-duration-medium)] sm:text-[1.3rem]">
                 {yearLabel}
               </span>
               <span className="mt-0.5 block text-[0.76rem] font-semibold uppercase tracking-[0.05em] text-fb-text-primary">
                 {seasonMeta.label}
               </span>
-              {dayScope === "selected" && timeline.selected && <span className="mt-1 block text-xs text-fb-text-secondary">{formatCaptureDate(timeline.selected.date, true)}</span>}
+              {dayScope === "selected" && timeline.selected && <span className="fb-filter-day mt-1 block text-xs text-fb-text-secondary">{formatCaptureDate(timeline.selected.date, true)}</span>}
             </span>
 
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-fb-text-secondary">
@@ -160,6 +162,7 @@ export function FilterPanel({
           >
             <div id={panelId} className="overflow-hidden" inert={!expanded} aria-hidden={!expanded}>
               <div className="fb-liquid-filter__panel max-h-[65dvh] overflow-y-auto px-4 pb-4 pt-2">
+                {mapTools && <div className="fb-mobile-map-tools" aria-label="Kartverktøy">{mapTools}</div>}
                 <div className="space-y-3">
                   <div
                     className={cn(

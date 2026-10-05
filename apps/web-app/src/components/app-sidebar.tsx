@@ -1,9 +1,10 @@
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
 
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, MobileDock } from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
@@ -101,6 +102,27 @@ function SidebarNavigation({
   onChangeView,
   onStartMediaImport,
 }: Pick<AppSidebarProps, "activeView" | "onChangeView" | "onStartMediaImport">) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    const actions = [
+      { view: "planning" as const, label: "Planlegging", detail: "Jorder og oppdrag", Icon: Route },
+      { view: "orthophotos" as const, label: "Ortofoto", detail: "Se gården ovenfra", Icon: Image },
+      { view: "forest" as const, label: "Skogbruk", detail: "Skog og terreng", Icon: Trees },
+      ...(onStartMediaImport ? [{ view: "import" as const, label: "Importer", detail: "Legg til opptak", Icon: Import }] : []),
+    ];
+    return (
+      <SidebarMenu className="fb-mobile-actions">
+        {actions.map(({ view, label, detail, Icon }) => (
+          <SidebarMenuItem key={view}>
+            <SidebarMenuButton active={activeView === view} closeOnClick className="fb-mobile-action" onClick={() => view === "import" && onStartMediaImport ? onStartMediaImport() : onChangeView(view)}>
+              <Icon className="h-5 w-5" />
+              <span><span className="fb-mobile-action__title">{label}</span><span className="fb-mobile-action__detail">{detail}</span></span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    );
+  }
   return (
     <>
       <SidebarMenu className="gap-2">
@@ -197,13 +219,13 @@ export function AppSidebar({
   onAdminLogin,
   onAdminLogout,
 }: AppSidebarProps) {
+  const isMobile = useIsMobile();
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <>
     <Sidebar>
       <SidebarHeader className="fb-sidebar-header px-5">
-        <div className="flex items-center gap-2">
+        {isMobile ? <div className="fb-mobile-actions-heading"><span>Verktøy</span><span>{profile?.property?.label ?? "Meen gård"}</span></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
             <span
               className={cn(
@@ -217,7 +239,7 @@ export function AppSidebar({
               Flyvendebønder
             </span>
           </a>
-        </div>
+        </div>}
       </SidebarHeader>
 
       <SidebarContent className="gap-6 px-5 py-6">
@@ -263,7 +285,7 @@ export function AppSidebar({
               variant="ghost"
               className="fb-sidebar-settings-trigger h-auto w-full overflow-visible rounded-2xl px-3.5 py-3 text-[14px] font-medium text-fb-text-primary [&>span]:w-full [&>span]:justify-center"
             >
-              <div className="flex w-full flex-col justify-end gap-2">
+              {isMobile ? <div className="flex w-full items-center gap-3"><Settings2 className="h-5 w-5" /><span>Innstillinger</span></div> : <div className="flex w-full flex-col justify-end gap-2">
                 <div className="fb-sidebar-profile-hero" aria-hidden="true">
                   <PropertyHero3D profile={profile} variant="sidebar" />
                 </div>
@@ -273,13 +295,11 @@ export function AppSidebar({
                   </span>
                   <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
                 </div>
-              </div>
+              </div>}
             </Button>
           }
         />
       </SidebarFooter>
     </Sidebar>
-    <MobileDock activeView={activeView} onChangeView={onChangeView} />
-    </>
   );
 }
