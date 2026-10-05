@@ -152,3 +152,14 @@ Sluttkontroll: full validate + isolert stack smoke PASS, 362 backendtester,
 frontendtester (inkludert weather-series), lint og build. Logg på Mac mini:
 `/tmp/flyvendebonder-v3-season-final-validation.log`. Midlertidige
 fixture-servere 8860/5240 og smoke-servere 8840/5227 er stoppet etter prøven.
+
+## Utsatt 3D og første lasting
+
+Full lokal validate + isolert stack smoke består etter utsatt renderer/GLB,
+inkludert 362 backendtester, frontendtester, lint og build. Logg på Mac mini:
+/tmp/flyvendebonder-v3-lazy-final-validation.log. Uavhengig review av tre
+komponentfiler fant ingen gjenstående blokkere. Browser feilprøver for
+utilgjengelig WebGL2 og blokkert modellfil beholder illustrert SVG.
+Normal settings- og mobilmenymodell beholder kamerautsnitt og lastes først
+ved synlig behov. Se v3-first-load.md for målte bytes og begrensninger.
+CI på ed9f7b5: run 37336581908 er grønn. Neste commit kontrolleres separat.

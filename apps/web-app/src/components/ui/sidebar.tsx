@@ -1,4 +1,5 @@
 import * as React from "react";
+import { SidebarVisibilityContext } from "@/components/ui/sidebar-visibility";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Images, Map as MapIcon, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -66,7 +67,9 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
         className,
       )}
     >
-      {children}
+      <SidebarVisibilityContext.Provider value={isMobile ? openMobile : !effectiveCollapsed}>
+        {children}
+      </SidebarVisibilityContext.Provider>
     </div>
   );
 

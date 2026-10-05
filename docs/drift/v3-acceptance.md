@@ -13,21 +13,17 @@ eller full måloppnåelse er ikke bekreftet.
 | Vær mellom datoene og sesong | Adapter/gate/aggregat/UI prøvd med merkede syntetiske Frost-responser. År til dato (UTC), valgfritt intervall, daglig og akkumulert tilgjengelig nedbør, månedssummer og dekning er nettleserprøvd. Ekte klienttilgang, valgt serie og stasjonsegnethet mangler. Testdata er ikke sesongmålinger. |
 | Eksisterende feltobservasjoner | Faktisk eiendom og observasjonstid/offset brukes. Tom tilstand prøvd med previewdata, positiv periodefiltrering med merket fixture. Ukjent bildetilknytning er synlig. |
 | Ingen avlingsprognose | UI skiller visuell/RGB-prøve og værkontekst fra agronomisk konklusjon. Ingen avlingsscore eller regn-basert diagnose. |
-| Reviewbar neste versjon | Draft PR #341. Lokale repo-kontroller og isolert stack smoke består på dfaf687; GitHub-run 37333879799 består på dfaf687. Ny sesongvisning og algoritmeversjon består full lokal validate + isolert stack smoke; CI på neste commit må bekreftes separat. |
+| Reviewbar neste versjon | Draft PR #341. GitHub-run 37336581908 består på ed9f7b5, inkludert sesongvisning og algoritmeversjon. Utsatt 3D-lasting består full lokal validate + isolert stack smoke og feilprøver; CI på neste commit bekreftes separat. |
 | Faktisk bruk på mobil / felt | 390×844 er nettleserprøve. Henrys fysiske prøve og produktaksept gjenstår. |
 
 ## Eksisterende friksjon
 
-#297 er fortsatt åpen: dfaf687-buildens hoved-JS er 1 889 203 byte, gårdens GLB
-6 504 036 byte. `settings-page.tsx` importerer `PropertyHero3D` statisk, og
-`property-hero-3d.tsx` importerer model-viewer. Eldre påstand i #298 om en bevart
-lazy-grense er derfor ikke bekreftet i denne koden. Filstørrelser er ikke en
-måling av faktisk first-load waterfall eller mobilhastighet.
-
-#297/#298 avgrenses som eget ytelsesarbeid: målt waterfall og begrunnet lazy-
-grense kreves før splitting/assetendring; V3-sammenligningen skal ikke erklære
-problemet løst ved å skjule buildvarselet. Valgt 3D-uttrykk beholdes inntil en
-målt forbedring og fallback er prøvd.
+#297/#298 er fortsatt åpne, med målt delretting: skjult meny laster ikke
+lenger model-viewer eller gårdens 6,5 MB GLB. Fersk lokal IAB/Chromium-
+preview gir 52,13 % mindre encoded hoved-JS (553 430 → 264 921 B).
+Normal settings-/mobilmeny beholder kamerautsnitt; merket SVG-fallback
+består ved manglende WebGL2 og blokkert GLB. Ingen fysisk mobil- eller
+Safari-aksept, og hoved-JS er fortsatt over 500 kB. Se v3-first-load.md.
 
 #243 er ikke live-retestet i denne leveransen. Koden har synlig soilStatus både
 på kartlaget og i innstillinger, men dette beviser ikke NIBIO-dekning, korrekt
