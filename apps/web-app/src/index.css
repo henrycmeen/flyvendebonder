@@ -2106,3 +2106,25 @@ summary:focus-visible,
 .photo-viewer-details > summary { padding: 12px 14px; font-size: 13px; color: var(--fb-text-secondary); cursor: pointer; }
 .photo-viewer-details > summary:focus-visible { outline: 2px solid var(--fb-focus-ring); outline-offset: -2px; }
 .photo-viewer-details[open] > summary { border-bottom: 1px solid var(--fb-border-subtle); }
+
+/* Mer expands the same navigation surface; the dock stays inside the dialog. */
+@media (max-width: 767px) {
+  body:has(.fb-mobile-menu) .fb-mobile-control-surface { visibility: hidden; }
+  .fb-mobile-menu {
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 1rem - env(safe-area-inset-bottom));
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.76);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .fb-mobile-menu .fb-sidebar-shell { min-height: 0; overflow-y: auto; flex: 1; }
+  .fb-mobile-menu .fb-sidebar-footer { padding-bottom: 12px; }
+  .fb-mobile-menu .fb-mobile-dock {
+    position: relative; left: auto; bottom: auto; transform: none;
+    width: 100%; max-width: none; flex-shrink: 0;
+    border: 0; border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 0; background: transparent; box-shadow: none;
+  }
+}

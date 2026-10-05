@@ -4,7 +4,7 @@ import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { MobileDock, Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
@@ -223,7 +223,7 @@ export function AppSidebar({
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <Sidebar>
+    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} embedded />}>
       <SidebarHeader className="fb-sidebar-header px-5">
         {isMobile ? <div className="fb-mobile-actions-heading"><span>Verktøy</span><span>{profile?.property?.label ?? "Meen gård"}</span></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">

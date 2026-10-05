@@ -55,7 +55,7 @@ function useSidebar() {
   return context;
 }
 
-function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
+function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
   const effectiveCollapsed = collapsedDesktop && !desktopHovered;
@@ -79,6 +79,7 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
             Navigasjon og innstillinger for Flyvendebønder.
           </DialogPrimitive.Description>
           {content}
+          {mobileDock}
         </SheetContent>
       </Sheet>
     );
@@ -204,7 +205,7 @@ function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDiv
   );
 }
 
-function MobileDock({ activeView, onChangeView }: { activeView: string; onChangeView: (view: "map" | "album") => void }) {
+function MobileDock({ activeView, onChangeView, embedded = false }: { activeView: string; onChangeView: (view: "map" | "album") => void; embedded?: boolean }) {
   const { isMobile, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar();
   const [highlightIndex, setHighlightIndex] = React.useState<number | null>(null);
   const selectedIndex = openMobile ? 2 : activeView === "map" ? 0 : activeView === "album" ? 1 : 2;
@@ -216,13 +217,13 @@ function MobileDock({ activeView, onChangeView }: { activeView: string; onChange
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setHighlightIndex(null); }}
     >
       <span className="fb-mobile-dock__highlight" aria-hidden="true" />
-      <Button onPointerEnter={() => setHighlightIndex(0)} onFocus={() => setHighlightIndex(0)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => onChangeView("map")}>
+      <Button onPointerEnter={() => setHighlightIndex(0)} onFocus={() => setHighlightIndex(0)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("map"); }}>
         <MapIcon className="h-5 w-5" /><span>Kart</span>
       </Button>
-      <Button onPointerEnter={() => setHighlightIndex(1)} onFocus={() => setHighlightIndex(1)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => onChangeView("album")}>
+      <Button onPointerEnter={() => setHighlightIndex(1)} onFocus={() => setHighlightIndex(1)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
         <Images className="h-5 w-5" /><span>Bibliotek</span>
       </Button>
-      <Button ref={mobileTriggerRef} onPointerEnter={() => setHighlightIndex(2)} onFocus={() => setHighlightIndex(2)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label="Mer – åpne meny" onClick={() => setOpenMobile((current) => !current)}>
+      <Button ref={embedded ? undefined : mobileTriggerRef} onPointerEnter={() => setHighlightIndex(2)} onFocus={() => setHighlightIndex(2)} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={() => setOpenMobile((current) => !current)}>
         <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
       </Button>
     </nav>
