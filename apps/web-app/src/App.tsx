@@ -3409,7 +3409,7 @@ export default function App() {
           />
 
           <SidebarInset className={activeView === "settings" ? "bg-white" : "bg-canvas md:p-3 md:pl-0"}>
-            <div data-view={activeView} className={activeView === "settings" ? "fb-app-content relative h-full overflow-hidden bg-white" : "fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating"}>
+            <div data-view={activeView} className={activeView === "settings" ? "fb-app-content relative h-full overflow-hidden bg-white" : `fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:bg-[color:var(--fb-surface-ghost)]/28 ${activeView === "album" ? "md:border md:border-fb-border-subtle/80" : ""}`}>
 
 
               <div className="fb-mobile-control-surface">

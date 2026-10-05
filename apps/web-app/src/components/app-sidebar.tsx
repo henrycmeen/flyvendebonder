@@ -115,7 +115,7 @@ export function AppSidebar({
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <Sidebar reserveDesktopWidth={activeView === "settings"} mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
+    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
       <SidebarHeader className="fb-sidebar-header px-5">
         {isMobile ? <div className="fb-mobile-menu-hero" aria-hidden="true"><PropertyHero3D profile={profile} variant="menu" /></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">

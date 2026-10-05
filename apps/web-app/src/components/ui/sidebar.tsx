@@ -55,7 +55,7 @@ function useSidebar() {
   return context;
 }
 
-function Sidebar({ className, children, mobileDock, reserveDesktopWidth = false }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode; reserveDesktopWidth?: boolean }) {
+function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
   const effectiveCollapsed = collapsedDesktop && !desktopHovered;
@@ -99,13 +99,12 @@ function Sidebar({ className, children, mobileDock, reserveDesktopWidth = false 
         setDesktopHovered(false);
       }}
       className={cn(
-        "fb-sidebar relative z-20 hidden h-screen shrink-0 md:block",
-        reserveDesktopWidth && "transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
-        reserveDesktopWidth && !effectiveCollapsed ? "w-[18.75rem]" : "w-[5.5rem]",
+        "fb-sidebar relative z-20 hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none md:block",
+        effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
       )}
     >
       <div className={cn(
-        "absolute inset-y-0 left-0 flex flex-col border-r border-fb-border-subtle bg-fb-surface-base transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
+        "absolute inset-y-0 left-0 flex flex-col bg-fb-surface-base transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
         effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
       )}>
         {content}
@@ -115,7 +114,7 @@ function Sidebar({ className, children, mobileDock, reserveDesktopWidth = false 
 }
 
 function SidebarHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-b border-fb-border-subtle/70 px-4 py-4", className)} {...props} />;
+  return <div className={cn("px-4 py-4", className)} {...props} />;
 }
 
 function SidebarContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -123,7 +122,7 @@ function SidebarContent({ className, ...props }: React.HTMLAttributes<HTMLDivEle
 }
 
 function SidebarFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-t border-fb-border-subtle/70 px-3 py-3", className)} {...props} />;
+  return <div className={cn("px-3 py-3", className)} {...props} />;
 }
 
 function SidebarInset({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
