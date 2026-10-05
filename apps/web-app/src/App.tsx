@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Menu, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { AUTH_REJECTED_EVENT, apiDelete, apiGet, apiPatch, apiPost, ApiError, clearApiCache } from "@/lib/api";
 import { subscribeClientLogs } from "@/lib/client-logger";
@@ -41,7 +41,7 @@ import { PhotoInspector } from "@/components/photo-inspector";
 import { SkogbrukPage } from "@/components/skogbruk-page";
 import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type {
   AdminSessionStatus,
   FlightMission,
@@ -3392,15 +3392,8 @@ export default function App() {
           />
 
           <SidebarInset className="bg-canvas md:p-3 md:pl-0">
-            <div className="relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
-              <div className="pointer-events-none absolute left-3 top-3 z-[860] sm:left-4 sm:top-4">
-                <SidebarTrigger
-                  className="fb-map-overlay-trigger pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-fb-border-subtle bg-fb-surface-page text-fb-text-primary shadow-fb-floating transition-colors hover:bg-fb-surface-ghost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid md:hidden"
-                  aria-label="Åpne meny"
-                >
-                  <Menu className="h-4 w-4" />
-                </SidebarTrigger>
-              </div>
+            <div data-view={activeView} className="fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
+
 
               {activeView === "map" ? (
                 <FilterPanel

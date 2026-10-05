@@ -1,4 +1,7 @@
 import * as React from "react";
+import { Images, Map as MapIcon, MoreHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -8,6 +11,7 @@ interface SidebarContextValue {
   isMobile: boolean;
   openMobile: boolean;
   setOpenMobile: React.Dispatch<React.SetStateAction<boolean>>;
+  mobileTriggerRef: React.RefObject<HTMLButtonElement | null>;
   collapsedDesktop: boolean;
   toggleDesktop: () => void;
 }
@@ -34,6 +38,7 @@ function useIsMobile(breakpoint = 768) {
 
 function SidebarProvider({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
+  const mobileTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [openMobile, setOpenMobile] = React.useState(false);
   const [collapsedDesktop, setCollapsedDesktop] = React.useState(true);
 
@@ -49,6 +54,7 @@ function SidebarProvider({ children }: { children: React.ReactNode }) {
         isMobile,
         openMobile,
         setOpenMobile,
+        mobileTriggerRef,
         collapsedDesktop,
         toggleDesktop: () => setCollapsedDesktop((current) => !current),
       }}
@@ -67,7 +73,7 @@ function useSidebar() {
 }
 
 function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
-  const { isMobile, openMobile, setOpenMobile, collapsedDesktop } = useSidebar();
+  const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
   const effectiveCollapsed = collapsedDesktop && !desktopHovered;
   const content = (
@@ -84,7 +90,7 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
   if (isMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-        <SheetContent side="left" className="bg-fb-surface-page">
+        <SheetContent side="left" className="fb-mobile-menu bg-fb-surface-page" onCloseAutoFocus={(event) => { event.preventDefault(); mobileTriggerRef.current?.focus(); }}>
           <DialogPrimitive.Title className="sr-only">Hovedmeny</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             Navigasjon og innstillinger for Flyvendebønder.
@@ -210,6 +216,24 @@ function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDiv
   );
 }
 
+function MobileDock({ activeView, onChangeView }: { activeView: string; onChangeView: (view: "map" | "album") => void }) {
+  const { isMobile, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar();
+  if (!isMobile) return null;
+  return (
+    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon">
+      <Button variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => onChangeView("map")}>
+        <MapIcon className="h-5 w-5" /><span>Kart</span>
+      </Button>
+      <Button variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => onChangeView("album")}>
+        <Images className="h-5 w-5" /><span>Bibliotek</span>
+      </Button>
+      <Button ref={mobileTriggerRef} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label="Mer – åpne meny" onClick={() => setOpenMobile((current) => !current)}>
+        <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
+      </Button>
+    </nav>
+  );
+}
+
 export {
   Sidebar,
   SidebarContent,
@@ -223,4 +247,5 @@ export {
   SidebarProvider,
   SidebarCollapseTrigger,
   SidebarTrigger,
+  MobileDock,
 };

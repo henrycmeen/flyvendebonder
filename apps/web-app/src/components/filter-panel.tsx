@@ -106,9 +106,10 @@ export function FilterPanel({
   return (
     <div
       ref={rootRef}
-      className="pointer-events-none absolute bottom-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))] left-1/2 z-[860] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 sm:bottom-4 sm:left-4 sm:w-auto sm:max-w-[calc(100vw-1.5rem)] sm:translate-x-0"
+      className="fb-filter-anchor pointer-events-none absolute bottom-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))] left-1/2 z-[860] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] -translate-x-1/2 sm:bottom-4 sm:left-4 sm:w-auto sm:max-w-[calc(100vw-1.5rem)] sm:translate-x-0"
     >
       <Card
+        data-expanded={expanded}
         className={cn(
           "fb-liquid-filter pointer-events-auto overflow-hidden rounded-[24px] transition-[width,border-radius,box-shadow,transform] duration-[var(--fb-motion-duration-large)] ease-[var(--fb-motion-easing-standard)]",
           expanded ? "w-full sm:w-[min(640px,calc(100vw-1.5rem))]" : "w-[min(15.75rem,calc(100vw-1rem))] sm:w-[256px]",
@@ -176,7 +177,7 @@ export function FilterPanel({
                             key={year}
                             type="button"
                             className={cn(
-                              "rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              "fb-filter-choice rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
                               selected ? selectedChipClass : idleChipClass,
                             )}
                             aria-pressed={selected}
@@ -207,7 +208,7 @@ export function FilterPanel({
                             type="button"
                             disabled={disabled}
                             className={cn(
-                              "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
+                              "fb-filter-choice inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-[background-color,color,border-color,opacity,transform,box-shadow] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:scale-[1.01]",
                               selected ? selectedChipClass : idleChipClass,
                               disabled && "cursor-not-allowed opacity-40",
                             )}
@@ -236,7 +237,7 @@ export function FilterPanel({
                       <div className="flex flex-wrap gap-2" role="group" aria-label="Velg opptaksdag">
                         <button
                           type="button"
-                          className={cn("min-h-11 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", dayScope === "all" ? selectedChipClass : idleChipClass)}
+                          className={cn("fb-filter-choice min-h-11 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", dayScope === "all" ? selectedChipClass : idleChipClass)}
                           aria-pressed={dayScope === "all"}
                           onClick={() => onDayScopeChange("all")}
                         >
@@ -255,7 +256,7 @@ export function FilterPanel({
                               key={entry.date}
                               type="button"
                               data-capture-date={entry.date}
-                              className={cn("inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", selected ? selectedChipClass : idleChipClass)}
+                              className={cn("fb-filter-choice inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors", selected ? selectedChipClass : idleChipClass)}
                               aria-pressed={selected}
                               aria-label={`Velg ${formatCaptureDate(entry.date)} · ${entry.count} ${entry.count === 1 ? "bilde" : "bilder"} i arkivet`}
                               title={`${entry.count} ${entry.count === 1 ? "bilde" : "bilder"}`}

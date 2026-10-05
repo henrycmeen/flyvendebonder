@@ -3,7 +3,7 @@ import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, MobileDock } from "@/components/ui/sidebar";
 import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
@@ -200,6 +200,7 @@ export function AppSidebar({
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
+    <>
     <Sidebar>
       <SidebarHeader className="fb-sidebar-header px-5">
         <div className="flex items-center gap-2">
@@ -278,5 +279,7 @@ export function AppSidebar({
         />
       </SidebarFooter>
     </Sidebar>
+    <MobileDock activeView={activeView} onChangeView={onChangeView} />
+    </>
   );
 }
