@@ -207,6 +207,31 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
     },
   },
   {
+    id: "jorde-4-20260331-regenerated-v3",
+    label: "Jorde 4 · 31. mars · regenerert",
+    propertyReference: "4003-70/17/0",
+    capturedDate: "2026-03-31",
+    bounds: {
+      west: 9.664575639019116,
+      south: 59.17217886201817,
+      east: 9.67700752181098,
+      north: 59.17549213079299
+    },
+    opacity: 0.82,
+    limitations: [
+      "Regenerert fra 20 vårbilder; 19 bilder er rekonstruert og ett er utelatt. Ny filidentitet erstatter ikke den tapte original-TIFF-en.",
+      "RGB er ikke radiometrisk kalibrert; skygger og mosaikkskjøter kan påvirke prøvene.",
+      "Gyldig pikseloverlapp beviser ikke geometrisk registrering mellom opptaksdatoene."
+    ],
+    canonicalSource: {
+      sha256: "b944200b9ee949aaf4c8eb01269abd4206b3c2d1eb87c4271441022f04a12492",
+      crs: "EPSG:32632",
+      widthPx: 14142,
+      heightPx: 7238
+    },
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/jorde-4-20260331-regenerated-v3.webp`,
+  },
+  {
     id: "august-r13-5cm-orthophoto",
     label: "Augusteksport · 5 cm · r13",
     propertyReference: "4003-70/17/0",

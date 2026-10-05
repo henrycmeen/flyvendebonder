@@ -7,7 +7,7 @@ type Provenance = {raw_value: number; conversion: string | null};
 type WeatherDay = {date: string; precipitation_mm: number | null; temperature_c: number | null; precipitation_period: MeasurementPeriod | null; temperature_period: MeasurementPeriod | null; precipitation_provenance?: Provenance | null};
 type SeasonWeather = {
   status: string;
-  source: {id: string; provider?: string; series: Record<string, string>; station_review?: {station_name: string; distance_m: number; suitability_note: string; reviewed_at: string}} | null;
+  source: {id: string; provider?: string; dataset?: string; series: Record<string, string>; station_review?: {station_name: string; distance_m: number; suitability_note: string; reviewed_at: string}} | null;
   period: {start: string; end: string; basis: string; timezone: string};
   days: WeatherDay[];
   precipitation: {observed_sum_mm: number | null; complete: boolean; covered_days: number; expected_days: number};
@@ -118,7 +118,7 @@ export function ComparisonWeather({ propertyId, leftDate, rightDate }: {property
         <p>Målt vær er kontekst for bildene og gir ingen avlingsprognose.</p>
         <details><summary>Teknisk serieidentitet</summary><dl>{Object.entries(data.source?.series ?? {}).map(([element, series]) => <div key={element}><dt>{element}</dt><dd className="break-all">{series}</dd></div>)}</dl></details>
         <div className="max-h-72 overflow-auto"><table className="w-full text-left"><caption className="text-left">Daglige kontrollerte målinger</caption><thead><tr><th>Dato</th><th>Nedbør / måleperiode</th><th>Temperatur / måleperiode</th></tr></thead><tbody>{data.days.map(day => <tr key={day.date}><th scope="row">{day.date}</th><td>{number(day.precipitation_mm,"mm")}<br />{period(day.precipitation_period)}{day.precipitation_provenance?.conversion && <><br />Kildeverdi: {day.precipitation_provenance.raw_value}. {day.precipitation_provenance.conversion === "documented_no_precipitation_minus_one_to_zero" ? "Kilden bruker −1 for ingen nedbør; vist som 0 mm." : "Normalisert av kildeadapteren."}</>}</td><td>{number(day.temperature_c,"°C")}<br />{period(day.temperature_period)}</td></tr>)}</tbody></table></div>
-        <a href="https://frost.met.no/" target="_blank" rel="noreferrer">MET Norway Frost</a>
+        <a href={data.source?.dataset?.startsWith("seKlima") ? "https://seklima.met.no/" : "https://frost.met.no/"} target="_blank" rel="noreferrer">{data.source?.dataset?.startsWith("seKlima") ? "MET Norway seKlima" : "MET Norway Frost"}</a>
       </details>
     </>}
   </section>;

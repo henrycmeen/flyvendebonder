@@ -151,3 +151,46 @@ def test_missing_metadata_duplicate_invalidates_otherwise_valid_date():
 @pytest.mark.parametrize("reference", [None, 5, "2026-09-01T00:00:00", "bad-date"])
 def test_malformed_or_naive_reference_is_rejected(reference):
     assert normalize_frost(payload(reference=reference), RAIN, DAY, DAY) == ([], 1)
+
+
+def test_public_seklima_uses_no_auth_and_preserves_strict_provenance():
+    def handler(req):
+        assert str(req.url).startswith("https://rim.k8s.met.no/api/v1/observations?")
+        assert "authorization" not in req.headers
+        assert req.url.params["sources"] == "SN123"
+        assert req.url.params["referenceTime"] == "2026-09-01/2026-09-02"
+        assert req.url.params["timeResolution"] == "days"
+        data = payload()
+        data.update(createdAt="2026-10-05T12:00:00Z", apiVersion="v0", license="https://creativecommons.org/licenses/by/3.0/no/", totalItemCount=1)
+        data["data"][0]["observations"][0].update(performanceCategory="C", exposureCategory="2")
+        return httpx.Response(200, json=data)
+    # Explicit auth=None must disable even an injected client's default auth.
+    with httpx.Client(auth=("unused", "unused"), transport=httpx.MockTransport(handler)) as client:
+        result = fetch_frost(DAY, DAY, FrostConfig(enabled=True, selections=(RAIN,), provider="seklima"), client=client)
+    assert len(result["observations"]) == 1
+    assert result["source"]["dataset"] == "seKlima public API (Frost observation schema)"
+    assert result["source"]["payload_metadata"][0]["total_item_count"] == 1
+    assert result["observations"][0]["provenance"]["performance_category"] == "C"
+
+
+def test_public_transport_retains_quality_gate_and_never_falls_back():
+    calls = []
+    def handler(req):
+        calls.append(req.url.host)
+        data = payload()
+        data["data"][0]["observations"][0]["qualityCode"] = 1
+        return httpx.Response(200, json=data)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = fetch_frost(DAY, DAY, FrostConfig(enabled=True, selections=(RAIN,), provider="seklima"), client=client)
+    assert result["observations"] == []
+    assert result["rejected_observations"] == 1
+    assert calls == ["rim.k8s.met.no"]
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(412))) as client:
+        assert fetch_frost(DAY, DAY, FrostConfig(enabled=True, selections=(RAIN,), provider="seklima"), client=client)["reason"] == "seklima_no_data"
+
+
+def test_unknown_provider_is_closed_before_network():
+    with httpx.Client(transport=httpx.MockTransport(lambda req: pytest.fail("unexpected network"))) as client:
+        result = fetch_frost(DAY, DAY, FrostConfig(enabled=True, selections=(RAIN,), provider="other"), client=client)
+    assert result["observations"] == []
+    assert result["reason"] == "frost_selection_unreviewed"

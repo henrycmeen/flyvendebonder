@@ -1,4 +1,6 @@
-"""Reviewed Frost v0 daily series; closed by default, no automatic station choice.
+"""Reviewed MET daily series through explicit Frost or public seKlima transport.
+
+Closed by default, no automatic station choice or provider fallback.
 
 Period and quality semantics: https://frost.met.no/concepts2.html and
 https://frost.met.no/dataclarifications.html. Reference dates are provider labels,
@@ -19,6 +21,7 @@ PRECIPITATION = "sum(precipitation_amount P1D)"
 TEMPERATURE = "mean(air_temperature P1D)"
 UNITS = {PRECIPITATION: "mm", TEMPERATURE: "degC"}
 ENDPOINT = "https://frost.met.no/observations/v0.jsonld"
+SEKLIMA_ENDPOINT = "https://rim.k8s.met.no/api/v1/observations"
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ class FrostConfig:
     client_id: str = field(default="", repr=False)
     selections: tuple[FrostSeries, ...] = ()
     timeout_seconds: float = 10.0
+    provider: str = "frost"
 
 
 def _offset_hours(value: str) -> int:
@@ -52,6 +56,8 @@ def _offset_hours(value: str) -> int:
 
 
 def _validate(config: FrostConfig) -> None:
+    if config.provider not in ("frost", "seklima"):
+        raise ValueError("Choose an explicit supported historical provider")
     if not math.isfinite(config.timeout_seconds) or not 0 < config.timeout_seconds <= 30:
         raise ValueError("Frost timeout must be between zero and 30 seconds")
     if not config.selections or len(config.selections) > 2:
@@ -159,6 +165,8 @@ def normalize_frost(payload: dict[str, Any], selection: FrostSeries, start: date
                         "time_series_id": obs["timeSeriesId"], "time_offset": obs["timeOffset"],
                         "time_resolution": obs["timeResolution"], "level": obs.get("level"),
                         "quality_code": obs["qualityCode"], "unit": obs["unit"],
+                        "performance_category": obs.get("performanceCategory"),
+                        "exposure_category": obs.get("exposureCategory"),
                         "conversion": "documented_no_precipitation_minus_one_to_zero" if converted else None,
                     },
                 })
@@ -178,27 +186,31 @@ def normalize_frost(payload: dict[str, Any], selection: FrostSeries, start: date
 
 
 def fetch_frost(start: date, end: date, config: FrostConfig, *, client: httpx.Client | None = None) -> dict[str, Any]:
-    """Bounded fetch for server use; configuration never enters the response.
+    """Bounded fetch through an explicit MET provider; configuration stays private.
 
-    Caller may inject a fixture client. Missing client ID or disabled gate causes
-    no network call. Each series is explicitly queried; local checks still pin
+    Caller may inject a fixture client. Disabled gate causes no network call;
+    the Frost transport additionally requires a client ID. Each series is explicitly queried; local checks still pin
     sensor/offset/resolution/level/quality rather than trusting API filtering.
     """
     _bounds(start, end)
     result: dict[str, Any] = {"observations": [], "source": None, "reason": None, "rejected_observations": 0}
-    if not config.enabled or not config.client_id.strip():
-        result["reason"] = "frost_disabled_or_unconfigured"
+    prefix = "seklima" if config.provider == "seklima" else "frost"
+    if not config.enabled or (config.provider == "frost" and not config.client_id.strip()):
+        result["reason"] = f"{prefix}_disabled_or_unconfigured"
         return result
     try:
         _validate(config)
     except (ValueError, TypeError, AttributeError):
-        result["reason"] = "frost_selection_unreviewed"
+        result["reason"] = f"{prefix}_selection_unreviewed"
         return result
     result["source"] = {
-        "id": config.selections[0].source_id, "provider": "MET Norway", "dataset": "Frost v0",
+        "id": config.selections[0].source_id, "provider": "MET Norway", "dataset": "seKlima public API (Frost observation schema)" if config.provider == "seklima" else "Frost v0",
+        "endpoint": SEKLIMA_ENDPOINT if config.provider == "seklima" else ENDPOINT,
         "series": {s.element_id: s.identity for s in config.selections},
         "reviewed_selections": [asdict(s) | {"time_resolution": "P1D", "quality_allowlist": [0]} for s in config.selections],
-        "attribution": "MET Norway", "license_reference": "https://docs.api.met.no/doc/License.html",
+        "attribution": "MET Norway", "license_reference": "https://creativecommons.org/licenses/by/3.0/no/" if config.provider == "seklima" else "https://docs.api.met.no/doc/License.html",
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "payload_metadata": [],
     }
     owned = client is None
     http = client or httpx.Client(follow_redirects=False)
@@ -206,23 +218,38 @@ def fetch_frost(start: date, end: date, config: FrostConfig, *, client: httpx.Cl
     try:
         for s in config.selections:
             try:
-                response = http.get(ENDPOINT, params={
-                    "sources": s.source_id, "elements": s.element_id,
-                    "referencetime": f"{start.isoformat()}/{(end + timedelta(days=1)).isoformat()}",
-                    "timeresolutions": "P1D", "timeoffsets": s.time_offset,
-                    "timeseriesids": str(s.time_series_id),
-                }, auth=httpx.BasicAuth(config.client_id, ""), timeout=config.timeout_seconds, follow_redirects=False)
+                reference_range = f"{start.isoformat()}/{(end + timedelta(days=1)).isoformat()}"
+                if config.provider == "seklima":
+                    # Public frontend transport; no credentials, redirects or fallback.
+                    response = http.get(SEKLIMA_ENDPOINT, params={
+                        "sources": s.source_id.split(":")[0], "elements": s.element_id,
+                        "referenceTime": reference_range, "timeResolution": "days",
+                    }, auth=None, timeout=config.timeout_seconds, follow_redirects=False)
+                else:
+                    response = http.get(ENDPOINT, params={
+                        "sources": s.source_id, "elements": s.element_id,
+                        "referencetime": reference_range,
+                        "timeresolutions": "P1D", "timeoffsets": s.time_offset,
+                        "timeseriesids": str(s.time_series_id),
+                    }, auth=httpx.BasicAuth(config.client_id, ""), timeout=config.timeout_seconds, follow_redirects=False)
                 response.raise_for_status()
-                records, rejected = normalize_frost(response.json(), s, start, end)
+                payload = response.json()
+                records, rejected = normalize_frost(payload, s, start, end)
+                result["source"]["payload_metadata"].append({
+                    "element_id": s.element_id,
+                    "created_at": payload.get("createdAt"), "api_version": payload.get("apiVersion"),
+                    "license": payload.get("license"), "total_item_count": payload.get("totalItemCount"),
+                    "reference_range": reference_range,
+                })
                 result["observations"].extend(records)
                 result["rejected_observations"] += rejected
             except httpx.HTTPStatusError as exc:
-                errors.append("frost_no_data" if exc.response.status_code == 404 else "frost_access_denied" if exc.response.status_code in (401, 403) else "frost_provider_error")
+                errors.append(f"{prefix}_no_data" if exc.response.status_code in (404, 412) else f"{prefix}_access_denied" if exc.response.status_code in (401, 403) else f"{prefix}_provider_error")
             except httpx.RequestError:
-                errors.append("frost_provider_unreachable")
+                errors.append(f"{prefix}_provider_unreachable")
             except (ValueError, TypeError, KeyError, OverflowError):
-                errors.append("frost_invalid_response")
-        result["reason"] = errors[0] if errors else "frost_no_accepted_observations" if not result["observations"] else None
+                errors.append(f"{prefix}_invalid_response")
+        result["reason"] = errors[0] if errors else f"{prefix}_no_accepted_observations" if not result["observations"] else None
         result["provider_errors"] = sorted(set(errors))
         return result
     finally:

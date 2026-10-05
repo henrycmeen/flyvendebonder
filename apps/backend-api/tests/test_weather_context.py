@@ -55,3 +55,21 @@ def test_provider_failure_retains_available_element_and_missing_temperature():
     assert result["temperature"]["mean_c"] is None
     assert result["temperature"]["covered_days"] == 0
     assert result["provider_errors"]
+
+
+def test_reviewed_public_provider_does_not_require_client_id():
+    config = settings(historical_weather_provider="seklima", frost_client_id="")
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json=payload(TEMP) if req.url.params["elements"] == TEMP.element_id else payload(RAIN)))) as client:
+        result = property_weather(DAY, DAY, "4003-70/17/0", config, client=client)
+    assert result["status"] == "available"
+    assert result["source"]["dataset"].startswith("seKlima")
+
+
+@pytest.mark.parametrize("changes", [{"frost_weather_enabled": False}, {"frost_reviewed_sources": {}}, {"historical_weather_provider": "other"}])
+def test_public_provider_retains_review_and_enable_gates(changes):
+    config = settings(historical_weather_provider="seklima", frost_client_id="")
+    for key, value in changes.items():
+        setattr(config, key, value)
+    with httpx.Client(transport=httpx.MockTransport(lambda req: pytest.fail("unexpected provider call"))) as client:
+        result = property_weather(DAY, DAY, "4003-70/17/0", config, client=client)
+    assert result["status"] == "unavailable"

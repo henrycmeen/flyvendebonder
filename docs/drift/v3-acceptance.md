@@ -8,12 +8,12 @@ eller full måloppnåelse er ikke bekreftet.
 | --- | --- |
 | To reelle datoer og kilder fra biblioteket | Jorde 4 31. mars / separat august-r13 2. august lastes på desktop og 390×844. Synkroniserte utsnitt, tilbake/frem, manglende valg og bilde er nettleserprøvd. Se v3-verification.md. |
 | Kilde, materialtype og dekning | Visuell preview er merket. Transparens og registrerte begrensninger vises; bbox er ikke full gyldighetsdekning. Skråfoto lover ikke samme motiv. |
-| Korrekt native rasterprøve | Verifisert august-TIFF med SHA256, CRS og transform; API-prøve gir canonical og 441 gyldige piksler i ett vindu. Gjentatt prøve gir identisk resultat; API oppgir egen algoritmeversjon for native og preview. Spring original gir 503. Se v3-source-audit.md. |
-| Samme punkt over to datoer | Ikke ferdig bevist: vårens originalraster mangler, og registrering mellom datoene er ikke målt. Ingen tallfestet endringsscore. |
-| Vær mellom datoene og sesong | Adapter/gate/aggregat/UI prøvd med merkede syntetiske Frost-responser. År til dato (UTC), valgfritt intervall, daglig og akkumulert tilgjengelig nedbør, månedssummer og dekning er nettleserprøvd. Ekte klienttilgang, valgt serie og stasjonsegnethet mangler. Testdata er ikke sesongmålinger. |
+| Korrekt native rasterprøve | Verifisert august-TIFF med SHA256, CRS og transform; API-prøve gir canonical og 441 gyldige piksler i ett vindu. Gjentatt prøve gir identisk resultat; API oppgir egen algoritmeversjon for native og preview. Ny regenerert vår-TIFF er også prøvd via autentisert API: tre koordinater, 441 gyldige piksler per vindu i begge datoer og identiske gjentakelser. Den tapte historiske våroriginalen gir fortsatt 503. Se v3-source-audit.md. |
+| Samme punkt over to datoer | Tre felles koordinater gir native prøver i den nye vår-TIFF-en og august-TIFF-en. Geometrisk registrering mellom datoene er fortsatt ikke målt. Ingen tallfestet endringsscore. |
+| Vær mellom datoene og sesong | Ekte seKlima-målinger fra SN30255:0 Porsgrunn–Ås er verifisert via autentisert API og UI. 31. mars–2. august: 125/125 døgn, 260,4 mm og 12,944 °C i snitt. Stasjonen er 9,7 km unna, 100 moh; lokale avvik og ukjent jordehøyde er synlige begrensninger. Provider er eksplisitt aktivert kun i isolert preview; produksjon er ikke aktivert. Se v3-weather-source.md. |
 | Eksisterende feltobservasjoner | Faktisk eiendom og observasjonstid/offset brukes. Tom tilstand prøvd med previewdata, positiv periodefiltrering med merket fixture. Ukjent bildetilknytning er synlig. |
 | Ingen avlingsprognose | UI skiller visuell/RGB-prøve og værkontekst fra agronomisk konklusjon. Ingen avlingsscore eller regn-basert diagnose. |
-| Reviewbar neste versjon | Draft PR #341. GitHub-run 37336581908 består på ed9f7b5, inkludert sesongvisning og algoritmeversjon. Utsatt 3D-lasting består full lokal validate + isolert stack smoke og feilprøver; CI på neste commit bekreftes separat. |
+| Reviewbar neste versjon | Draft PR #341. Ny kildeleveranse består full lokal validate med 369 backendtester, frontendkontroller, build og isolert stack smoke. Uavhengig review av værtransport og ny rasterkilde fant ingen blokkere. CI for ny commit bekreftes separat. |
 | Faktisk bruk på mobil / felt | 390×844 er nettleserprøve. Henrys fysiske prøve og produktaksept gjenstår. |
 
 ## Eksisterende friksjon
@@ -25,7 +25,7 @@ Normal settings-/mobilmeny beholder kamerautsnitt; merket SVG-fallback
 består ved manglende WebGL2 og blokkert GLB. Ingen fysisk mobil- eller
 Safari-aksept, og hoved-JS er fortsatt over 500 kB. Se v3-first-load.md.
 
-#243 er ikke live-retestet i denne leveransen. Koden har synlig soilStatus både
+#243 er live-retestet: de eldre NIBIO-endepunktene returnerer HTML-feil fremfor kartbilder. Ny harmonisert tjeneste har ikke tilsvarende Jordkvalitet-lag; ingen automatisk semantisk erstatning er gjort. Koden har synlig soilStatus både
 på kartlaget og i innstillinger, men dette beviser ikke NIBIO-dekning, korrekt
 WMS-respons eller status ved tomme/feilende tiles. Jordsmonn brukes ikke som
 beregnet grunnlag i denne sammenligningen. Saken holdes separat åpen; det er
@@ -38,6 +38,6 @@ ikke bevis for at laget fungerer i felt.
    samme område og om hull/skjøter er forståelige på fysisk mobil.
 3. Gjenta med vanlige bilder og kontroller at ulikt motiv ikke forveksles med
    geometrisk justerte opptak.
-4. Når originalene og Frost-tilgang finnes: verifiser kilder, perioder og
-   målinger før reelt vær aktiveres. Formuler deretter ett konkret neste
-   analysebehov fra faktisk bruk.
+4. Kontroller den regenererte vårkilden og værperioden i preview, og vurder om
+   nærliggende stasjonsmålinger gir nyttig kontekst. Formuler deretter ett
+   konkret neste analysebehov fra faktisk bruk.

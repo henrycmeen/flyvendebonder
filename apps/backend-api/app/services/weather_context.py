@@ -8,7 +8,8 @@ from .weather_season import season_context
 
 def property_weather(start: date, end: date, property_reference: str, settings, *, client=None) -> dict:
     unavailable = season_context(start, end, reason="source_pending_review")
-    if not settings.frost_weather_enabled or not settings.frost_client_id.strip():
+    provider = getattr(settings, "historical_weather_provider", "frost")
+    if provider not in ("frost", "seklima") or not settings.frost_weather_enabled or (provider == "frost" and not settings.frost_client_id.strip()):
         return unavailable
     review = settings.frost_reviewed_sources.get(property_reference)
     try:
@@ -23,7 +24,7 @@ def property_weather(start: date, end: date, property_reference: str, settings, 
         if not isinstance(review.get("suitability_note"), str) or not review["suitability_note"].strip():
             return unavailable
         selections = tuple(FrostSeries(**value) for value in review["selections"])
-        config = FrostConfig(enabled=True, client_id=settings.frost_client_id, selections=selections, timeout_seconds=settings.frost_http_timeout_seconds)
+        config = FrostConfig(enabled=True, client_id=settings.frost_client_id, selections=selections, timeout_seconds=settings.frost_http_timeout_seconds, provider=provider)
     except (KeyError, TypeError, ValueError, OverflowError):
         return unavailable
     fetched = fetch_frost(start, end, config, client=client)

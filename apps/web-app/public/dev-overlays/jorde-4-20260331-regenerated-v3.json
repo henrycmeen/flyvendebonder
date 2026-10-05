@@ -1,0 +1,116 @@
+{
+  "width_px": 14142,
+  "height_px": 7238,
+  "utm_bounds": {
+    "westing": 537990.1397654371,
+    "southing": 6559420.805284607,
+    "easting": 538697.1753900943,
+    "northing": 6559782.655210019
+  },
+  "latlng_bounds": {
+    "west": 9.664575639019116,
+    "south": 59.17217886201817,
+    "east": 9.67700752181098,
+    "north": 59.17549213079299
+  },
+  "canonical_latlng_bounds": {
+    "west": 9.664575639019116,
+    "south": 59.17217896216772,
+    "east": 9.677007311184605,
+    "north": 59.17549213079299
+  },
+  "crs": "EPSG:32632",
+  "transform": [
+    0.04999544793220022,
+    0.0,
+    537990.1397654371,
+    0.0,
+    -0.04999308170929333,
+    6559782.655210019
+  ],
+  "label": "Jorde 4 · 31. mars · regenerert",
+  "source_file": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-03-31-jorde4-regenerated-v3/jorde-4-20260331-regenerated-v3.tif",
+  "source_sha256": "b944200b9ee949aaf4c8eb01269abd4206b3c2d1eb87c4271441022f04a12492",
+  "source_bytes": 64120024,
+  "preview_file": "jorde-4-20260331-regenerated-v3.webp",
+  "preview_width_px": 1600,
+  "preview_height_px": 832,
+  "preview_crs": "EPSG:3857",
+  "preview_transform": [
+    0.864944288744879,
+    0.0,
+    1075855.6388686846,
+    0.0,
+    -0.8650988124840507,
+    8218414.535267544
+  ],
+  "preview_resampling": "nearest",
+  "preview_alpha": "preserved_from_canonical_band_4",
+  "capturedDate": "2026-03-31",
+  "year": "2026",
+  "season": "spring",
+  "overlay": {
+    "id": "jorde-4-20260331-regenerated-v3",
+    "label": "Jorde 4 · 31. mars · regenerert",
+    "propertyReference": "4003-70/17/0",
+    "assetFile": "jorde-4-20260331-regenerated-v3.webp",
+    "capturedDate": "2026-03-31",
+    "year": "2026",
+    "season": "spring",
+    "bounds": {
+      "west": 9.664575639019116,
+      "south": 59.17217886201817,
+      "east": 9.67700752181098,
+      "north": 59.17549213079299
+    },
+    "opacity": 0.82,
+    "limitations": [
+      "Regenerert fra 20 vårbilder; 19 bilder er rekonstruert og ett er utelatt. Ny filidentitet erstatter ikke den tapte original-TIFF-en.",
+      "RGB er ikke radiometrisk kalibrert; skygger og mosaikkskjøter kan påvirke prøvene.",
+      "Gyldig pikseloverlapp beviser ikke geometrisk registrering mellom opptaksdatoene.",
+      "Georeferering bygger på bildenes GPS uten GCP eller ekstern align; registrering mot august er ikke målt."
+    ],
+    "canonicalSource": {
+      "sha256": "b944200b9ee949aaf4c8eb01269abd4206b3c2d1eb87c4271441022f04a12492",
+      "crs": "EPSG:32632",
+      "widthPx": 14142,
+      "heightPx": 7238
+    }
+  },
+  "source_dir": "/Volumes/Projects/Active/Flyvendebonder/data/v3-spring-recovery-2026-03-31/images",
+  "project_name": "jorde-4-20260331",
+  "provenance": {
+    "run_id": "v3-spring-recovery-20261005",
+    "registration_status": "v3_workbench_draft",
+    "source_identity_verified": "sha256_matches_export_SHA256SUMS",
+    "source_manifest": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-03-31-jorde4-regenerated-v3/source-manifest.json",
+    "run_config": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-03-31-jorde4-regenerated-v3/run-config.json",
+    "odm_image": "opendronemap/odm@sha256:f3503aab96ab09144e85a17f4e57dbe3883e65ca7542b1a1be12898e02be5a10",
+    "delivery_record": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-03-31-jorde4-regenerated-v3/SHA256SUMS",
+    "capture_relationship": "new_regenerated_product_from_2026-03-31_inputs",
+    "replaces_overlay": null,
+    "source_policy": "canonical_read_only"
+  },
+  "quality": {
+    "classification": "regenerated_orthophoto",
+    "survey_grade": false,
+    "limitations": [
+      "Regenerert fra 20 vårbilder; 19 bilder er rekonstruert og ett er utelatt. Ny filidentitet erstatter ikke den tapte original-TIFF-en.",
+      "RGB er ikke radiometrisk kalibrert; skygger og mosaikkskjøter kan påvirke prøvene.",
+      "Gyldig pikseloverlapp beviser ikke geometrisk registrering mellom opptaksdatoene.",
+      "Georeferering bygger på bildenes GPS uten GCP eller ekstern align; registrering mot august er ikke målt."
+    ],
+    "reconstructed_images": 19,
+    "expected_images": 20,
+    "excluded_images": [
+      "DJI_20260331095435_0114_D.JPG"
+    ],
+    "valid_alpha_gt16_pixels": 32261608,
+    "total_pixels": 102359796,
+    "valid_pixel_fraction": 0.3151785101252058,
+    "dataset_mask_nonzero_pixels": 32261608,
+    "evidence": "/Volumes/Projects/Active/Flyvendebonder/processing/v3-spring-recovery-20261005/jorde-4-20260331/opensfm/reconstruction.json",
+    "gcp_used": false,
+    "cross_date_registration_verified": false
+  }
+}

@@ -1,4 +1,4 @@
-# V3: originalkilder og august-r13
+# V3: originalkilder, regenerert vår og august-r13
 
 Kontrollert på Mac mini 5. oktober 2026. Dette er kildeverifikasjon for en lokal
 V3-kandidat, ikke feltaksept eller registrering mellom opptaksdatoer.
@@ -42,11 +42,64 @@ geometri. Eksisterende manifest, previewgeometri og tiles beholdes. Den nye
 webpreviewen må avledes fra denne eksakte filen, med originalens CRS adskilt fra
 previewens EPSG:3857-grid. Originalen kopieres ikke inn i Git.
 
+## Regenerert vårprodukt 5. oktober 2026
+
+Den tapte våroriginalen er fortsatt ikke gjenfunnet. De 20 ekte JPEG-kildene
+ble gjenfunnet på kontrollmaskinen i `/Users/henmee/Downloads/flyvendebønder vår-test/jorde 4`
+og overført med filvise SHA256 til Mac mini. Alle er DJI FC8482, 4032 × 2268,
+med EXIF-dato 31. mars 2026 09:54:35–09:55:36, GPS og nedovervendt kamera.
+Dette muliggjør et nytt regenerert produkt, ikke gjenoppretting av gammel filidentitet.
+
+Ny registrering: `jorde-4-20260331-regenerated-v3`. Stabil TIFF:
+`/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-03-31-jorde4-regenerated-v3/jorde-4-20260331-regenerated-v3.tif`.
+SHA256 er `b944200b9ee949aaf4c8eb01269abd4206b3c2d1eb87c4271441022f04a12492`,
+verifisert fra filen og leveransens SHA256SUMS; størrelse 64 120 024 byte.
+Inputmanifest, run-config og logg følger eksporten. Kjørt med native linux/arm64
+`opendronemap/odm@sha256:f3503aab96ab09144e85a17f4e57dbe3883e65ca7542b1a1be12898e02be5a10`,
+5 cm, fast orthophoto, medium point cloud/high features, to samtidige jobber og
+uten teksturert 3D-modell/rapportgenerering. Prosessen avsluttet med exit 0.
+
+`opensfm/reconstruction.json` og `odm_report/shots.geojson` inneholder 19 av 20
+bilder. `DJI_20260331095435_0114_D.JPG` ble ikke rekonstruert. Exit 0 er ikke
+bevis for at alle inputbilder ble brukt. `options.json` har `gcp=null` og
+`align=null`; bildenes GPS er georefereringsgrunnlaget. Ingen ekstern
+registrering mot august eller kontrollpunkter er dokumentert.
+
+| Felt | Verifisert verdi |
+| --- | --- |
+| CRS / format | EPSG:32632, uint8 RGBA, nodata ikke satt |
+| Raster | 14 142 × 7 238 |
+| Affin transform | `[0.04999544793220022, 0, 537990.1397654371, 0, -0.04999308170929333, 6559782.655210019]` |
+| UTM-ramme V/S/Ø/N | 537990,139765 / 6559420,805285 / 538697,175390 / 6559782,655210 |
+| Gyldig alpha og dataset mask | 32 261 608 av 102 359 796 piksler, 31,52 % av rasterrammen |
+| Webpreview | 1600 × 832, EPSG:3857, nearest, originalens alpha bevart |
+
+Rasterrammen på ca. 255 841 m² ligger helt innen august-r13-rammen. Bare
+31,52 % av vårens ramme har gyldige piksler. Verken full bbox-overlapp eller
+maskefraksjonen dokumenterer registrering eller full felles gyldighetsdekning.
+Ny preview og metadata er avledet fra denne eksakte TIFF-en med egne bounds;
+det gamle vårmanifestet og previewen er bevart uten endringer.
+
+Tre koordinater ble prøvd gjennom eksisterende `sample_orthophoto_color`
+med 21 × 21 vindu, eksplisitt overlay-root og `allow_preview=False`:
+
+| Breddegrad / lengdegrad | Vår middel-RGB | August middel-RGB |
+| --- | --- | --- |
+| 59.17499792204856 / 9.674509030253068 | 199,0 / 179,9 / 161,0 | 109,9 / 119,4 / 65,0 |
+| 59.17479609284547 / 9.672041974693194 | 179,8 / 167,2 / 149,8 | 149,3 / 132,4 / 108,4 |
+| 59.17479184391279 / 9.672863209570519 | 101,6 / 87,7 / 76,1 | 126,8 / 112,1 / 89,0 |
+
+Alle seks prøver ga canonical EPSG:32632, `native-crs-affine-rgb-v1`, 441
+gyldige piksler, ingen klipping og identisk resultat ved gjentakelse. Dette
+viser teknisk native prøvetaking på begge datoer ved tre oppgitte koordinater.
+RGB-forskjellene er ikke kalibrert endring, avlingsscore eller bevis for at
+koordinatene treffer samme fysiske detalj uten registreringskontroll.
+
 ## Gjenstående bevis
 
-Vårens originaler må gjenfinnes og knyttes til riktig manifest med egen filhash,
-CRS/transform og gyldighetsmasker. Deretter trengs konkret kontroll av gyldig
-pikseldekning på jorde 4 og registrering mellom datoene. En bbox eller korrekt
+Den tapte originalen er fortsatt en historisk kildebegrensning. Det regenererte
+produktet har egen hash, CRS/transform og gyldighetsmaske. Videre trengs kontroll
+av felles gyldig pikseldekning på jorde 4 og målt registrering mellom datoene. En bbox eller korrekt
 native prøvetaking alene er ikke nok til tallfestet endringsanalyse.
 
 ## Sampling-versjon

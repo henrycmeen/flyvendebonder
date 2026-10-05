@@ -92,20 +92,24 @@ område-/fototilknytning og senere redigering av oppgaven oppgis. Opprettelsesda
 er ikke en observasjonsdato. Ingen observasjoner og utilgjengelig API er ulike
 situasjoner.
 
-Frost-adapteren er implementert og prøvd med syntetiske HTTP-responser. Den er
-stengt som standard. Serverinnstillingene `FROST_WEATHER_ENABLED`,
-`FROST_CLIENT_ID` og `FROST_REVIEWED_SOURCES` må være konfigurert før kall.
+Frost-adapteren er prøvd med syntetiske HTTP-responser; en eksplisitt offentlig
+seKlima-transport er i tillegg kontrollert med faktiske stasjonsmålinger. Begge
+er stengt som standard. `HISTORICAL_WEATHER_PROVIDER` velger `frost` eller
+`seklima`; `FROST_WEATHER_ENABLED` og `FROST_REVIEWED_SOURCES` må være konfigurert
+før kall. Bare Frost-transporten krever `FROST_CLIENT_ID`.
 Sistnevnte er et JSON-objekt med matrikkelreferanse som nøkkel, eksempel
 `4003-70/17/0`. Hvert vurdert valg må ha `approved`, `reviewed_at`, `distance_m`,
 `station_name`, `suitability_note` og `selections` med eksplisitt `element_id`,
 `source_id`, `time_series_id`, `time_offset` og `level`. Ingen klient-ID legges
 inn i repo eller frontend. Pilotens 50 km øvre avstandsgrense er en teknisk
 avgrensning, ikke dokumentasjon av representativt vær; stasjonens egnethet må
-fortsatt vurderes konkret. Ingen reell stasjon er godkjent i denne leveransen.
+fortsatt vurderes konkret. Lokal kandidat bruker vurdert SN30255:0 Porsgrunn–Ås
+for nærliggende sesongkontekst; se v3-weather-source.md. Produksjon er ikke aktivert.
 
 UI viser sum av aksepterte nedbørsmålinger og middel av tilgjengelige døgn-
 temperaturer med dekning, stasjon, avstand, vurdering, faktiske måleperioder og
 råverdi ved konvertering. En ufullstendig periodesum er ikke total nedbør.
-Autentisert provider-kall, lisens/attribusjonsgjennomgang og fysisk feltprøve
-gjenstår før live aktivering. Request/response cache er deaktivert i første
+Offentlig provider-kall, lisens og attribusjon er kontrollert for seKlima.
+HTTP-ruting og UI viser faktiske 125/125 døgn, 260,4 mm og 12,944 °C i
+lokal kandidat. Fysisk brukerprøve og produksjonsvalg gjenstår før live aktivering. Request/response cache er deaktivert i første
 pilot; ingen værserie lagres i produksjonsdatabasen.

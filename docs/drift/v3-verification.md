@@ -172,3 +172,24 @@ canonical EPSG:32632, originalens dimensjoner/affine transform og 441/441
 gyldige piksler. Jorde 4 vår returnerer 503 uten eksplisitt preview-valg.
 Bevis: work/v3-context/v3-current-raster-api.json på kontrollmaskinen.
 Ingen produksjonsdata eller provider-konfigurasjon endret.
+
+
+## Reelt vær etter kildeavklaring
+
+5. oktober 2026: offentlig seKlima-transport har egen provideridentitet, fast
+endepunkt, ingen auth eller automatisk fallback, og samme strenge serie- og
+kvalitetskontroll. Uavhengig review verifiserte direkte MET-responser og fant
+ingen blokkere. Eksisterende/utvidede værtester består (69). Autentisert
+GET på isolert 8825 /api/v1/weather/season?start=2026-03-31&end=2026-08-02
+ga 200/available, SN30255:0, 125/125 for begge elementer, 260,4 mm,
+12,944 °C og null avviste observasjoner. Rårespons er bevart separat som
+v3-real-weather-api.json i kontrollmaskinens work/v3-context.
+
+IAB ved desktop og 390×844 viste 260,4 mm, 12,9 °C og siste godkjente
+referansedato 2. august. Kildedetaljer viste Porsgrunn–Ås, 9,7 km,
+stasjonsbegrensning og faktisk UTC-periode; kildehenvisningen er MET seKlima.
+Mobilbredde/scrollbredde var 390/390 også med utvidet nedbørskurve.
+Månedssummer var mars 0 (1 valgt døgn), april 83,5, mai 31,4, juni 94,6,
+juli 50,9 og august 0 (2 valgte døgn), totalt 260,4 mm.
+Dette er faktiske stasjonsmålinger og en nettleserprøve, ikke fysisk feltaksept.
+Se v3-weather-source.md for kilde, eksakte serier, lisens og aktivering.

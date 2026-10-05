@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -61,6 +62,7 @@ class Settings(BaseSettings):
     terrain_sample_batch_size: int = 200
     orthophoto_overlay_root: Path = DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT
 
+    historical_weather_provider: Literal["frost", "seklima"] = "frost"
     frost_weather_enabled: bool = False
     frost_client_id: str = Field(default="", repr=False)
     frost_http_timeout_seconds: float = 10.0
