@@ -380,7 +380,13 @@ export function SettingsPage({
     <section className="fb-settings-page" aria-labelledby="settings-title">
       <div className="fb-settings-layout">
         <header className="fb-settings-header">
-          <h1 id="settings-title" className="text-xl font-semibold tracking-tight">Innstillinger</h1>
+          <div>
+            <h1 id="settings-title" className="text-xl font-semibold tracking-tight">Innstillinger</h1>
+            <p className="mt-1 text-sm text-fb-text-secondary">{activePropertyName}</p>
+          </div>
+          <div className="fb-settings-hero-model">
+            <PropertyHero3D profile={profile} variant="settings" />
+          </div>
         </header>
 
         <Tabs defaultValue="profile" className="fb-settings-body w-full">
@@ -450,9 +456,6 @@ export function SettingsPage({
                         <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
                         <p className="mt-1 text-base font-semibold text-fb-text-primary">{activePropertyName}</p>
                         <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
-                      </div>
-                      <div className="fb-settings-farm-model">
-                        <PropertyHero3D profile={profile} />
                       </div>
                     </div>
 

@@ -249,3 +249,5 @@ Faglige detaljer og videre arbeid på Skogbruk samles under «Om datagrunnlaget�
 ## Innstillinger som side, 5. oktober 2026
 
 Innstillinger bruker nå egen appvisning på `?view=settings`, med vanlig navigasjon, fast overskrift og faner og scrolling i innholdet. Profilutkast beholdes mellom faner; lagring blir på siden med kvittering. Mobil bruker samme side over den eksisterende docken. Profil-, kartlags- og adminhandlingene er videreført.
+
+Innstillingssiden reserverer aktuell bredde til desktopmenyen slik at menyen ikke dekker feltene. Gårdsmodellen ligger øverst, med nærmere kamera på stor skjerm og tilpasset utsnitt på små skjermer. Den kan snus og zoomes. Innstillinger-knappen åpner siden og tar ved nytt trykk brukeren tilbake til forrige visning. Åpning har en kort overgang som respekterer redusert bevegelse.

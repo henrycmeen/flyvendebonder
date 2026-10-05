@@ -115,7 +115,7 @@ export function AppSidebar({
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
+    <Sidebar reserveDesktopWidth={activeView === "settings"} mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
       <SidebarHeader className="fb-sidebar-header px-5">
         {isMobile ? <div className="fb-mobile-menu-hero" aria-hidden="true"><PropertyHero3D profile={profile} variant="menu" /></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
@@ -139,7 +139,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="fb-sidebar-footer space-y-3 px-5">
-        {!isMobile && <div className="fb-sidebar-profile-hero" aria-hidden="true">
+        {!isMobile && activeView !== "settings" && <div className="fb-sidebar-profile-hero" aria-hidden="true">
           <PropertyHero3D profile={profile} variant="sidebar" />
         </div>}
         <SidebarMenuButton
@@ -147,7 +147,7 @@ export function AppSidebar({
           closeOnClick
           onClick={() => onChangeView("settings")}
           aria-label="Innstillinger"
-          className="fb-sidebar-settings-trigger h-11 w-full px-3.5 text-[14px] font-medium"
+          className="fb-sidebar-settings-trigger h-11 w-full px-3.5 text-[14px] font-medium data-[active=true]:bg-transparent hover:bg-transparent"
         >
           <Settings2 className="h-5 w-5 shrink-0" />
           <span className="fb-sidebar-label">Innstillinger</span>

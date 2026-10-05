@@ -55,7 +55,7 @@ function useSidebar() {
   return context;
 }
 
-function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
+function Sidebar({ className, children, mobileDock, reserveDesktopWidth = false }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode; reserveDesktopWidth?: boolean }) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
   const effectiveCollapsed = collapsedDesktop && !desktopHovered;
@@ -99,7 +99,9 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
         setDesktopHovered(false);
       }}
       className={cn(
-        "fb-sidebar relative z-20 hidden h-screen w-[5.5rem] shrink-0 md:block",
+        "fb-sidebar relative z-20 hidden h-screen shrink-0 md:block",
+        reserveDesktopWidth && "transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
+        reserveDesktopWidth && !effectiveCollapsed ? "w-[18.75rem]" : "w-[5.5rem]",
       )}
     >
       <div className={cn(

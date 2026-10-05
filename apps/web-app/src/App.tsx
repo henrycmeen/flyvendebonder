@@ -315,6 +315,7 @@ export default function App() {
   const blockedInitialViewReasonRef = useRef<string | null>(getInitialViewBlockReason(rawInitialView));
 
   const [activeView, setActiveView] = useState<AppView>(initialView);
+  const settingsReturnViewRef = useRef<AppView>("map");
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [adminSession, setAdminSession] = useState<AdminSessionStatus | null>(null);
   const [adminLoginCode, setAdminLoginCode] = useState("");
@@ -3275,12 +3276,20 @@ export default function App() {
     );
   }
 
-  const handleChangeView = (view: AppView) => {
+  const handleChangeView = (requestedView: AppView) => {
+    const view = requestedView === "settings" && activeView === "settings"
+      ? settingsReturnViewRef.current
+      : requestedView;
+    if (view === "settings" && activeView !== "settings") {
+      settingsReturnViewRef.current = activeView;
+    }
     handleClosePhotoViewer();
     setActiveView(view);
     addLog(
       "info",
-      view === "album"
+      view === "settings"
+        ? "Innstillinger åpnet"
+        : view === "album"
         ? "Bibliotek åpnet"
         : view === "orthophotos"
           ? "Ortofotoene åpnet"
@@ -3399,8 +3408,8 @@ export default function App() {
             onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED ? handleStartMediaImport : undefined}
           />
 
-          <SidebarInset className="bg-canvas md:p-3 md:pl-0">
-            <div data-view={activeView} className="fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating">
+          <SidebarInset className={activeView === "settings" ? "bg-white" : "bg-canvas md:p-3 md:pl-0"}>
+            <div data-view={activeView} className={activeView === "settings" ? "fb-app-content relative h-full overflow-hidden bg-white" : "fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:border md:border-fb-border-subtle/80 md:bg-[color:var(--fb-surface-ghost)]/28 md:shadow-fb-floating"}>
 
 
               <div className="fb-mobile-control-surface">
