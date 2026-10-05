@@ -109,6 +109,7 @@ const VIDEO_WORKFLOW_DISABLED_REASON =
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
+  if (rawView === "orthophotos") return "orthophotos";
   if (rawView === "settings") return "settings";
   if (rawView === "forest" || rawView === "skogbruk") return "forest";
   if (rawView === "import") {
@@ -2549,7 +2550,7 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album" || activeView === "forest" || activeView === "import" || activeView === "video" || activeView === "settings") {
+    if (activeView === "album" || activeView === "orthophotos" || activeView === "forest" || activeView === "import" || activeView === "video" || activeView === "settings") {
       next.set("view", activeView === "forest" ? "skogbruk" : activeView);
     } else {
       next.delete("view");
@@ -3409,7 +3410,7 @@ export default function App() {
           />
 
           <SidebarInset className={activeView === "settings" ? "bg-white" : "bg-canvas md:p-3 md:pl-0"}>
-            <div data-view={activeView} className={activeView === "settings" ? "fb-app-content relative h-full overflow-hidden bg-white" : `fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:bg-[color:var(--fb-surface-ghost)]/28 ${activeView === "album" ? "md:border md:border-fb-border-subtle/80" : ""}`}>
+            <div data-view={activeView} className={activeView === "settings" ? "fb-app-content relative h-full overflow-hidden bg-white" : `fb-app-content relative h-full overflow-hidden md:rounded-[28px] md:bg-[color:var(--fb-surface-ghost)]/28 ${activeView === "album" || activeView === "orthophotos" ? "md:border md:border-fb-border-subtle/80" : ""}`}>
 
 
               <div className="fb-mobile-control-surface">
@@ -3613,6 +3614,7 @@ export default function App() {
                 />
               ) : activeView === "album" ? (
                 <AlbumPage
+                  onChangeLibraryView={handleChangeView}
                   availableYears={availableYears}
                   photos={albumPhotos}
                   isLoading={albumLoadingInitial}
@@ -3625,6 +3627,7 @@ export default function App() {
                 />
               ) : activeView === "orthophotos" ? (
                 <OrthophotoPage
+                  onChangeLibraryView={handleChangeView}
                   overlays={activeOrthophotoOverlays}
                   onOpenInMap={(overlayId) => {
                     const overlay = DEV_ORTHOPHOTO_OVERLAYS.find((item) => item.id === overlayId);

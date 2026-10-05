@@ -214,10 +214,10 @@ function MobileDock({ activeView, onChangeView, onOpenMapFilters, embedded = fal
       <Button data-fb-map-filter-trigger="" data-selected={!openMobile && activeView === "map"} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => { setOpenMobile(false); if (activeView === "map") { onOpenMapFilters?.(); } else { onChangeView("map"); } }}>
         <MapIcon className="h-5 w-5" /><span>Kart</span>
       </Button>
-      <Button data-selected={!openMobile && activeView === "album"} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "album" ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
+      <Button data-selected={!openMobile && (activeView === "album" || activeView === "orthophotos")} variant="ghost" className="fb-mobile-dock__item" aria-current={(activeView === "album" || activeView === "orthophotos") ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
         <Images className="h-5 w-5" /><span>Bibliotek</span>
       </Button>
-      <Button ref={embedded ? undefined : mobileTriggerRef} data-selected={openMobile || (activeView !== "map" && activeView !== "album")} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={(event) => { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile((current) => !current); }}>
+      <Button ref={embedded ? undefined : mobileTriggerRef} data-selected={openMobile || (activeView !== "map" && activeView !== "album" && activeView !== "orthophotos")} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" && activeView !== "orthophotos" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={(event) => { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile((current) => !current); }}>
         <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
       </Button>
     </nav>

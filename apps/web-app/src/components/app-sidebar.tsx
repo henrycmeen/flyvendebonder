@@ -1,5 +1,5 @@
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
+import { Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
 
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { MobileDock, Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
@@ -27,7 +27,6 @@ function SidebarNavigation({
   if (isMobile) {
     const actions = [
       { view: "planning" as const, label: "Planlegging", detail: "Jorder og oppdrag", Icon: Route },
-      { view: "orthophotos" as const, label: "Ortofoto", detail: "Se gården ovenfra", Icon: Image },
       { view: "forest" as const, label: "Skogbruk", detail: "Skog og terreng", Icon: Trees },
       ...(onStartMediaImport ? [{ view: "import" as const, label: "Importer", detail: "Legg til opptak", Icon: Import }] : []),
     ];
@@ -56,15 +55,7 @@ function SidebarNavigation({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-              <Route className="h-4 w-4 shrink-0" />
-            </span>
-            <span className="fb-sidebar-label">Planlegging</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "album"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "album" || activeView === "orthophotos"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
               <Images className="h-4 w-4 shrink-0" />
             </span>
@@ -72,11 +63,11 @@ function SidebarNavigation({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "orthophotos"} closeOnClick onClick={() => onChangeView("orthophotos")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-              <Image className="h-4 w-4 shrink-0" />
+              <Route className="h-4 w-4 shrink-0" />
             </span>
-            <span className="fb-sidebar-label">Ortofoto</span>
+            <span className="fb-sidebar-label">Planlegging</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>

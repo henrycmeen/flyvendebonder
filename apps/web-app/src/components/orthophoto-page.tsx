@@ -1,3 +1,4 @@
+import { LibraryNavigation } from "@/components/library-navigation";
 import { useMemo } from "react";
 import { ArrowUpRight, CalendarDays } from "lucide-react";
 
@@ -6,6 +7,7 @@ import { splitCapturedDate } from "@/lib/formatters";
 import type { OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
 
 interface OrthophotoPageProps {
+  onChangeLibraryView: (view: "album" | "orthophotos") => void;
   overlays: OrthophotoOverlayDefinition[];
   onOpenInMap: (overlayId: string) => void;
 }
@@ -38,7 +40,7 @@ function formatCapturedDate(value: string): string {
   });
 }
 
-export function OrthophotoPage({ overlays, onOpenInMap }: OrthophotoPageProps) {
+export function OrthophotoPage({ overlays, onOpenInMap, onChangeLibraryView }: OrthophotoPageProps) {
   const groups = useMemo<OverlayGroup[]>(() => {
     const grouped = new Map<string, OrthophotoOverlayDefinition[]>();
 
@@ -70,7 +72,8 @@ export function OrthophotoPage({ overlays, onOpenInMap }: OrthophotoPageProps) {
       <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
           <div className="space-y-6 pb-4">
-            <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Ortofoto</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Bibliotek</h1>
+            <LibraryNavigation active="orthophotos" onChange={onChangeLibraryView} />
 
             {groups.map((group) => (
               <section key={group.key} className="space-y-4">

@@ -1,3 +1,4 @@
+import { LibraryNavigation } from "@/components/library-navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Loader2, Search } from "lucide-react";
 
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { PhotoFeature } from "@/types";
 
 interface AlbumPageProps {
+  onChangeLibraryView: (view: "album" | "orthophotos") => void;
   availableYears: string[];
   photos: PhotoFeature[];
   isLoading: boolean;
@@ -141,6 +143,7 @@ export function AlbumPage({
   onLoadMore,
   onOpenPhoto,
   onScrollActivity,
+  onChangeLibraryView,
 }: AlbumPageProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -266,6 +269,7 @@ export function AlbumPage({
                 <span className="text-xs text-fb-text-secondary" role="status" title={hasMore ? "Flere bilder lastes når du blar videre" : "Alle bilder er lastet"}>{filteredPhotos.length.toLocaleString("nb-NO")} av {photos.length.toLocaleString("nb-NO")} lastet</span>
               </div>
             </header>
+            <LibraryNavigation active="album" onChange={onChangeLibraryView} />
             <ResponsivePageControls active={hasActiveFilters}>
               <div className="fb-album-controls">
                 <div className="relative">
