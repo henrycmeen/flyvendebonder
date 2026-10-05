@@ -24,54 +24,80 @@ function SidebarNavigation({
   onStartMediaImport,
 }: Pick<AppSidebarProps, "activeView" | "onChangeView" | "onStartMediaImport">) {
   const isMobile = useIsMobile();
-  const groups = [
-    {
-      label: "Gården",
-      items: [
-        { view: "map" as const, label: "Kart", Icon: MapIcon },
-        { view: "planning" as const, label: "Planlegging", Icon: Route },
-        { view: "forest" as const, label: "Skogbruk", Icon: Trees },
-      ],
-    },
-    {
-      label: "Bibliotek",
-      items: [
-        { view: "album" as const, label: "Bilder", Icon: Images },
-        { view: "orthophotos" as const, label: "Ortofoto", Icon: Image },
-        ...(onStartMediaImport ? [{ view: "import" as const, label: "Importer", Icon: Import }] : []),
-      ],
-    },
-  ];
-
+  if (isMobile) {
+    const actions = [
+      { view: "planning" as const, label: "Planlegging", detail: "Jorder og oppdrag", Icon: Route },
+      { view: "orthophotos" as const, label: "Ortofoto", detail: "Se gården ovenfra", Icon: Image },
+      { view: "forest" as const, label: "Skogbruk", detail: "Skog og terreng", Icon: Trees },
+      ...(onStartMediaImport ? [{ view: "import" as const, label: "Importer", detail: "Legg til opptak", Icon: Import }] : []),
+    ];
+    return (
+      <SidebarMenu className="fb-mobile-actions">
+        {actions.map(({ view, label, detail, Icon }) => (
+          <SidebarMenuItem key={view}>
+            <SidebarMenuButton active={activeView === view} closeOnClick className="fb-mobile-action" onClick={() => view === "import" && onStartMediaImport ? onStartMediaImport() : onChangeView(view)}>
+              <Icon className="h-5 w-5" />
+              <span><span className="fb-mobile-action__title">{label}</span><span className="fb-mobile-action__detail">{detail}</span></span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    );
+  }
   return (
-    <nav aria-label="Hovednavigasjon" className="fb-sidebar-navigation space-y-5">
-      {groups.map(({ label, items }) => (
-        <div key={label} role="group" aria-label={label}>
-          <div aria-hidden="true" className="fb-sidebar-group-label mb-2 px-3.5 text-xs font-medium text-fb-text-secondary">
-            {label}
-          </div>
-          <SidebarMenu className={isMobile ? "fb-mobile-actions" : "gap-1"}>
-            {items.filter(({ view }) => !isMobile || (view !== "map" && view !== "album")).map(({ view, label: itemLabel, Icon }) => (
-              <SidebarMenuItem key={view}>
-                <SidebarMenuButton
-                  active={activeView === view}
-                  closeOnClick
-                  aria-label={itemLabel}
-                  className={isMobile ? "fb-mobile-action" : "fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium"}
-                  onClick={() => view === "import" && onStartMediaImport ? onStartMediaImport() : onChangeView(view)}
-                >
-                  {isMobile ? <Icon className="h-5 w-5" /> : (
-                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-                      <Icon className="h-4 w-4 shrink-0" />
-                    </span>
-                  )}
-                  <span className={isMobile ? "fb-mobile-action__title" : "fb-sidebar-label"}>{itemLabel}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </div>
-      ))}
+    <nav aria-label="Hovednavigasjon">
+      <SidebarMenu className="gap-1">
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "map"} closeOnClick onClick={() => onChangeView("map")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <MapIcon className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Kart</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Route className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Planlegging</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "album"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Images className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Bibliotek</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "orthophotos"} closeOnClick onClick={() => onChangeView("orthophotos")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Image className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Ortofoto</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "forest"} closeOnClick onClick={() => onChangeView("forest")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Trees className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Skogbruk</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {onStartMediaImport ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport()} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+                <Import className="h-4 w-4 shrink-0" />
+              </span>
+              <span className="fb-sidebar-label">Importer</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
+      </SidebarMenu>
     </nav>
   );
 }

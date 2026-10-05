@@ -649,15 +649,6 @@ body {
   padding-right: 0;
 }
 
-.fb-sidebar-group-label {
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.fb-sidebar[data-collapsed="true"] .fb-sidebar-group-label {
-  visibility: hidden;
-}
-
 .fb-sidebar-brand-text,
 .fb-sidebar-label,
 .fb-sidebar-profile {
