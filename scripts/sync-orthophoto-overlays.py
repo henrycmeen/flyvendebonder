@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,7 +151,7 @@ def tile_layer_from_manifest(tile_manifest: dict[str, Any], asset_basename: str)
     }
 
 
-def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None:
+def render_ts_manifest(overlays: list[dict[str, Any]]) -> str:
     lines = [
         "export interface OrthophotoTileLayerDefinition {",
         "  urlTemplate: string;",
@@ -181,6 +182,13 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
         "  };",
         "  opacity?: number;",
         "  tileLayer?: OrthophotoTileLayerDefinition;",
+        "  limitations?: string[];",
+        "  canonicalSource?: {",
+        "    sha256: string;",
+        "    crs: string;",
+        "    widthPx: number;",
+        "    heightPx: number;",
+        "  };",
         "}",
         "",
         "// Generert av scripts/sync-orthophoto-overlays.py",
@@ -192,11 +200,11 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
         lines.extend(
             [
                 "  {",
-                f'    id: "{overlay["id"]}",',
-                f'    label: "{overlay["label"]}",',
-                f'    propertyReference: "{overlay["propertyReference"]}",',
+                f'    id: {json.dumps(overlay["id"], ensure_ascii=False)},',
+                f'    label: {json.dumps(overlay["label"], ensure_ascii=False)},',
+                f'    propertyReference: {json.dumps(overlay["propertyReference"], ensure_ascii=False)},',
                 f'    imageUrl: `${{import.meta.env.BASE_URL}}dev-overlays/{overlay["assetFile"]}`,',
-                f'    capturedDate: "{overlay["capturedDate"]}",',
+                f'    capturedDate: {json.dumps(overlay["capturedDate"], ensure_ascii=False)},',
                 "    bounds: {",
                 f'      south: {bounds["south"]},',
                 f'      west: {bounds["west"]},',
@@ -206,6 +214,21 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
                 f'    opacity: {overlay["opacity"]},',
             ]
         )
+        limitations = overlay.get("limitations")
+        if isinstance(limitations, list) and all(isinstance(value, str) for value in limitations):
+            lines.append(f"    limitations: {json.dumps(limitations, ensure_ascii=False)},")
+        canonical_source = overlay.get("canonicalSource")
+        if isinstance(canonical_source, dict):
+            lines.extend(
+                [
+                    "    canonicalSource: {",
+                    f'      sha256: {json.dumps(canonical_source["sha256"])},',
+                    f'      crs: {json.dumps(canonical_source["crs"])},',
+                    f'      widthPx: {int(canonical_source["widthPx"])},',
+                    f'      heightPx: {int(canonical_source["heightPx"])},',
+                    "    },",
+                ]
+            )
         tile_layer = overlay.get("tileLayer")
         if isinstance(tile_layer, dict):
             quality_scale = tile_layer.get("qualityScale")
@@ -231,7 +254,89 @@ def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None
         lines.append("  },")
 
     lines.append("];")
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def write_ts_manifest(output_path: Path, overlays: list[dict[str, Any]]) -> None:
+    output_path.write_text(render_ts_manifest(overlays), encoding="utf-8")
+
+
+def load_registered_overlays(output_dir: Path) -> list[dict[str, Any]]:
+    """Preserve independently registered products, including their original metadata."""
+    overlays: list[dict[str, Any]] = []
+    for path in sorted(output_dir.glob("*.json")):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata må være et JSON-objekt")
+            provenance = metadata.get("provenance") or {}
+            if not isinstance(provenance, dict):
+                raise ValueError("provenance må være et JSON-objekt")
+            if "registration_status" not in provenance:
+                continue
+            status = provenance["registration_status"]
+            if not isinstance(status, str) or not status.strip():
+                raise ValueError("provenance.registration_status må være en ikke-tom tekst")
+            overlay = metadata.get("overlay")
+            if not isinstance(overlay, dict):
+                raise ValueError("registrert produkt mangler overlay")
+            for key in ("id", "label", "propertyReference", "assetFile", "capturedDate"):
+                if not isinstance(overlay.get(key), str) or not overlay[key].strip():
+                    raise ValueError(f"registrert produkt mangler overlay.{key}")
+            if overlay["id"] != path.stem:
+                raise ValueError("overlay.id må samsvare med metadatafilens navn")
+            asset = Path(overlay["assetFile"])
+            if overlay["assetFile"] != f"{overlay['id']}.webp" or not (output_dir / asset).is_file():
+                raise ValueError("overlay.assetFile må være overlay.id + '.webp' og finnes i overlay-mappen")
+            bounds = overlay.get("bounds")
+            if not isinstance(bounds, dict) or not all(
+                isinstance(bounds.get(key), (int, float)) and not isinstance(bounds[key], bool)
+                and math.isfinite(bounds[key]) for key in ("south", "west", "north", "east")
+            ) or bounds["south"] >= bounds["north"] or bounds["west"] >= bounds["east"]:
+                raise ValueError("registrert produkt mangler gyldige overlay.bounds")
+            if "limitations" in overlay and (
+                not isinstance(overlay["limitations"], list)
+                or not all(isinstance(value, str) for value in overlay["limitations"])
+            ):
+                raise ValueError("overlay.limitations må være en liste med tekst")
+            if "canonicalSource" in overlay:
+                source = overlay["canonicalSource"]
+                if not isinstance(source, dict) or not all(
+                    isinstance(source.get(key), str) and source[key].strip() for key in ("sha256", "crs")
+                ) or not all(
+                    isinstance(source.get(key), int) and not isinstance(source[key], bool) and source[key] > 0
+                    for key in ("widthPx", "heightPx")
+                ):
+                    raise ValueError("overlay.canonicalSource mangler kildeidentitet, CRS eller dimensjoner")
+            opacity = overlay.get("opacity", 0.82)
+            if (not isinstance(opacity, (int, float)) or isinstance(opacity, bool)
+                    or not math.isfinite(opacity) or not 0 <= opacity <= 1):
+                raise ValueError("overlay.opacity må være et endelig tall mellom 0 og 1")
+            if "tileLayer" in overlay:
+                tile = overlay["tileLayer"]
+                if not isinstance(tile, dict):
+                    raise ValueError("overlay.tileLayer må være et objekt")
+                for key in ("minZoom", "maxZoom", "maxNativeZoom", "tileSize", "sourceWidthPx",
+                            "sourceHeightPx", "canonicalWidthPx", "canonicalHeightPx", "tileCount"):
+                    if not isinstance(tile.get(key), int) or isinstance(tile[key], bool) or tile[key] < 0:
+                        raise ValueError(f"overlay.tileLayer.{key} må være et ikke-negativt heltall")
+                template = tile.get("urlTemplate")
+                if (not isinstance(template, str) or not template.strip()
+                        or "`" in template or "${" in template):
+                    raise ValueError("overlay.tileLayer.urlTemplate må være en gyldig URL-mal")
+                if tile.get("sourceKind") not in {"canonical", "preview", "unknown"}:
+                    raise ValueError("overlay.tileLayer.sourceKind må være canonical, preview eller unknown")
+                scale = tile.get("qualityScale")
+                if scale is not None and (not isinstance(scale, (int, float)) or isinstance(scale, bool)
+                                          or not math.isfinite(scale)):
+                    raise ValueError("overlay.tileLayer.qualityScale må være et endelig tall eller null")
+            preserved = dict(overlay)
+            preserved.setdefault("opacity", 0.82)
+            render_ts_manifest([preserved])
+            overlays.append(preserved)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise SystemExit(f"Kan ikke bevare ortofoto-metadata {path}: {exc}. Rett filen før synkronisering.") from exc
+    return overlays
 
 
 def main() -> int:
@@ -250,13 +355,19 @@ def main() -> int:
     manifest_ts = Path(args.manifest_ts).expanduser().resolve()
     builder = (repo_root / "scripts" / "build-orthophoto-overlay.py").resolve()
 
+    registered_overlays = load_registered_overlays(output_dir)
+    registered_ids = {overlay["id"] for overlay in registered_overlays}
+    if not processing_root.is_dir():
+        raise SystemExit(f"ODM-prosessmappen er ikke tilgjengelig: {processing_root}. Registreringen er ikke endret.")
     projects = find_projects(processing_root)
     if args.projects:
         allowed = set(args.projects)
         projects = [project for project in projects if project.project_name in allowed]
 
-    if not projects:
-        raise SystemExit("Fant ingen ferdige ODM-prosjekter med ortofoto.")
+    # Standalone registrations own their IDs; never overwrite their assets or verification metadata.
+    projects = [project for project in projects if f"{project.project_name}-orthophoto" not in registered_ids]
+    if not projects and not registered_overlays:
+        raise SystemExit("Fant ingen ferdige ODM-prosjekter eller registrerte ortofoto.")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     overlays: list[dict[str, Any]] = []
@@ -299,6 +410,7 @@ def main() -> int:
         output_metadata.write_text(json.dumps(full_metadata, indent=2), encoding="utf-8")
         overlays.append(overlay)
 
+    overlays.extend(registered_overlays)
     write_ts_manifest(manifest_ts, overlays)
     print(json.dumps({"count": len(overlays), "projects": [overlay["id"] for overlay in overlays]}, indent=2))
     return 0

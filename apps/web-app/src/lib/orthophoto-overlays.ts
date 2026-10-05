@@ -27,6 +27,13 @@ export interface OrthophotoOverlayDefinition {
   };
   opacity?: number;
   tileLayer?: OrthophotoTileLayerDefinition;
+  limitations?: string[];
+  canonicalSource?: {
+    sha256: string;
+    crs: string;
+    widthPx: number;
+    heightPx: number;
+  };
 }
 
 // Generert av scripts/sync-orthophoto-overlays.py
@@ -197,6 +204,27 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
       canonicalHeightPx: 6631,
       tileCount: 1000,
       qualityScale: 1.0,
+    },
+  },
+  {
+    id: "august-r13-5cm-orthophoto",
+    label: "Augusteksport · 5 cm · r13",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/august-r13-5cm-orthophoto.webp`,
+    capturedDate: "2026-08-02",
+    bounds: {
+      south: 59.166543258040925,
+      west: 9.65930647862715,
+      north: 59.17644739581762,
+      east: 9.677295255299503,
+    },
+    opacity: 0.82,
+    limitations: ["Dette er en best-effort mosaikk fra opptaksruten, ikke en planlagt oppmålingsflyvning.", "Transparente hull finnes i mosaikken.", "Synlige toneforskjeller og harde skjøter finnes mellom reparasjonsfliser.", "Teknisk georeferering og 5 cm pikselstørrelse dokumenterer ikke sømløs eller oppmålingsmessig kvalitet."],
+    canonicalSource: {
+      sha256: "2a0d323e232e3fa93c28eea86ac724a0bb020351c034950812621c80267b2a54",
+      crs: "EPSG:32632",
+      widthPx: 20358,
+      heightPx: 21862,
     },
   },
 ];

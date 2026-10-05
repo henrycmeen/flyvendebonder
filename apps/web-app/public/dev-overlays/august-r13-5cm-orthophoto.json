@@ -1,0 +1,102 @@
+{
+  "width_px": 20358,
+  "height_px": 21862,
+  "utm_bounds": {
+    "westing": 537695.1076200273,
+    "southing": 6558793.362452192,
+    "easting": 538712.5851573128,
+    "northing": 6559886.10678644
+  },
+  "latlng_bounds": {
+    "south": 59.166543258040925,
+    "west": 9.65930647862715,
+    "north": 59.17644739581762,
+    "east": 9.677295255299503
+  },
+  "canonical_latlng_bounds": {
+    "west": 9.65930647862715,
+    "south": 59.16654325804094,
+    "east": 9.677295255299505,
+    "north": 59.17644739581763
+  },
+  "crs": "EPSG:32632",
+  "transform": [
+    0.049979248319360924,
+    0.0,
+    537695.1076200273,
+    0.0,
+    -0.049983731325944275,
+    6559886.10678644
+  ],
+  "label": "Augusteksport · 5 cm · r13",
+  "source_file": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-08-02-best-effort-r13/flyvendebonder-ortofoto-5cm.tif",
+  "source_sha256": "2a0d323e232e3fa93c28eea86ac724a0bb020351c034950812621c80267b2a54",
+  "source_bytes": 669720545,
+  "preview_file": "august-r13-5cm-orthophoto.webp",
+  "preview_width_px": 1489,
+  "preview_height_px": 1600,
+  "preview_crs": "EPSG:3857",
+  "preview_transform": [
+    1.3448633036671283,
+    0.0,
+    1075269.0786169427,
+    0.0,
+    -1.3446193119033705,
+    8218622.066450791
+  ],
+  "preview_resampling": "nearest",
+  "preview_alpha": "preserved_from_canonical_band_4",
+  "capturedDate": "2026-08-02",
+  "year": "2026",
+  "season": "summer",
+  "overlay": {
+    "id": "august-r13-5cm-orthophoto",
+    "label": "Augusteksport · 5 cm · r13",
+    "propertyReference": "4003-70/17/0",
+    "assetFile": "august-r13-5cm-orthophoto.webp",
+    "capturedDate": "2026-08-02",
+    "year": "2026",
+    "season": "summer",
+    "bounds": {
+      "south": 59.166543258040925,
+      "west": 9.65930647862715,
+      "north": 59.17644739581762,
+      "east": 9.677295255299503
+    },
+    "opacity": 0.82,
+    "limitations": [
+      "Dette er en best-effort mosaikk fra opptaksruten, ikke en planlagt oppmålingsflyvning.",
+      "Transparente hull finnes i mosaikken.",
+      "Synlige toneforskjeller og harde skjøter finnes mellom reparasjonsfliser.",
+      "Teknisk georeferering og 5 cm pikselstørrelse dokumenterer ikke sømløs eller oppmålingsmessig kvalitet."
+    ],
+    "canonicalSource": {
+      "sha256": "2a0d323e232e3fa93c28eea86ac724a0bb020351c034950812621c80267b2a54",
+      "crs": "EPSG:32632",
+      "widthPx": 20358,
+      "heightPx": 21862
+    }
+  },
+  "source_dir": null,
+  "project_name": "august-r13-5cm",
+  "provenance": {
+    "run_id": "flyvendebonder-final-mosaic-r13",
+    "registration_status": "v3_workbench_draft",
+    "source_identity_verified": "sha256_matches_export_SHA256SUMS_and_STATUS.json",
+    "delivery_record": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-08-02-best-effort-r13/STATUS.json",
+    "capture_relationship": "separate_r13_product_from_2026-08-02_flight",
+    "replaces_overlay": null,
+    "source_policy": "canonical_read_only"
+  },
+  "quality": {
+    "classification": "best_effort_recovery_mosaic",
+    "survey_grade": false,
+    "limitations": [
+      "Dette er en best-effort mosaikk fra opptaksruten, ikke en planlagt oppmålingsflyvning.",
+      "Transparente hull finnes i mosaikken.",
+      "Synlige toneforskjeller og harde skjøter finnes mellom reparasjonsfliser.",
+      "Teknisk georeferering og 5 cm pikselstørrelse dokumenterer ikke sømløs eller oppmålingsmessig kvalitet."
+    ],
+    "evidence": "/Volumes/Projects/Active/Flyvendebonder/exports/orthophoto/2026-08-02-best-effort-r13/CLOSEOUT.md"
+  }
+}

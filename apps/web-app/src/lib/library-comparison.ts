@@ -11,6 +11,8 @@ export interface ComparisonImage {
   propertyId?: number | null;
   imageUrl: string | null;
   bounds?: OrthophotoOverlayDefinition["bounds"];
+  limitations?: string[];
+  canonicalSource?: OrthophotoOverlayDefinition["canonicalSource"];
 }
 export function validBounds(bounds: ComparisonImage["bounds"]): bounds is NonNullable<ComparisonImage["bounds"]> {
   return Boolean(bounds && Object.values(bounds).every(Number.isFinite) && bounds.south < bounds.north && bounds.west < bounds.east);
@@ -21,7 +23,7 @@ export function overlappingBounds(a: ComparisonImage, b: ComparisonImage) {
   return validBounds(bounds) ? bounds : null;
 }
 export function orthophotoComparisonImages(overlays: OrthophotoOverlayDefinition[], properties: Property[] = []): ComparisonImage[] {
-  return overlays.map(item => ({id:item.id,date:item.capturedDate,label:item.label,source: `Ortofoto · webforhåndsvisning · ${item.label}`, scope:item.propertyReference,propertyId:properties.find(property => formatPropertyReference(property) === item.propertyReference)?.id ?? null,imageUrl:item.imageUrl,bounds:item.bounds}));
+  return overlays.map(item => ({id:item.id,date:item.capturedDate,label:item.label,source: `Ortofoto · webforhåndsvisning · ${item.label}`, scope:item.propertyReference,propertyId:properties.find(property => formatPropertyReference(property) === item.propertyReference)?.id ?? null,imageUrl:item.imageUrl,bounds:item.bounds,limitations:item.limitations,canonicalSource:item.canonicalSource}));
 }
 function hasCaptureDate(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;

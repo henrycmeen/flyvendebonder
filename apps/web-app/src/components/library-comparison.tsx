@@ -71,7 +71,8 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
   };
   const open = () => {
     const first = left ?? images.find(item => item.id === "jorde-4-orthophoto") ?? images[0];
-    const second = right ?? images.find(item => first && item.scope === first.scope && item.date !== first.date && (kind === "photo" || overlappingBounds(first, item)));
+    const alternatives = images.filter(item => first && item.scope === first.scope && item.date !== first.date && (kind === "photo" || overlappingBounds(first, item)));
+    const second = right ?? alternatives.find(item => item.canonicalSource) ?? alternatives[0];
     update({open:true, left:first?.id ?? "",right:second?.id ?? ""});
   };
   if (!selection.open) return <button type="button" className="fb-comparison-open" onClick={open} disabled={images.length === 0}>Sammenlign to datoer</button>;
@@ -86,7 +87,7 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     })}</div>
     {sync ? <ComparisonMaps key={`${left.id}/${right.id}`} left={left} right={right} /> : <div className="fb-comparison-panels">{[left,right].map((item,index) => <div key={item?.id ?? index}><p className="fb-comparison-caption">{item ? `${dateLabel(item.date)} · ${item.label}` : "Dato eller kilde mangler"}</p><PhotoPanel item={item} /></div>)}</div>}
     <p className="fb-comparison-note">{kind === "photo" ? "Separate foto med ukjent dekning. Samme eiendom betyr ikke samme motiv eller geometrisk sammenstilling." : sync ? "Webforhåndsvisninger · utsnittene følger hverandre. Dekning og lys kan variere; dette er en visuell sammenligning." : "Webforhåndsvisninger · velg to ulike datoer med geografisk overlapp for synkroniserte utsnitt."}</p>
-    {(left || right) && <details className="fb-comparison-note"><summary>Kildeinformasjon</summary>{[left, right].map((item, index) => item && <p key={`${index}/${item.id}`}>{dateLabel(item.date)} · {item.source}</p>)}</details>}
+    {(left || right) && <details className="fb-comparison-note"><summary>Kildeinformasjon</summary>{[left, right].map((item, index) => item && <div key={`${index}/${item.id}`}><p>{dateLabel(item.date)} · {item.source}</p>{item.limitations?.map(note => <p key={note}>{note}</p>)}{item.canonicalSource && <details><summary>Registrert originalraster</summary><p>{item.canonicalSource.crs} · {item.canonicalSource.widthPx} × {item.canonicalSource.heightPx} piksler</p><p className="break-all">SHA256: {item.canonicalSource.sha256}</p></details>}</div>)}</details>}
     {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Lukk sammenligningen og last inn flere bilder fra biblioteket for flere datoer og kilder.</p>}
     {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
     {left && right && left.date !== right.date && <ComparisonObservations propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}

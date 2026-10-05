@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
 
 def load_script(script_name: str, module_name: str):
@@ -68,7 +69,7 @@ def test_build_orthophoto_tiles_writes_xyz_tiles_and_manifest(tmp_path: Path) ->
     assert (output_dir / "manifest.json").exists()
 
 
-def test_sync_orthophoto_overlays_writes_tile_layer_definition(tmp_path: Path) -> None:
+def test_sync_orthophoto_overlays_writes_tile_layer_definition(tmp_path: Path, monkeypatch) -> None:
     module = load_script("sync-orthophoto-overlays.py", "sync_orthophoto_overlays")
     output_dir = tmp_path / "dev-overlays"
     tiles_dir = output_dir / "jorde-9-orthophoto-tiles"
@@ -119,3 +120,71 @@ def test_sync_orthophoto_overlays_writes_tile_layer_definition(tmp_path: Path) -
     assert "jorde-9-orthophoto-tiles/{z}/{x}/{y}.webp" in generated
     assert 'sourceKind: "preview"' in generated
     assert "qualityScale: 5.97" in generated
+
+
+    # Normal CLI regeneration must retain a standalone export and never rebuild its ID.
+    standalone_id = "august-r13-5cm-orthophoto"
+    standalone_overlay = {
+        "id": standalone_id, "label": "Augusteksport", "propertyReference": "4003-70/17/0",
+        "assetFile": f"{standalone_id}.webp", "capturedDate": "2026-08-02",
+        "bounds": {"south": 59.1, "west": 9.6, "north": 59.2, "east": 9.7}, "opacity": 0.82,
+        "limitations": ["Transparente hull"],
+        "canonicalSource": {"sha256": "a" * 64, "crs": "EPSG:32632", "widthPx": 20358, "heightPx": 21862},
+    }
+    standalone_metadata = output_dir / f"{standalone_id}.json"
+    original_metadata = json.dumps({"provenance": {"registration_status": "v3_workbench_draft"},
+                                    "source_sha256": "a" * 64, "overlay": standalone_overlay})
+    standalone_metadata.write_text(original_metadata)
+    standalone_asset = output_dir / standalone_overlay["assetFile"]
+    Image.new("RGBA", (3, 3), (20, 110, 80, 128)).save(standalone_asset, format="WEBP")
+    original_asset = standalone_asset.read_bytes()
+    processing_root = tmp_path / "processing"
+    for project in ("jorde-9", "august-r13-5cm"):
+        tif = processing_root / project / "odm_orthophoto" / "odm_orthophoto.tif"
+        tif.parent.mkdir(parents=True)
+        tif.touch()
+    built_sources = []
+    def build_overlay(_builder, source, _image, _metadata, _label):
+        built_sources.append(source)
+        return {"latlng_bounds": {"south": 59.1, "west": 9.6, "north": 59.2, "east": 9.7}}
+    monkeypatch.setattr(module, "build_overlay", build_overlay)
+    monkeypatch.setattr(module, "find_captured_date", lambda *_args: "2026-04-01")
+    monkeypatch.setattr(sys, "argv", ["sync-orthophoto-overlays.py", "--processing-root", str(processing_root),
+                                     "--output-dir", str(output_dir), "--manifest-ts", str(manifest_ts)])
+    assert module.main() == 0
+    regenerated = manifest_ts.read_text()
+    assert regenerated.count(f'id: "{standalone_id}"') == 1
+    assert 'id: "jorde-9-orthophoto"' in regenerated
+    assert "tileLayer: {" in regenerated
+    assert 'limitations: ["Transparente hull"]' in regenerated
+    assert 'sha256: "' + "a" * 64 + '"' in regenerated
+    assert len(built_sources) == 1 and built_sources[0].parent.parent.name == "jorde-9"
+    assert standalone_metadata.read_text() == original_metadata
+    assert standalone_asset.read_bytes() == original_asset
+
+    standalone_metadata.write_text("{broken registered metadata")
+    with pytest.raises(SystemExit, match="august-r13-5cm-orthophoto.json.*Rett filen"):
+        module.main()
+    assert manifest_ts.read_text() == regenerated
+    assert len(built_sources) == 1
+
+
+    # Invalid standalone serialization or a cross-ID preview collision must fail before any builder writes.
+    colliding_asset = output_dir / "jorde-9-orthophoto.webp"
+    colliding_asset.write_bytes(b"preserved existing ODM preview")
+    for invalid_field, invalid_value, error in (
+        ("assetFile", colliding_asset.name, "assetFile"),
+        ("opacity", "bad", "opacity"),
+        ("tileLayer", {}, "tileLayer"),
+    ):
+        invalid_metadata = json.loads(original_metadata)
+        invalid_metadata["overlay"][invalid_field] = invalid_value
+        standalone_metadata.write_text(json.dumps(invalid_metadata))
+        files_before = {path.relative_to(output_dir): path.read_bytes()
+                        for path in output_dir.rglob("*") if path.is_file()}
+        with pytest.raises(SystemExit, match=f"august-r13-5cm-orthophoto.json.*{error}"):
+            module.main()
+        assert manifest_ts.read_text() == regenerated
+        assert len(built_sources) == 1
+        assert {path.relative_to(output_dir): path.read_bytes()
+                for path in output_dir.rglob("*") if path.is_file()} == files_before
