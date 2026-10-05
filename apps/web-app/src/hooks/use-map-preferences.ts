@@ -37,7 +37,7 @@ export function useMapPreferences(): UseMapPreferencesResult {
   );
   const [showZoomControls, setShowZoomControls] = useState(() => {
     const stored = readStoredMapPreference(PREF_MAP_ZOOM_CONTROLS_KEY);
-    return stored == null ? true : stored === "1";
+    return stored === "1";
   });
 
   useEffect(() => {

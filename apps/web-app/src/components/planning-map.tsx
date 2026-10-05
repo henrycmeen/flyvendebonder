@@ -334,6 +334,25 @@ export function PlanningMap({
   }, []);
 
   useEffect(() => {
+    const container = mapElementRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        mapRef.current?.invalidateSize({ pan: false, animate: false });
+      });
+    });
+
+    observer.observe(container);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !showZoomControls) return;
     const control = L.control.zoom({ zoomInTitle: "Zoom inn", zoomOutTitle: "Zoom ut" });

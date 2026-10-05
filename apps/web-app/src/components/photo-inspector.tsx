@@ -19,8 +19,10 @@ import {
 import { type BaseMapStyle } from "@/lib/map-styles";
 import { photoIdKey } from "@/lib/photo-ordering";
 import { PhotoMapInset } from "@/components/photo-map-inset";
+import { PhotoViewerImage } from "@/components/photo-viewer-image";
 import { Button } from "@/components/ui/button";
 import { CloseButton } from "@/components/ui/close-button";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { PhotoFeature } from "@/types";
 
 type PhotoAnalysisAction = "approve" | "recompute";
@@ -183,6 +185,7 @@ export function PhotoInspector({
   onCancelMetadataEdit,
   onSavePhotoMetadata,
 }: PhotoInspectorProps) {
+  const isMobile = useIsMobile();
   if (!open) return null;
   const visibleTags = editablePhotoTags(metadataTagsDraft);
   const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemPhotoTag);
@@ -215,24 +218,11 @@ export function PhotoInspector({
               <>
                 <div className="photo-viewer-image-pane relative">
                   {selectedPhotoImageUrl ? (
-                    <>
-                      <img
-                        src={selectedPhotoImageUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="photo-viewer-backdrop pointer-events-none absolute inset-0 h-full w-full object-cover"
-                      />
-
-                      <div className="photo-viewer-image-wrap relative h-full w-full">
-                        <img
-                          src={selectedPhotoImageUrl}
-                          alt={selectedPhoto.title || "Foto"}
-                          className="photo-viewer-image h-full w-full cursor-zoom-out object-contain"
-                          onClick={onClose}
-                          title="Trykk for å lukke fullskjerm"
-                        />
-                      </div>
-                    </>
+                    <PhotoViewerImage
+                      src={selectedPhotoImageUrl}
+                      alt={selectedPhoto.title || "Foto"}
+                      onClose={onClose}
+                    />
                   ) : (
                     <div className="photo-viewer-image-wrap relative flex h-full w-full items-center justify-center bg-fb-surface-ghost text-center text-fb-text-secondary">
                       <div className="max-w-xs px-6">
@@ -252,14 +242,13 @@ export function PhotoInspector({
                   <div className="photo-viewer-meta-header">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 pr-1">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
-                        <h2 className="text-base font-semibold text-fb-text-primary">{selectedPhoto.title || "Foto"}</h2>
+                        <h2 className="text-base font-semibold text-fb-text-primary">{new Date(selectedPhoto.captured_at).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" }) || "Foto"}</h2>
                       </div>
                       <div className="photo-viewer-meta-actions">
                         <Button
                           variant={metadataEditMode ? "default" : "ghost"}
                           size="icon"
-                          className="h-9 w-9 shrink-0 rounded-full border border-fb-border-subtle bg-fb-surface-ghost text-fb-text-primary hover:bg-fb-surface-base"
+                          className="h-11 w-11 shrink-0 rounded-xl"
                           onClick={() => onSetMetadataEditMode((value) => !value)}
                           aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
                           aria-pressed={metadataEditMode}
@@ -272,6 +261,8 @@ export function PhotoInspector({
                     </div>
                   </div>
 
+                  <details className="photo-viewer-details" open={!isMobile || metadataEditMode}>
+                    <summary>Detaljer og analyse</summary>
                   <div className="photo-viewer-meta-body">
                     <div className="space-y-2.5">
                       <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
@@ -316,7 +307,7 @@ export function PhotoInspector({
                             }
                             className="h-8"
                           >
-                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                            <CheckCircle2 className="h-3.5 w-3.5" />
                             Godkjenn posisjon
                           </Button>
                           <Button
@@ -327,7 +318,7 @@ export function PhotoInspector({
                             disabled={analysisBusyPhotoId === selectedPhoto.id || !isAdminAuthenticated}
                             className="h-8"
                           >
-                            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                            <RefreshCw className="h-3.5 w-3.5" />
                             {selectedPhoto.analysis ? "Reberegn" : "Beregn nå"}
                           </Button>
                         </div>
@@ -733,6 +724,7 @@ export function PhotoInspector({
                       </div>
                     </div>
                   </div>
+                  </details>
                 </aside>
               </>
             ) : (
@@ -754,7 +746,6 @@ export function PhotoInspector({
                   <div className="photo-viewer-meta-header">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 pr-1">
-                        <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Foto</p>
                         <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
                       </div>
                       <div className="photo-viewer-meta-actions">

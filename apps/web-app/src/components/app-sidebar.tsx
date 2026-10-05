@@ -1,99 +1,21 @@
-import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
 
 import { PropertyHero3D } from "@/components/property-hero-3d";
-import { SettingsDialog } from "@/components/settings-dialog";
-import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import type { BaseMapStyle } from "@/lib/map-styles";
+import { MobileDock, Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import type { AdminSessionStatus, ProfileResponse } from "@/types";
+import type { ProfileResponse } from "@/types";
 
-type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video";
-
-interface LogEntry {
-  id: string;
-  time: string;
-  level: "info" | "warn" | "error";
-  message: string;
-  requestId?: string | null;
-  details?: string;
-}
-
-interface BackendLogEntry {
-  timestamp: string;
-  level: string;
-  logger: string;
-  requestId?: string | null;
-  request_id?: string | null;
-  message: string;
-  raw: string;
-}
-
-interface SavePayload {
-  user: {
-    full_name?: string;
-    phone?: string;
-    email?: string;
-    address_line1?: string;
-    postal_code?: string;
-    city?: string;
-    municipality_code?: string;
-    municipality_name?: string;
-  };
-  property: {
-    komm?: string;
-    gnr?: number;
-    bnr?: number;
-    fnr?: number;
-    label?: string;
-  };
-  additional_properties: Array<{
-    id?: number;
-    komm: string;
-    gnr: number;
-    bnr: number;
-    fnr?: number;
-    label?: string;
-  }>;
-}
+type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video" | "settings";
 
 interface AppSidebarProps {
   profile: ProfileResponse | null;
-  adminStatus: AdminSessionStatus | null;
-  adminBusy: boolean;
   activeView: AppView;
-  statusText: string;
-  propertyStatus: string;
-  soilStatus: string;
-  showSoilLayer: boolean;
-  showPropertyLayer: boolean;
-  showOnlyManualQc: boolean;
-  showOnlyLowConfidence: boolean;
-  baseMapStyle: BaseMapStyle;
-  mapGrayscale: boolean;
-  mapVintage: boolean;
-  showZoomControls: boolean;
   isLoading: boolean;
   logoSpinActive?: boolean;
-  logs: LogEntry[];
-  onClearLogs: () => void;
-  backendLogs: BackendLogEntry[];
-  backendLogsLoading: boolean;
-  onFetchBackendLogs: () => void;
-  onClearBackendLogs: () => void;
-  onToggleSoilLayer: (next: boolean) => void;
-  onTogglePropertyLayer: (next: boolean) => void;
-  onToggleManualQcFilter: (next: boolean) => void;
-  onToggleLowConfidenceFilter: (next: boolean) => void;
-  onChangeBaseMapStyle: (style: BaseMapStyle) => void;
-  onChangeMapGrayscale: (next: boolean) => void;
-  onChangeMapVintage: (next: boolean) => void;
-  onChangeShowZoomControls: (next: boolean) => void;
   onChangeView: (view: AppView) => void;
+  onOpenMapFilters?: () => void;
   onStartMediaImport?: () => void;
-  onSaveProfile: (payload: SavePayload) => Promise<void>;
-  onAdminLogin: (code: string) => Promise<void>;
-  onAdminLogout: () => Promise<void>;
 }
 
 function SidebarNavigation({
@@ -101,11 +23,31 @@ function SidebarNavigation({
   onChangeView,
   onStartMediaImport,
 }: Pick<AppSidebarProps, "activeView" | "onChangeView" | "onStartMediaImport">) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    const actions = [
+      { view: "planning" as const, label: "Planlegging", detail: "Jorder og oppdrag", Icon: Route },
+      { view: "forest" as const, label: "Skogbruk", detail: "Skog og terreng", Icon: Trees },
+      ...(onStartMediaImport ? [{ view: "import" as const, label: "Importer", detail: "Legg til opptak", Icon: Import }] : []),
+    ];
+    return (
+      <SidebarMenu className="fb-mobile-actions">
+        {actions.map(({ view, label, detail, Icon }) => (
+          <SidebarMenuItem key={view}>
+            <SidebarMenuButton active={activeView === view} closeOnClick className="fb-mobile-action" onClick={() => view === "import" && onStartMediaImport ? onStartMediaImport() : onChangeView(view)}>
+              <Icon className="h-5 w-5" />
+              <span><span className="fb-mobile-action__title">{label}</span><span className="fb-mobile-action__detail">{detail}</span></span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    );
+  }
   return (
-    <>
-      <SidebarMenu className="gap-2">
+    <nav aria-label="Hovednavigasjon">
+      <SidebarMenu className="gap-1">
         <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "map"} closeOnClick onClick={() => onChangeView("map")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "map"} closeOnClick onClick={() => onChangeView("map")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
               <MapIcon className="h-4 w-4 shrink-0" />
             </span>
@@ -113,7 +55,15 @@ function SidebarNavigation({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "album" || activeView === "orthophotos"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
+              <Images className="h-4 w-4 shrink-0" />
+            </span>
+            <span className="fb-sidebar-label">Bibliotek</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton active={activeView === "planning"} closeOnClick onClick={() => onChangeView("planning")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
               <Route className="h-4 w-4 shrink-0" />
             </span>
@@ -121,23 +71,7 @@ function SidebarNavigation({
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "album"} closeOnClick onClick={() => onChangeView("album")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-              <Images className="h-4 w-4 shrink-0" />
-            </span>
-            <span className="fb-sidebar-label">Album</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "orthophotos"} closeOnClick onClick={() => onChangeView("orthophotos")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-              <Image className="h-4 w-4 shrink-0" />
-            </span>
-            <span className="fb-sidebar-label">Ortofotoene</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton active={activeView === "forest"} closeOnClick onClick={() => onChangeView("forest")} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+          <SidebarMenuButton active={activeView === "forest"} closeOnClick onClick={() => onChangeView("forest")} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
               <Trees className="h-4 w-4 shrink-0" />
             </span>
@@ -146,63 +80,35 @@ function SidebarNavigation({
         </SidebarMenuItem>
         {onStartMediaImport ? (
           <SidebarMenuItem>
-            <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport()} className="fb-sidebar-menu-button h-12 rounded-2xl px-3.5 text-[14px] font-medium">
+            <SidebarMenuButton active={activeView === "import"} closeOnClick onClick={() => onStartMediaImport()} className="fb-sidebar-menu-button h-11 rounded-xl px-3.5 text-[14px] font-medium">
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
                 <Import className="h-4 w-4 shrink-0" />
               </span>
-              <span className="fb-sidebar-label">Import</span>
+              <span className="fb-sidebar-label">Importer</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         ) : null}
       </SidebarMenu>
-    </>
+    </nav>
   );
 }
 
 export function AppSidebar({
   profile,
-  adminStatus,
-  adminBusy,
   activeView,
-  statusText,
-  propertyStatus,
-  soilStatus,
-  showSoilLayer,
-  showPropertyLayer,
-  showOnlyManualQc,
-  showOnlyLowConfidence,
-  baseMapStyle,
-  mapGrayscale,
-  mapVintage,
-  showZoomControls,
   isLoading,
   logoSpinActive = false,
-  logs,
-  onClearLogs,
-  backendLogs,
-  backendLogsLoading,
-  onFetchBackendLogs,
-  onClearBackendLogs,
-  onToggleSoilLayer,
-  onTogglePropertyLayer,
-  onToggleManualQcFilter,
-  onToggleLowConfidenceFilter,
-  onChangeBaseMapStyle,
-  onChangeMapGrayscale,
-  onChangeMapVintage,
-  onChangeShowZoomControls,
   onChangeView,
+  onOpenMapFilters,
   onStartMediaImport,
-  onSaveProfile,
-  onAdminLogin,
-  onAdminLogout,
 }: AppSidebarProps) {
+  const isMobile = useIsMobile();
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
 
   return (
-    <Sidebar>
+    <Sidebar mobileDock={<MobileDock activeView={activeView} onChangeView={onChangeView} onOpenMapFilters={onOpenMapFilters} embedded />}>
       <SidebarHeader className="fb-sidebar-header px-5">
-        <div className="flex items-center gap-2">
+        {isMobile ? <div className="fb-mobile-menu-hero" aria-hidden="true"><PropertyHero3D profile={profile} variant="menu" /></div> : <div className="flex items-center gap-2">
           <a href={import.meta.env.BASE_URL} className="fb-sidebar-brand flex min-w-0 items-center gap-3 py-1 pl-3 pr-1 text-fb-text-primary">
             <span
               className={cn(
@@ -216,7 +122,7 @@ export function AppSidebar({
               Flyvendebønder
             </span>
           </a>
-        </div>
+        </div>}
       </SidebarHeader>
 
       <SidebarContent className="gap-6 px-5 py-6">
@@ -224,58 +130,19 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="fb-sidebar-footer space-y-3 px-5">
-        <SettingsDialog
-          profile={profile}
-          adminStatus={adminStatus}
-          adminBusy={adminBusy}
-          statusText={statusText}
-          propertyStatus={propertyStatus}
-          soilStatus={soilStatus}
-          showSoilLayer={showSoilLayer}
-          showPropertyLayer={showPropertyLayer}
-          showOnlyManualQc={showOnlyManualQc}
-          showOnlyLowConfidence={showOnlyLowConfidence}
-          baseMapStyle={baseMapStyle}
-          mapGrayscale={mapGrayscale}
-          mapVintage={mapVintage}
-          showZoomControls={showZoomControls}
-          logs={logs}
-          onClearLogs={onClearLogs}
-          backendLogs={backendLogs}
-          backendLogsLoading={backendLogsLoading}
-          onFetchBackendLogs={onFetchBackendLogs}
-          onClearBackendLogs={onClearBackendLogs}
-          onToggleSoilLayer={onToggleSoilLayer}
-          onTogglePropertyLayer={onTogglePropertyLayer}
-          onToggleManualQcFilter={onToggleManualQcFilter}
-          onToggleLowConfidenceFilter={onToggleLowConfidenceFilter}
-          onChangeBaseMapStyle={onChangeBaseMapStyle}
-          onChangeMapGrayscale={onChangeMapGrayscale}
-          onChangeMapVintage={onChangeMapVintage}
-          onChangeShowZoomControls={onChangeShowZoomControls}
-          onSaveProfile={onSaveProfile}
-          onAdminLogin={onAdminLogin}
-          onAdminLogout={onAdminLogout}
-          trigger={
-            <Button
-              type="button"
-              variant="ghost"
-              className="fb-sidebar-settings-trigger h-auto w-full overflow-visible rounded-2xl px-3.5 py-3 text-[14px] font-medium text-fb-text-primary [&>span]:w-full [&>span]:justify-center"
-            >
-              <div className="flex w-full flex-col justify-end gap-2">
-                <div className="fb-sidebar-profile-hero" aria-hidden="true">
-                  <PropertyHero3D profile={profile} variant="sidebar" />
-                </div>
-                <div className="fb-sidebar-settings-row flex w-full items-center justify-start gap-3">
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-                    <Settings2 className="h-4 w-4 shrink-0" />
-                  </span>
-                  <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
-                </div>
-              </div>
-            </Button>
-          }
-        />
+        {!isMobile && activeView !== "settings" && <div className="fb-sidebar-profile-hero" aria-hidden="true">
+          <PropertyHero3D profile={profile} variant="sidebar" />
+        </div>}
+        <SidebarMenuButton
+          active={activeView === "settings"}
+          closeOnClick
+          onClick={() => onChangeView("settings")}
+          aria-label="Innstillinger"
+          className="fb-sidebar-settings-trigger h-11 w-full px-3.5 text-[14px] font-medium data-[active=true]:bg-transparent hover:bg-transparent"
+        >
+          <Settings2 className="h-5 w-5 shrink-0" />
+          <span className="fb-sidebar-label">Innstillinger</span>
+        </SidebarMenuButton>
       </SidebarFooter>
     </Sidebar>
   );

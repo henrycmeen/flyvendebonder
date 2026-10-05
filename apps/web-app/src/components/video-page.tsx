@@ -810,11 +810,11 @@ export function VideoPage({
   if (videoWorkflowDisabled) {
     return (
       <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
-        <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+        <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
           <PageShell maxWidth="content" className="px-0">
             <Section
-              title="Videoflyt midlertidig utilgjengelig"
-              description="Video-review er slått av til backend-kontrakten er ryddet."
+              title="Video midlertidig utilgjengelig"
+              compact
               className="space-y-3"
             >
               <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-4 text-sm text-fb-text-secondary">
@@ -829,31 +829,30 @@ export function VideoPage({
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
-      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
           <Stack
-            gap={5}
-            className="rounded-[24px] border border-fb-border-subtle bg-fb-surface-ghost p-3 shadow-fb-raised sm:p-4"
+            gap={3}
+            className="pb-4"
           >
-            <Section compact className="shadow-fb-subtle">
+            <header className="py-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="inline-flex items-center gap-2">
                   <Clapperboard className="h-5 w-5 text-fb-text-secondary" />
-                  <h1 className="text-lg font-semibold text-fb-text-primary">Videoreview</h1>
+                  <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Video</h1>
                 </div>
-                <p className="text-sm text-fb-text-secondary">Samlet import skjer via import-siden. Her følger du opp videoruter og steg.</p>
               </div>
-            </Section>
+            </header>
             {queuedJobs.length === 0 ? (
-              <Section title="Ingen aktive videojobber" description="Bruk samlet mediaimport for å få inn nye videoer." className="space-y-3">
+              <Section title="Ingen aktive videojobber" className="space-y-3">
                 {submitError ? (
                   <p className="rounded-lg border border-[color:var(--fb-accent-danger)]/45 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-sm text-fb-text-primary">
                     {submitError}
                   </p>
                 ) : null}
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-fb-text-secondary">
-                    Når en importmappe inneholder video, havner jobbene her for videre review av rute og steg.
+                    Importer video for å kontrollere rute og bildesteg her.
                   </p>
                   {onStartMediaImport ? (
                     <Button type="button" onClick={onStartMediaImport}>
@@ -991,7 +990,7 @@ export function VideoPage({
             </Section>
 
               {job?.status === "done" || job?.status === "failed" ? (
-                <Section title="Resultat" description="Resultat fra ferdig videojobb." className="space-y-3">
+                <Section title="Resultat" className="space-y-3">
                   {job?.status === "failed" ? (
                     <p className="rounded-lg border border-[color:var(--fb-accent-danger)]/45 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-sm text-fb-text-primary">
                       {job.message ?? "Videobehandlingen feilet."}
@@ -999,7 +998,7 @@ export function VideoPage({
                   ) : null}
 
                   {framesResult ? (
-                    <div className="space-y-3 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-3">
+                    <div className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium text-fb-text-primary">Naturlige steg fra video</p>
@@ -1065,7 +1064,7 @@ export function VideoPage({
 
                   {showRouteResult ? (
                     <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-                      <div className="space-y-2 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-3">
+                      <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-medium text-fb-text-primary">Rute i kartet</p>
                           <span className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle px-2 py-0.5 text-xs text-fb-text-secondary">
@@ -1092,7 +1091,7 @@ export function VideoPage({
                         />
                       </div>
 
-                      <div className="space-y-3 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-3">
+                      <div className="space-y-3">
                         <div className="space-y-1">
                           <p className="text-sm font-medium text-fb-text-primary">Slik vises dette i hovedkartet</p>
                           <p className="text-xs text-fb-text-secondary">
@@ -1165,7 +1164,7 @@ export function VideoPage({
                     </p>
                   )}
 
-                  <div className="space-y-2 rounded-xl border border-fb-border-subtle bg-fb-surface-base p-3">
+                  <div className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium text-fb-text-primary">Metadata og teknisk resultat</p>
                       {routeResult?.metadata_json ? (

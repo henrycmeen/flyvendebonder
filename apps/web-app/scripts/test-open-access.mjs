@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const types = await readFile(new URL("../src/types.ts", import.meta.url), "utf8");
-const settingsDialog = await readFile(new URL("../src/components/settings-dialog.tsx", import.meta.url), "utf8");
+const settingsPage = await readFile(new URL("../src/components/settings-page.tsx", import.meta.url), "utf8");
 const smokeScript = await readFile(new URL("../../../scripts/smoke-flyvendebonder.sh", import.meta.url), "utf8");
 const deployWorkflow = await readFile(new URL("../../../.github/workflows/deploy-main.yml", import.meta.url), "utf8");
 
@@ -12,8 +12,8 @@ assert.match(types, /open_access:\s*boolean/, "Admin status must expose explicit
 const activeSessionHelper = app.match(/function hasActiveAdminSession[\s\S]*?\n}/)?.[0] ?? "";
 assert.match(activeSessionHelper, /session\.open_access/, "Open access must unlock the app without an expiring cookie");
 
-assert.match(settingsDialog, /adminStatus\.open_access/, "Settings must distinguish open access from code login");
-assert.match(settingsDialog, /Åpen tilgang er aktiv/, "Settings must explain that no password is required");
+assert.match(settingsPage, /adminStatus\.open_access/, "Settings must distinguish open access from code login");
+assert.match(settingsPage, /Åpen tilgang er aktiv/, "Settings must explain that no password is required");
 
 const pendingCheckIndex = app.indexOf("if (adminSession === null)");
 const loginGateIndex = app.indexOf('data-testid="login-gate"');

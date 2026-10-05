@@ -236,3 +236,18 @@ Målet er å bevise at primitives fungerer i innholdsflow (album), kontrollflow 
 - `Skeleton` respekterer `prefers-reduced-motion` via `motion-reduce:animate-none`.
 - `EmptyState` gir en felles standard for tomme kart-, album-, import- og inspeksjonsflater.
 - Se `docs/ui-audit.md` for oppdatert M2-status og resterende lukking av #31.
+
+
+## App pass 5. oktober 2026: enklere flater
+Referanse: https://www.fluidfunctionalism.com/docs/button og /docs/fluid-hover.
+Visuelt undersøkt desktop og mobil: nøytrale flater, kompakte knapper (målt 36 px høyde, 8 px radius), og ett flyttbart menyhøydepunkt.
+Appen gjenbruker egne shadcn/Radix-primitives: 36 px desktopknapp, 44 px minimum på mobil, svart primærhandling, rolige sekundærhandlinger.
+Mobilens dock får én delt markering for aktivt valg og peker-/tastaturfokus; CSS-overgang uten nye animasjonsavhengigheter. Dette er en tilpasning, ikke referansens framer-motion-baserte spring/nearest-item-motor.
+Biblioteket viser kun bilder og datogrupper, med filtre i docken på mobil og synlig verktøylinje på desktop.
+Faglige detaljer og videre arbeid på Skogbruk samles under «Om datagrunnlaget». Arealets begrensning står fortsatt ved hvert bilde.
+
+## Innstillinger som side, 5. oktober 2026
+
+Innstillinger bruker nå egen appvisning på `?view=settings`, med vanlig navigasjon, fast overskrift og faner og scrolling i innholdet. Profilutkast beholdes mellom faner; lagring blir på siden med kvittering. Mobil bruker samme side over den eksisterende docken. Profil-, kartlags- og adminhandlingene er videreført.
+
+Alle desktopvisninger reserverer aktuell bredde til sidemenyen, slik at den skyver innholdet og ikke dekker felter eller overskrifter. Sidemenyens strukturelle kantlinjer er fjernet. Kartet beholder avrundet klipping; biblioteket har en diskret avrundet ytterkant. Gårdsmodellen ligger øverst, med nærmere kamera på stor skjerm og tilpasset utsnitt på små skjermer. Den kan snus og zoomes. Innstillinger-knappen åpner siden og tar ved nytt trykk brukeren tilbake til forrige visning. Åpning har en kort overgang som respekterer redusert bevegelse.

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "bash scripts/test-motion-lint.sh && node scripts/test-orthophoto-color-analysis.mjs && node scripts/test-observed-at.mjs && node scripts/test-operating-area-tool.mjs && node scripts/test-map-overlay-policy.mjs && node scripts/test-profile-privacy.mjs && node scripts/test-open-access.mjs && node scripts/test-map-satellite-contrast.mjs && node scripts/test-photo-map-geometry.mjs && node scripts/test-map-preferences.mjs && node scripts/test-photo-metadata-flow.mjs",
+    "test": "bash scripts/test-motion-lint.sh && node scripts/test-orthophoto-color-analysis.mjs && node scripts/test-observed-at.mjs && node scripts/test-operating-area-tool.mjs && node scripts/test-map-overlay-policy.mjs && node scripts/test-profile-privacy.mjs && node scripts/test-open-access.mjs && node scripts/test-map-satellite-contrast.mjs && node scripts/test-photo-map-geometry.mjs && node scripts/test-map-preferences.mjs && node scripts/test-photo-metadata-flow.mjs && node scripts/test-capture-timeline.mjs && node scripts/test-media-selection.mjs && node scripts/test-capture-sequence.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint . && npm run motion:lint",
     "motion:lint": "bash ./scripts/motion-lint.sh",

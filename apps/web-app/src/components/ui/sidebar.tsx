@@ -1,4 +1,8 @@
 import * as React from "react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { Images, Map as MapIcon, MoreHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -8,32 +12,16 @@ interface SidebarContextValue {
   isMobile: boolean;
   openMobile: boolean;
   setOpenMobile: React.Dispatch<React.SetStateAction<boolean>>;
+  mobileTriggerRef: React.RefObject<HTMLButtonElement | null>;
   collapsedDesktop: boolean;
   toggleDesktop: () => void;
 }
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
 
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = React.useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < breakpoint;
-  });
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const query = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
-    const sync = () => setIsMobile(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, [breakpoint]);
-
-  return isMobile;
-}
-
 function SidebarProvider({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
+  const mobileTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [openMobile, setOpenMobile] = React.useState(false);
   const [collapsedDesktop, setCollapsedDesktop] = React.useState(true);
 
@@ -49,6 +37,7 @@ function SidebarProvider({ children }: { children: React.ReactNode }) {
         isMobile,
         openMobile,
         setOpenMobile,
+        mobileTriggerRef,
         collapsedDesktop,
         toggleDesktop: () => setCollapsedDesktop((current) => !current),
       }}
@@ -66,8 +55,8 @@ function useSidebar() {
   return context;
 }
 
-function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
-  const { isMobile, openMobile, setOpenMobile, collapsedDesktop } = useSidebar();
+function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
+  const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
   const effectiveCollapsed = collapsedDesktop && !desktopHovered;
   const content = (
@@ -84,12 +73,13 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
   if (isMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-        <SheetContent side="left" className="bg-fb-surface-page">
-          <DialogPrimitive.Title className="sr-only">Hovedmeny</DialogPrimitive.Title>
+        <SheetContent side="left" className="fb-mobile-menu bg-fb-surface-page" onCloseAutoFocus={(event) => { event.preventDefault(); mobileTriggerRef.current?.focus(); }}>
+          <DialogPrimitive.Title className="sr-only">Mer</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             Navigasjon og innstillinger for Flyvendebønder.
           </DialogPrimitive.Description>
           {content}
+          {mobileDock}
         </SheetContent>
       </Sheet>
     );
@@ -109,17 +99,22 @@ function Sidebar({ className, children }: React.HTMLAttributes<HTMLElement>) {
         setDesktopHovered(false);
       }}
       className={cn(
-        "fb-sidebar hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] md:flex md:flex-col",
+        "fb-sidebar relative z-20 hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none md:block",
         effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
       )}
     >
-      {content}
+      <div className={cn(
+        "absolute inset-y-0 left-0 flex flex-col bg-fb-surface-base transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none",
+        effectiveCollapsed ? "w-[5.5rem]" : "w-[18.75rem]",
+      )}>
+        {content}
+      </div>
     </aside>
   );
 }
 
 function SidebarHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-b border-fb-border-subtle/70 px-4 py-4", className)} {...props} />;
+  return <div className={cn("px-4 py-4", className)} {...props} />;
 }
 
 function SidebarContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -127,11 +122,11 @@ function SidebarContent({ className, ...props }: React.HTMLAttributes<HTMLDivEle
 }
 
 function SidebarFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-t border-fb-border-subtle/70 px-3 py-3", className)} {...props} />;
+  return <div className={cn("px-3 py-3", className)} {...props} />;
 }
 
 function SidebarInset({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
-  return <main className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden", className)} {...props} />;
+  return <main className={cn("relative isolate flex min-w-0 flex-1 flex-col overflow-hidden", className)} {...props} />;
 }
 
 function SidebarMenu({ className, ...props }: React.HTMLAttributes<HTMLUListElement>) {
@@ -154,8 +149,9 @@ function SidebarMenuButton({ className, active = false, closeOnClick = false, on
     <button
       type="button"
       data-active={active ? "true" : "false"}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-3 text-left text-sm font-medium text-fb-text-secondary transition-[background-color,color,box-shadow,transform] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:bg-white/34 hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[active=true]:bg-white/72 data-[active=true]:text-fb-text-primary data-[active=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.52),0_8px_18px_rgba(35,48,56,0.08)]",
+        "flex w-full items-center gap-3 text-left text-sm font-medium text-fb-text-secondary transition-[background-color,color] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] hover:bg-black/[0.035] hover:text-fb-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-season-solid data-[active=true]:bg-black/[0.055] data-[active=true]:text-fb-text-primary data-[active=true]:[&_svg]:text-fb-text-primary",
         className,
       )}
       onClick={(event) => {
@@ -210,6 +206,24 @@ function SidebarGroupLabel({ className, ...props }: React.HTMLAttributes<HTMLDiv
   );
 }
 
+function MobileDock({ activeView, onChangeView, onOpenMapFilters, embedded = false }: { activeView: string; onChangeView: (view: "map" | "album") => void; onOpenMapFilters?: () => void; embedded?: boolean }) {
+  const { isMobile, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar();
+  if (!isMobile) return null;
+  return (
+    <nav className="fb-mobile-dock" aria-label="Hovednavigasjon">
+      <Button data-fb-map-filter-trigger="" data-selected={!openMobile && activeView === "map"} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView === "map" ? "page" : undefined} onClick={() => { setOpenMobile(false); if (activeView === "map") { onOpenMapFilters?.(); } else { onChangeView("map"); } }}>
+        <MapIcon className="h-5 w-5" /><span>Kart</span>
+      </Button>
+      <Button data-selected={!openMobile && (activeView === "album" || activeView === "orthophotos")} variant="ghost" className="fb-mobile-dock__item" aria-current={(activeView === "album" || activeView === "orthophotos") ? "page" : undefined} onClick={() => { setOpenMobile(false); onChangeView("album"); }}>
+        <Images className="h-5 w-5" /><span>Bibliotek</span>
+      </Button>
+      <Button ref={embedded ? undefined : mobileTriggerRef} data-selected={openMobile || (activeView !== "map" && activeView !== "album" && activeView !== "orthophotos")} variant="ghost" className="fb-mobile-dock__item" aria-current={activeView !== "map" && activeView !== "album" && activeView !== "orthophotos" ? "page" : undefined} aria-expanded={openMobile} aria-label={embedded ? "Mer – lukk meny" : "Mer – åpne meny"} onClick={(event) => { if (!embedded) mobileTriggerRef.current = event.currentTarget; setOpenMobile((current) => !current); }}>
+        <MoreHorizontal className="h-5 w-5" /><span>Mer</span>
+      </Button>
+    </nav>
+  );
+}
+
 export {
   Sidebar,
   SidebarContent,
@@ -223,4 +237,5 @@ export {
   SidebarProvider,
   SidebarCollapseTrigger,
   SidebarTrigger,
+  MobileDock,
 };

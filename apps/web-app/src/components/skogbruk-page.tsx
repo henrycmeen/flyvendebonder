@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ArrowUpRight, Layers, Map, ShieldAlert, Trees } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/layout-primitives";
@@ -11,12 +11,6 @@ interface SkogbrukPageProps {
   showForestLayer: boolean;
   onToggleForestLayer: (next: boolean) => void;
   onOpenInMap: (overlayId: string) => void;
-}
-
-interface Metric {
-  label: string;
-  value: string;
-  detail: string;
 }
 
 function isForestOverlay(overlay: OrthophotoOverlayDefinition): boolean {
@@ -67,141 +61,57 @@ export function SkogbrukPage({
     [forestOverlays],
   );
 
-  const metrics = useMemo<Metric[]>(
-    () => [
-      {
-        label: "Skogflater",
-        value: forestOverlays.length.toLocaleString("nb-NO"),
-        detail: "ortofoto registrert",
-      },
-      {
-        label: "Kartlagt flate",
-        value: formatAreaHa(totalAreaHa),
-        detail: "fra bildeavgrensning",
-      },
-      {
-        label: "Datagrunnlag",
-        value: showForestLayer ? "På" : "Av",
-        detail: "indikativt kartlag",
-      },
-    ],
-    [forestOverlays.length, showForestLayer, totalAreaHa],
-  );
-
   return (
     <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
-      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
-          <div className="space-y-8 pb-8">
-            <header className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-end">
-              <div className="space-y-2">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-fb-text-muted">Skogbruk</p>
-                <h1 className="text-3xl font-semibold tracking-[-0.03em] text-fb-text-primary">
-                  Skogdashboard og naturskogindikasjon
-                </h1>
-                <p className="max-w-3xl text-sm leading-6 text-fb-text-secondary">
-                  Første skogflate bruker eksisterende eiendoms- og kartgrunnmur, egne skog-ortofoto og et markert
-                  indikativt lag for områder som må vurderes med fagdata før beslutning.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-fb-text-primary">Naturskogindikasjon</p>
-                    <p className="text-xs leading-5 text-fb-text-secondary">Vis avgrensningene i kartet</p>
-                  </div>
-                  <Switch
-                    id="skogbruk-naturskog"
-                    checked={showForestLayer}
-                    onCheckedChange={onToggleForestLayer}
-                    aria-label="Vis naturskogindikasjon i kartet"
-                  />
-                </div>
+          <div className="space-y-5 pb-4">
+            <header className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Skogbruk</h1>
+              <div className="flex items-center gap-3">
+                <label htmlFor="skogbruk-naturskog" className="text-sm text-fb-text-secondary">Naturskogindikasjon i kartet</label>
+                <Switch
+                  id="skogbruk-naturskog"
+                  checked={showForestLayer}
+                  onCheckedChange={onToggleForestLayer}
+                  aria-label="Vis naturskogindikasjon i kartet"
+                />
               </div>
             </header>
 
-            <section className="grid gap-3 sm:grid-cols-3" aria-label="Skogbruk nøkkeltall">
-              {metrics.map((metric) => (
-                <div key={metric.label} className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-fb-text-muted">{metric.label}</p>
-                  <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-fb-text-primary">{metric.value}</p>
-                  <p className="mt-1 text-sm text-fb-text-secondary">{metric.detail}</p>
-                </div>
+            <section aria-label="Skogortofoto" className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              {forestOverlays.map((overlay) => (
+                <article key={overlay.id} className="space-y-2">
+                  <img src={overlay.imageUrl} alt={overlay.label} className="aspect-[16/10] w-full rounded-xl object-cover" loading="lazy" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <h2 className="text-base font-semibold text-fb-text-primary">{overlay.label}</h2>
+                      <p className="text-sm text-fb-text-secondary">{formatCapturedDate(overlay.capturedDate)}</p>
+                      <p className="text-xs text-fb-text-secondary">{overlay.propertyReference}</p>
+                      <p className="text-xs text-fb-text-secondary">Ca. {formatAreaHa(estimateOverlayAreaHa(overlay))} fra bildeavgrensning</p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => onOpenInMap(overlay.id)} aria-label={`Åpne ${overlay.label} i kart`}>
+                      <ArrowUpRight className="h-4 w-4" />
+                      Kart
+                    </Button>
+                  </div>
+                </article>
               ))}
             </section>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-              <section className="space-y-4" aria-labelledby="skogbruk-overlays-title">
-                <div className="flex items-baseline justify-between gap-4">
-                  <div className="space-y-1">
-                    <h2 id="skogbruk-overlays-title" className="text-2xl font-semibold tracking-[-0.03em] text-fb-text-primary">
-                      Skogflater
-                    </h2>
-                    <p className="text-sm text-fb-text-secondary">{forestOverlays.length} tilgjengelige ortofoto</p>
-                  </div>
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  {forestOverlays.map((overlay) => (
-                    <article key={overlay.id} className="overflow-hidden rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost">
-                      <img src={overlay.imageUrl} alt={overlay.label} className="aspect-[16/10] w-full object-cover" loading="lazy" />
-                      <div className="space-y-3 px-4 py-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="truncate text-lg font-semibold tracking-[-0.02em] text-fb-text-primary">{overlay.label}</h3>
-                            <p className="text-sm text-fb-text-secondary">{formatCapturedDate(overlay.capturedDate)}</p>
-                          </div>
-                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-fb-surface-page text-[color:var(--fb-map-forest)]">
-                            <Trees className="h-4 w-4" />
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-fb-text-secondary">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle bg-fb-surface-page px-2 py-1">
-                            <Map className="h-3.5 w-3.5" />
-                            {formatAreaHa(estimateOverlayAreaHa(overlay))}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-fb-border-subtle bg-fb-surface-page px-2 py-1">
-                            <Layers className="h-3.5 w-3.5" />
-                            {overlay.propertyReference}
-                          </span>
-                        </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenInMap(overlay.id)}>
-                          <ArrowUpRight className="h-3.5 w-3.5" />
-                          Åpne i kart
-                        </Button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <aside className="space-y-3">
-                <section className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-4">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-fb-surface-page text-[color:var(--fb-map-forest)]">
-                      <ShieldAlert className="h-4 w-4" />
-                    </span>
-                    <div className="space-y-2">
-                      <h2 className="text-sm font-semibold text-fb-text-primary">Kunnskapsgrunnlag</h2>
-                      <p className="text-sm leading-6 text-fb-text-secondary">
-                        Naturskogindikasjonen er et arbeidslag for prioritering. Den må tolkes sammen med feltbefaring,
-                        offentlig kartgrunnlag og lokale driftsavklaringer før den brukes som beslutningsgrunnlag.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-fb-border-subtle bg-fb-surface-ghost px-4 py-4">
-                  <h2 className="text-sm font-semibold text-fb-text-primary">Neste operasjonelle steg</h2>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-fb-text-secondary">
-                    <li>Registrer hvilke skogflater som trenger ny flyging.</li>
-                    <li>Koble skogflate til samme eiendoms- og planleggingsgrunnlag som jordene.</li>
-                    <li>Dokumenter om funn er observasjon, indikasjon eller verifisert faggrunnlag.</li>
-                  </ul>
-                </section>
-              </aside>
-            </div>
+            <details className="border-t border-fb-border-subtle pt-3 text-sm text-fb-text-secondary">
+              <summary className="cursor-pointer font-medium text-fb-text-primary">Om datagrunnlaget</summary>
+              <div className="mt-3 max-w-2xl space-y-3 leading-6">
+                <p>{forestOverlays.length} ortofoto · ca. {formatAreaHa(totalAreaHa)} fra bildeavgrensning. Arealet er et anslag fra bildenes kartutsnitt.</p>
+                <p>Naturskogindikasjonen er et arbeidslag for prioritering. Den må tolkes sammen med feltbefaring, offentlig kartgrunnlag og lokale driftsavklaringer før den brukes som beslutningsgrunnlag.</p>
+                <p className="font-medium text-fb-text-primary">Videre arbeid</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>Registrer hvilke skogflater som trenger ny flyging.</li>
+                  <li>Koble skogflate til samme eiendoms- og planleggingsgrunnlag som jordene.</li>
+                  <li>Dokumenter om funn er observasjon, indikasjon eller verifisert faggrunnlag.</li>
+                </ul>
+              </div>
+            </details>
           </div>
         </PageShell>
       </div>

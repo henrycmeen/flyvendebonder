@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+import json
+
+import pytest
 
 from PIL import Image
 
@@ -344,3 +347,139 @@ def test_media_staging_finalize_is_scoped_to_current_user(client):
 
     response = client.post("/api/v1/media-staging-jobs/annen-staging-finalize/finalize")
     assert response.status_code == 404
+
+
+def test_staging_preserves_original_names_and_folder_provenance(client, monkeypatch):
+    from app.database import SessionLocal
+    from app.models import Photo
+
+    _install_fake_image_metadata(monkeypatch)
+    second_image = BytesIO()
+    Image.new("RGB", (120, 80), color=(255, 20, 80)).save(second_image, format="JPEG")
+    paths = ["flyvning-a/felt.jpg", "flyvning-b/felt.jpg"]
+    response = client.post(
+        "/api/v1/media-staging-jobs",
+        data={"source_paths": json.dumps(paths)},
+        files=[("files", ("felt.jpg", image, "image/jpeg")) for image in [_jpeg_bytes(), second_image.getvalue()]],
+    )
+    assert response.status_code == 201
+    job_id = response.json()["job"]["job_id"]
+    result = client.post(f"/api/v1/media-staging-jobs/{job_id}/finalize").json()["result"]
+    assert result["image_imported_count"] == 2
+    with SessionLocal() as db:
+        assert [db.get(Photo, item["photo_id"]).source_filename for item in result["items"]] == ["felt.jpg", "felt.jpg"]
+    fetched = client.get(f"/api/v1/media-staging-jobs/{job_id}").json()["job"]
+    assert [item["source_path"] for item in fetched["items"]] == paths
+
+
+@pytest.mark.parametrize("source_paths", ["oops", "{}", "[]", '["../felt.jpg"]', '["/felt.jpg"]', '["C:\\felt.jpg"]', '[42]'])
+def test_invalid_source_paths_fail_before_staging_writes(client, source_paths):
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.models import MediaStagingJob
+    from sqlalchemy import select
+
+    response = client.post("/api/v1/media-staging-jobs", data={"source_paths": source_paths},
+                           files=[("files", ("felt.jpg", b"image", "image/jpeg"))])
+    assert response.status_code == 400
+    root = get_settings().app_data_root / "media-staging"
+    assert not root.exists() or not list(root.iterdir())
+    with SessionLocal() as db:
+        assert db.execute(select(MediaStagingJob)).scalars().all() == []
+
+
+@pytest.mark.parametrize("limit_name", ["MAX_STAGING_FILE_BYTES", "MAX_STAGING_JOB_BYTES"])
+def test_staging_caps_roll_back_only_the_new_job(client, monkeypatch, limit_name):
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.models import MediaStagingJob
+    from app.services import media_staging
+    from sqlalchemy import select
+
+    existing = client.post("/api/v1/media-staging-jobs", files=[("files", ("keep.jpg", b"keep", "image/jpeg"))]).json()["job"]
+    monkeypatch.setattr(media_staging, limit_name, 5)
+    response = client.post("/api/v1/media-staging-jobs", files=[
+        ("files", ("first.jpg", b"1234", "image/jpeg")),
+        ("files", ("big.jpg", b"123456", "image/jpeg")),
+    ])
+    assert response.status_code == 413
+    root = get_settings().app_data_root / "media-staging"
+    assert [path.name for path in root.iterdir()] == [existing["job_id"]]
+    assert (root / existing["job_id"] / "000-keep.jpg").read_bytes() == b"keep"
+    with SessionLocal() as db:
+        assert [job.id for job in db.execute(select(MediaStagingJob)).scalars()] == [existing["job_id"]]
+
+
+def test_empty_file_is_rejected_and_failed_file_keeps_its_outcome(client):
+    response = client.post("/api/v1/media-staging-jobs", files=[
+        ("files", ("empty.jpg", b"", "image/jpeg")),
+        ("files", ("corrupt.jpg", b"not-image", "image/jpeg")),
+    ])
+    job = response.json()["job"]
+    assert job["items"][0]["status"] == "rejected"
+    assert job["items"][0]["error_detail"] == "Filen er tom"
+    result = client.post(f"/api/v1/media-staging-jobs/{job['job_id']}/finalize").json()["result"]
+    assert {item["filename"]: item["status"] for item in result["items"]} == {"empty.jpg": "rejected", "corrupt.jpg": "failed"}
+    assert result["image_imported_count"] == 0
+    assert client.post(f"/api/v1/media-staging-jobs/{job['job_id']}/finalize").json()["result"] == result
+
+
+def test_identical_files_in_one_job_report_one_import(client, monkeypatch):
+    _install_fake_image_metadata(monkeypatch)
+    response = client.post("/api/v1/media-staging-jobs", files=[
+        ("files", ("original.jpg", _jpeg_bytes(), "image/jpeg")),
+        ("files", ("copy.jpg", _jpeg_bytes(), "image/jpeg")),
+    ])
+    result = client.post(f"/api/v1/media-staging-jobs/{response.json()['job']['job_id']}/finalize").json()["result"]
+    assert result["image_imported_count"] == 1
+    assert result["image_skipped_count"] == 1
+    assert [item["status"] for item in result["items"]] == ["imported", "skipped"]
+    assert result["items"][0]["photo_id"] == result["items"][1]["photo_id"]
+
+
+def test_finalized_get_and_list_restore_durable_mixed_receipt(client, monkeypatch):
+    _install_fake_image_metadata(monkeypatch)
+    response = client.post("/api/v1/media-staging-jobs", files=[
+        ("files", ("good.jpg", _jpeg_bytes(), "image/jpeg")),
+        ("files", ("bad.jpg", b"corrupt", "image/jpeg")),
+        ("files", ("notes.txt", b"notes", "text/plain")),
+    ])
+    job_id = response.json()["job"]["job_id"]
+    assert response.json()["job"]["finalize_result"] is None
+    result = client.post(f"/api/v1/media-staging-jobs/{job_id}/finalize").json()["result"]
+    assert [item["status"] for item in result["items"]] == ["imported", "failed", "rejected"]
+    assert client.get(f"/api/v1/media-staging-jobs/{job_id}").json()["job"]["finalize_result"] == result
+    assert client.get("/api/v1/media-staging-jobs").json()["jobs"][0]["finalize_result"] == result
+
+
+def test_cancelled_staging_cleans_only_its_new_directory_and_closes_uploads(client):
+    import asyncio
+    from fastapi import UploadFile
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.models import MediaStagingJob, User
+    from app.services.media_staging import create_media_staging_job
+    from sqlalchemy import select
+
+    root = get_settings().app_data_root / "media-staging"
+    retained = root / "existing"
+    retained.mkdir(parents=True)
+    (retained / "keep.txt").write_text("keep")
+    completed_upload = UploadFile(file=BytesIO(b"ok"), filename="first.jpg")
+    cancelled_upload = UploadFile(file=BytesIO(b"unread"), filename="second.jpg")
+
+    async def cancel_read(size=-1):
+        raise asyncio.CancelledError()
+
+    cancelled_upload.read = cancel_read
+    with SessionLocal() as db:
+        owner = db.execute(select(User)).scalars().first()
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(create_media_staging_job(db, app_data_root=get_settings().app_data_root,
+                                                user_id=owner.id, property_id=None,
+                                                files=[completed_upload, cancelled_upload]))
+        assert db.execute(select(MediaStagingJob)).scalars().all() == []
+    assert list(root.iterdir()) == [retained]
+    assert (retained / "keep.txt").read_text() == "keep"
+    assert completed_upload.file.closed
+    assert cancelled_upload.file.closed

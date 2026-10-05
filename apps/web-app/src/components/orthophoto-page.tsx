@@ -1,3 +1,4 @@
+import { LibraryNavigation } from "@/components/library-navigation";
 import { useMemo } from "react";
 import { ArrowUpRight, CalendarDays } from "lucide-react";
 
@@ -6,6 +7,7 @@ import { splitCapturedDate } from "@/lib/formatters";
 import type { OrthophotoOverlayDefinition } from "@/lib/orthophoto-overlays";
 
 interface OrthophotoPageProps {
+  onChangeLibraryView: (view: "album" | "orthophotos") => void;
   overlays: OrthophotoOverlayDefinition[];
   onOpenInMap: (overlayId: string) => void;
 }
@@ -38,7 +40,7 @@ function formatCapturedDate(value: string): string {
   });
 }
 
-export function OrthophotoPage({ overlays, onOpenInMap }: OrthophotoPageProps) {
+export function OrthophotoPage({ overlays, onOpenInMap, onChangeLibraryView }: OrthophotoPageProps) {
   const groups = useMemo<OverlayGroup[]>(() => {
     const grouped = new Map<string, OrthophotoOverlayDefinition[]>();
 
@@ -67,24 +69,20 @@ export function OrthophotoPage({ overlays, onOpenInMap }: OrthophotoPageProps) {
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto">
-      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-20 sm:px-6 sm:pt-6">
+      <div className="min-h-full bg-fb-surface-base px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
         <PageShell maxWidth="wide" className="px-0">
-          <div className="space-y-10 pb-8">
-            <div className="space-y-2">
-              <p className="text-[13px] font-semibold uppercase tracking-[0.24em] text-fb-text-muted">Ortofotoene</p>
-              <h1 className="text-3xl font-semibold tracking-[-0.03em] text-fb-text-primary">Kartlag fra flyging</h1>
-            </div>
+          <div className="space-y-6 pb-4">
+            <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Bibliotek</h1>
+            <LibraryNavigation active="orthophotos" onChange={onChangeLibraryView} />
 
             {groups.map((group) => (
               <section key={group.key} className="space-y-4">
                 <div className="flex items-baseline justify-between gap-4">
-                  <div className="space-y-1">
-                    <h2 className="text-2xl font-semibold tracking-[-0.03em] text-fb-text-primary">{group.label}</h2>
-                    <p className="text-sm text-fb-text-secondary">{group.overlays.length} ortofoto</p>
-                  </div>
+                  <h2 className="text-lg font-semibold tracking-tight text-fb-text-primary">{group.label}</h2>
+                  <p className="text-sm text-fb-text-secondary">{group.overlays.length} ortofoto</p>
                 </div>
 
-                <div className="grid gap-7 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                   {group.overlays.map((overlay) => (
                     <button
                       key={overlay.id}
@@ -96,18 +94,18 @@ export function OrthophotoPage({ overlays, onOpenInMap }: OrthophotoPageProps) {
                         <img
                           src={overlay.imageUrl}
                           alt={overlay.label}
-                          className="block w-full rounded-[28px] object-cover shadow-[0_22px_45px_rgba(25,39,52,0.14)] transition-transform duration-300 group-hover:scale-[1.01]"
+                          className="block w-full rounded-xl object-cover"
                           loading="lazy"
                         />
                         <div className="flex items-start justify-between gap-3 px-1">
                           <div className="space-y-1">
-                            <p className="text-lg font-semibold tracking-[-0.02em] text-fb-text-primary">{overlay.label}</p>
+                            <p className="text-base font-semibold tracking-tight text-fb-text-primary">{overlay.label}</p>
                             <div className="flex items-center gap-2 text-sm text-fb-text-secondary">
                               <CalendarDays className="h-4 w-4" />
                               <span>{formatCapturedDate(overlay.capturedDate)}</span>
                             </div>
                           </div>
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-fb-surface-ghost text-fb-text-primary transition-colors group-hover:bg-fb-surface-page">
+                          <span className="inline-flex h-9 w-9 items-center justify-center text-fb-text-secondary">
                             <ArrowUpRight className="h-4 w-4" />
                           </span>
                         </div>

@@ -1179,6 +1179,7 @@ MediaStagingKind = Literal["image", "video", "unknown"]
 class MediaStagingItemOut(BaseModel):
     id: int
     filename: str
+    source_path: str | None = None
     mime: str | None = None
     bytes: int
     checksum: str | None = None
@@ -1196,6 +1197,7 @@ class MediaStagingCountsOut(BaseModel):
 
 
 class MediaStagingJobOut(BaseModel):
+    finalize_result: MediaFinalizeResultOut | None = None
     job_id: str
     source: str
     status: MediaStagingJobStatus
@@ -1237,6 +1239,9 @@ class MediaFinalizeResultOut(BaseModel):
     video_jobs_reused: int = 0
     rejected_count: int = 0
     items: list[MediaFinalizeItemOut] = Field(default_factory=list)
+
+
+MediaStagingJobOut.model_rebuild()
 
 
 class MediaFinalizeEnvelope(BaseModel):

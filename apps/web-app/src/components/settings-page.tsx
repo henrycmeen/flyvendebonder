@@ -1,3 +1,5 @@
+import "./settings-page.css";
+
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Plus, Trash2 } from "lucide-react";
@@ -5,7 +7,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { TechnicalLogList } from "@/components/technical-log-list";
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Divider, Section, Stack } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BASE_MAP_STYLE_ORDER, BASE_MAP_STYLES, type BaseMapStyle } from "@/lib/map-styles";
-import { cn } from "@/lib/utils";
 import type { AdminSessionStatus, ProfileResponse } from "@/types";
 
 interface LogEntry {
@@ -63,7 +63,7 @@ interface SavePayload {
   }>;
 }
 
-interface SettingsDialogProps {
+interface SettingsPageProps {
   profile: ProfileResponse | null;
   adminStatus: AdminSessionStatus | null;
   adminBusy: boolean;
@@ -95,7 +95,6 @@ interface SettingsDialogProps {
   onSaveProfile: (payload: SavePayload) => Promise<void>;
   onAdminLogin: (code: string) => Promise<void>;
   onAdminLogout: () => Promise<void>;
-  trigger: React.ReactNode;
 }
 
 interface FormState {
@@ -196,7 +195,7 @@ function hasAnyAdditionalPropertyValue(draft: AdditionalPropertyDraft): boolean 
   return [draft.label, draft.komm, draft.gnr, draft.bnr, draft.fnr].some((value) => value.trim().length > 0);
 }
 
-export function SettingsDialog({
+export function SettingsPage({
   profile,
   adminStatus,
   adminBusy,
@@ -228,10 +227,9 @@ export function SettingsDialog({
   onSaveProfile,
   onAdminLogin,
   onAdminLogout,
-  trigger,
-}: SettingsDialogProps) {
-  const [open, setOpen] = useState(false);
+}: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [formState, setFormState] = useState<FormState>(toFormState(profile));
   const [additionalProperties, setAdditionalProperties] = useState<AdditionalPropertyDraft[]>(toAdditionalPropertyDrafts(profile));
   const [adminCode, setAdminCode] = useState("");
@@ -242,7 +240,7 @@ export function SettingsDialog({
     setFormState(toFormState(profile));
     setAdditionalProperties(toAdditionalPropertyDrafts(profile));
     setSaveError(null);
-  }, [open, profile]);
+  }, [profile]);
 
   useEffect(() => {
     if (!adminStatus?.authenticated) {
@@ -274,6 +272,7 @@ export function SettingsDialog({
       return;
     }
     setSaveError(null);
+    setSaved(false);
 
     const normalizedAdditionalProperties: SavePayload["additional_properties"] = [];
     for (const [index, propertyDraft] of additionalProperties.entries()) {
@@ -323,7 +322,7 @@ export function SettingsDialog({
         },
         additional_properties: normalizedAdditionalProperties,
       });
-      setOpen(false);
+      setSaved(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Kunne ikke lagre innstillinger.");
     } finally {
@@ -358,10 +357,12 @@ export function SettingsDialog({
   };
 
   const addAdditionalPropertyRow = () => {
+    setSaved(false);
     setAdditionalProperties((previous) => [...previous, emptyAdditionalPropertyDraft()]);
   };
 
   const removeAdditionalPropertyRow = (clientId: string) => {
+    setSaved(false);
     setAdditionalProperties((previous) => previous.filter((property) => property.client_id !== clientId));
   };
 
@@ -376,37 +377,39 @@ export function SettingsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent
-        aria-describedby={undefined}
-        className="max-h-[90vh] gap-3 overflow-y-auto rounded-[28px] border-fb-border-subtle bg-[#f7f4ea] p-5 shadow-[0_28px_80px_rgba(35,48,56,0.24)] sm:max-w-[980px] sm:p-6"
-      >
-        <DialogHeader className="space-y-0">
-          <DialogTitle>Innstillinger</DialogTitle>
-        </DialogHeader>
+    <section className="fb-settings-page" aria-labelledby="settings-title">
+      <div className="fb-settings-layout">
+        <header className="fb-settings-header">
+          <div>
+            <h1 id="settings-title" className="text-xl font-semibold tracking-tight">Innstillinger</h1>
+            <p className="mt-1 text-sm text-fb-text-secondary">{activePropertyName}</p>
+          </div>
+          <div className="fb-settings-hero-model">
+            <PropertyHero3D profile={profile} variant="settings" />
+          </div>
+        </header>
 
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-none border-0 bg-transparent p-0">
-            <TabsTrigger value="profile" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Profil</TabsTrigger>
-            <TabsTrigger value="layer" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Kartlag</TabsTrigger>
-            <TabsTrigger value="admin" className="rounded-[18px] border border-[#d9d3bf] bg-[#f3eee2] py-3 data-[state=active]:border-[#b7af95] data-[state=active]:bg-[#fffdf7]">Admin</TabsTrigger>
+        <Tabs defaultValue="profile" className="fb-settings-body w-full">
+          <TabsList className="fb-settings-tabs">
+            <TabsTrigger value="profile" className="fb-settings-tab">Profil</TabsTrigger>
+            <TabsTrigger value="layer" className="fb-settings-tab">Kartlag</TabsTrigger>
+            <TabsTrigger value="admin" className="fb-settings-tab">Admin</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="mt-3">
-            <form className="w-full" onSubmit={onSubmit}>
+            <form className="w-full" onSubmit={onSubmit} onChange={() => setSaved(false)}>
               <Stack gap={4}>
                 {!adminStatus?.authenticated ? (
-                  <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
+                  <div className="fb-settings-note text-xs text-fb-text-secondary">
                     Profilendringer krever admin-innlogging under fanen Admin.
                   </div>
                 ) : null}
                 {saveError ? (
-                  <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                  <div className="rounded-lg border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
                     {saveError}
                   </div>
                 ) : null}
-                <Section compact title="Kundeprofil" className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none">
+                <Section compact title="Kundeprofil" className="fb-settings-section">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="grid gap-1.5">
                       <Label htmlFor="full_name">Navn</Label>
@@ -440,22 +443,19 @@ export function SettingsDialog({
                   compact
                   title="Eiendom"
                   actions={
-                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-full px-3" onClick={addAdditionalPropertyRow}>
+                    <Button type="button" variant="outline" size="sm" className="px-3" onClick={addAdditionalPropertyRow}>
                       <Plus className="h-3.5 w-3.5" />
                       Legg til eiendom
                     </Button>
                   }
-                  className="rounded-[22px] border-[#d9d3bf] bg-[#fffdf7] shadow-none"
+                  className="fb-settings-section"
                 >
                   <div className="space-y-3">
-                    <div className="flex items-center gap-8 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-5 py-4">
-                      <div className="min-w-0 w-[220px] shrink-0">
+                    <div className="fb-settings-farm">
+                      <div className="min-w-0">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Aktiv gård</p>
                         <p className="mt-1 text-base font-semibold text-fb-text-primary">{activePropertyName}</p>
                         <p className="text-xs text-fb-text-secondary">{propertyLabel}</p>
-                      </div>
-                      <div className="shrink-0">
-                        <PropertyHero3D profile={profile} />
                       </div>
                     </div>
 
@@ -493,7 +493,7 @@ export function SettingsDialog({
                       {additionalProperties.length ? (
                         <Stack gap={3}>
                           {additionalProperties.map((property, index) => (
-                            <div key={property.client_id} className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-3">
+                            <div key={property.client_id} className="fb-settings-extra-property">
                               <div className="mb-3 flex items-center justify-between gap-3">
                                 <div>
                                   <p className="text-sm font-medium text-fb-text-primary">Ekstra eiendom {index + 1}</p>
@@ -503,7 +503,7 @@ export function SettingsDialog({
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 rounded-full text-fb-text-secondary"
+                                  className="text-fb-text-secondary"
                                   onClick={() => removeAdditionalPropertyRow(property.client_id)}
                                   aria-label={`Fjern ekstra eiendom ${index + 1}`}
                                 >
@@ -560,7 +560,7 @@ export function SettingsDialog({
                           ))}
                         </Stack>
                       ) : (
-                        <div className="rounded-[18px] border border-dashed border-[#d6cfbb] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-secondary">
+                        <div className="fb-settings-empty text-sm text-fb-text-secondary">
                           Ingen ekstra eiendommer lagt til ennå.
                         </div>
                       )}
@@ -568,20 +568,21 @@ export function SettingsDialog({
                   </div>
                 </Section>
 
-                <DialogFooter>
+                <div className="flex items-center gap-3">
+                  {saved ? <p role="status" className="text-sm text-fb-text-secondary">Endringene er lagret.</p> : null}
                   <Button type="submit" disabled={saving || !adminStatus?.authenticated}>
                     {saving ? "Lagrer ..." : adminStatus?.authenticated ? "Lagre" : "Admin kreves"}
                   </Button>
-                </DialogFooter>
+                </div>
               </Stack>
             </form>
           </TabsContent>
 
           <TabsContent value="layer" className="mt-3">
-            <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
+            <Stack gap={4} className="fb-settings-panel">
               <div className="grid gap-2">
                 <Label className="text-xs uppercase tracking-[0.08em] text-fb-text-secondary">Bakgrunnskart</Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="fb-settings-map-styles">
                   {BASE_MAP_STYLE_ORDER.map((styleKey) => {
                     const selected = styleKey === baseMapStyle;
                     return (
@@ -589,9 +590,9 @@ export function SettingsDialog({
                         key={styleKey}
                         type="button"
                         size="sm"
-                        variant={selected ? "default" : "outline"}
+                        variant="ghost"
                         aria-pressed={selected}
-                        className={cn("h-8 rounded-full px-3", selected ? "bg-[color:var(--fb-chip-active-bg)] text-[color:var(--fb-chip-active-text)]" : "text-fb-text-primary")}
+                        className="fb-settings-map-style"
                         onClick={() => onChangeBaseMapStyle(styleKey)}
                       >
                         {BASE_MAP_STYLES[styleKey].label}
@@ -601,7 +602,7 @@ export function SettingsDialog({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="map-vintage" className="text-fb-text-primary">Vintage-kart</Label>
                   <p className="text-xs text-fb-text-secondary">Papiraktig bakgrunn for roligere kartvisning.</p>
@@ -609,7 +610,7 @@ export function SettingsDialog({
                 <Switch id="map-vintage" checked={mapVintage} onCheckedChange={onChangeMapVintage} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="map-grayscale" className="text-fb-text-primary">Svart/hvitt</Label>
                   <p className="text-xs text-fb-text-secondary">Demper bakgrunnskartet når bildene skal være i fokus.</p>
@@ -617,7 +618,7 @@ export function SettingsDialog({
                 <Switch id="map-grayscale" checked={mapGrayscale} onCheckedChange={onChangeMapGrayscale} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="map-zoom-controls" className="text-fb-text-primary">Vis zoomknapper</Label>
                   <p className="text-xs text-fb-text-secondary">Vis pluss/minus-knappene i kartet.</p>
@@ -627,7 +628,7 @@ export function SettingsDialog({
 
               <Divider />
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="show-soil-layer" className="text-fb-text-primary">Vis jordsmonn</Label>
                   <p className="text-xs text-fb-text-secondary">{soilStatus}</p>
@@ -635,7 +636,7 @@ export function SettingsDialog({
                 <Switch id="show-soil-layer" checked={showSoilLayer} onCheckedChange={onToggleSoilLayer} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="show-property-layer" className="text-fb-text-primary">Vis eiendomsgrenser</Label>
                   <p className="text-xs text-fb-text-secondary">{propertyStatus}</p>
@@ -643,7 +644,7 @@ export function SettingsDialog({
                 <Switch id="show-property-layer" checked={showPropertyLayer} onCheckedChange={onTogglePropertyLayer} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="show-manual-qc" className="text-fb-text-primary">Kun manuell QC</Label>
                   <p className="text-xs text-fb-text-secondary">Vis bare bilder som trenger manuell vurdering.</p>
@@ -651,7 +652,7 @@ export function SettingsDialog({
                 <Switch id="show-manual-qc" checked={showOnlyManualQc} onCheckedChange={onToggleManualQcFilter} />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+              <div className="fb-settings-option">
                 <div>
                   <Label htmlFor="show-low-confidence" className="text-fb-text-primary">Lav tillit</Label>
                   <p className="text-xs text-fb-text-secondary">Vis bare bilder med lav tillit til posisjonen.</p>
@@ -659,15 +660,15 @@ export function SettingsDialog({
                 <Switch id="show-low-confidence" checked={showOnlyLowConfidence} onCheckedChange={onToggleLowConfidenceFilter} />
               </div>
 
-              <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
+              <div className="fb-settings-note text-xs text-fb-text-secondary">
                 {statusText}
               </div>
             </Stack>
           </TabsContent>
 
           <TabsContent value="admin" className="mt-3">
-            <Stack gap={4} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
-              <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-primary">
+            <Stack gap={4} className="fb-settings-panel">
+              <div className="fb-settings-note text-sm text-fb-text-primary">
                 {adminStatus === null
                   ? "Sjekker admin-status ..."
                   : adminStatus.open_access
@@ -681,7 +682,7 @@ export function SettingsDialog({
 
               {adminStatus?.configured && !adminStatus.open_access ? (
                 adminStatus.authenticated ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3">
+                  <div className="fb-settings-option flex-wrap">
                     <div>
                       <p className="text-sm font-medium text-fb-text-primary">Admin aktiv</p>
                       <p className="text-xs text-fb-text-secondary">
@@ -707,7 +708,7 @@ export function SettingsDialog({
                       />
                     </div>
                     {adminError ? (
-                      <div className="rounded-[18px] border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
+                      <div className="rounded-lg border border-[color:var(--fb-accent-danger)]/30 bg-[color:var(--fb-accent-danger)]/8 px-3 py-2 text-xs text-fb-text-primary">
                         {adminError}
                       </div>
                     ) : null}
@@ -721,9 +722,9 @@ export function SettingsDialog({
               ) : null}
 
               {adminStatus?.authenticated ? (
-                <Stack gap={3} className="rounded-[22px] border border-[#d9d3bf] bg-[#fffdf7] p-4 shadow-none">
+                <Stack gap={3} className="fb-settings-panel">
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Teknisk logg</p>
                       <div className="flex flex-wrap justify-end gap-2">
                         <Button type="button" variant="default" size="sm" onClick={onFetchBackendLogs} disabled={backendLogsLoading}>
@@ -734,10 +735,10 @@ export function SettingsDialog({
                         </Button>
                       </div>
                     </div>
-                    <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-2 text-xs text-fb-text-secondary">
+                    <div className="fb-settings-note text-xs text-fb-text-secondary">
                       Viser siste linjer fra backend, begrenset til siste 120 i denne visningen.
                     </div>
-                    <ScrollArea className="h-52 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
+                    <ScrollArea className="fb-settings-log h-52">
                       <TechnicalLogList
                         emptyText="Ingen serverlogg lastet enda."
                         items={backendLogs.map((entry, index) => ({
@@ -750,13 +751,13 @@ export function SettingsDialog({
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-fb-text-muted">Frontendlogg</p>
                       <Button type="button" variant="ghost" size="sm" onClick={onClearLogs}>
                         Tøm logg
                       </Button>
                     </div>
-                    <ScrollArea className="h-40 rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] p-2">
+                    <ScrollArea className="fb-settings-log h-40">
                       <TechnicalLogList
                         emptyText="Ingen frontend logger enda."
                         items={logs.map((entry) => ({
@@ -770,14 +771,14 @@ export function SettingsDialog({
                   </div>
                 </Stack>
               ) : (
-                <div className="rounded-[18px] border border-[#e0dbc9] bg-[#fcfaf3] px-3 py-3 text-sm text-fb-text-secondary">
+                <div className="fb-settings-note text-sm text-fb-text-secondary">
                   Teknisk logg låses opp når admin er aktiv.
                 </div>
               )}
             </Stack>
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </section>
   );
 }

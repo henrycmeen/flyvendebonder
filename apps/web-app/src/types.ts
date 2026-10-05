@@ -598,6 +598,7 @@ export type MediaStagingKind = "image" | "video" | "unknown";
 export type MediaFinalizeItemStatus = "imported" | "skipped" | "created" | "reused" | "rejected" | "failed";
 
 export interface MediaStagingItem {
+  source_path?: string | null;
   id: number;
   filename: string;
   mime: string | null;
@@ -617,6 +618,7 @@ export interface MediaStagingCounts {
 }
 
 export interface MediaStagingJob {
+  finalize_result?: MediaFinalizeResult | null;
   job_id: string;
   source: string;
   status: MediaStagingJobStatus;
