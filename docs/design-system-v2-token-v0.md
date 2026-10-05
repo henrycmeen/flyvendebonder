@@ -245,3 +245,7 @@ Appen gjenbruker egne shadcn/Radix-primitives: 36 px desktopknapp, 44 px minimum
 Mobilens dock får én delt markering for aktivt valg og peker-/tastaturfokus; CSS-overgang uten nye animasjonsavhengigheter. Dette er en tilpasning, ikke referansens framer-motion-baserte spring/nearest-item-motor.
 Biblioteket viser kun bilder og datogrupper, med filtre i docken på mobil og synlig verktøylinje på desktop.
 Faglige detaljer og videre arbeid på Skogbruk samles under «Om datagrunnlaget». Arealets begrensning står fortsatt ved hvert bilde.
+
+## Innstillinger som side, 5. oktober 2026
+
+Innstillinger bruker nå egen appvisning på `?view=settings`, med vanlig navigasjon, fast overskrift og faner og scrolling i innholdet. Profilutkast beholdes mellom faner; lagring blir på siden med kvittering. Mobil bruker samme side over den eksisterende docken. Profil-, kartlags- og adminhandlingene er videreført.

@@ -1,4 +1,4 @@
-import "./settings-dialog.css";
+import "./settings-page.css";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -7,7 +7,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { TechnicalLogList } from "@/components/technical-log-list";
 import { PropertyHero3D } from "@/components/property-hero-3d";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Divider, Section, Stack } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,7 +63,7 @@ interface SavePayload {
   }>;
 }
 
-interface SettingsDialogProps {
+interface SettingsPageProps {
   profile: ProfileResponse | null;
   adminStatus: AdminSessionStatus | null;
   adminBusy: boolean;
@@ -96,7 +95,6 @@ interface SettingsDialogProps {
   onSaveProfile: (payload: SavePayload) => Promise<void>;
   onAdminLogin: (code: string) => Promise<void>;
   onAdminLogout: () => Promise<void>;
-  trigger: React.ReactNode;
 }
 
 interface FormState {
@@ -197,7 +195,7 @@ function hasAnyAdditionalPropertyValue(draft: AdditionalPropertyDraft): boolean 
   return [draft.label, draft.komm, draft.gnr, draft.bnr, draft.fnr].some((value) => value.trim().length > 0);
 }
 
-export function SettingsDialog({
+export function SettingsPage({
   profile,
   adminStatus,
   adminBusy,
@@ -229,10 +227,9 @@ export function SettingsDialog({
   onSaveProfile,
   onAdminLogin,
   onAdminLogout,
-  trigger,
-}: SettingsDialogProps) {
-  const [open, setOpen] = useState(false);
+}: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [formState, setFormState] = useState<FormState>(toFormState(profile));
   const [additionalProperties, setAdditionalProperties] = useState<AdditionalPropertyDraft[]>(toAdditionalPropertyDrafts(profile));
   const [adminCode, setAdminCode] = useState("");
@@ -243,7 +240,7 @@ export function SettingsDialog({
     setFormState(toFormState(profile));
     setAdditionalProperties(toAdditionalPropertyDrafts(profile));
     setSaveError(null);
-  }, [open, profile]);
+  }, [profile]);
 
   useEffect(() => {
     if (!adminStatus?.authenticated) {
@@ -275,6 +272,7 @@ export function SettingsDialog({
       return;
     }
     setSaveError(null);
+    setSaved(false);
 
     const normalizedAdditionalProperties: SavePayload["additional_properties"] = [];
     for (const [index, propertyDraft] of additionalProperties.entries()) {
@@ -324,7 +322,7 @@ export function SettingsDialog({
         },
         additional_properties: normalizedAdditionalProperties,
       });
-      setOpen(false);
+      setSaved(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Kunne ikke lagre innstillinger.");
     } finally {
@@ -359,10 +357,12 @@ export function SettingsDialog({
   };
 
   const addAdditionalPropertyRow = () => {
+    setSaved(false);
     setAdditionalProperties((previous) => [...previous, emptyAdditionalPropertyDraft()]);
   };
 
   const removeAdditionalPropertyRow = (clientId: string) => {
+    setSaved(false);
     setAdditionalProperties((previous) => previous.filter((property) => property.client_id !== clientId));
   };
 
@@ -377,15 +377,11 @@ export function SettingsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent
-        aria-describedby={undefined}
-        className="fb-settings-dialog"
-      >
-        <DialogHeader className="fb-settings-header space-y-0">
-          <DialogTitle>Innstillinger</DialogTitle>
-        </DialogHeader>
+    <section className="fb-settings-page" aria-labelledby="settings-title">
+      <div className="fb-settings-layout">
+        <header className="fb-settings-header">
+          <h1 id="settings-title" className="text-xl font-semibold tracking-tight">Innstillinger</h1>
+        </header>
 
         <Tabs defaultValue="profile" className="fb-settings-body w-full">
           <TabsList className="fb-settings-tabs">
@@ -395,7 +391,7 @@ export function SettingsDialog({
           </TabsList>
 
           <TabsContent value="profile" className="mt-3">
-            <form className="w-full" onSubmit={onSubmit}>
+            <form className="w-full" onSubmit={onSubmit} onChange={() => setSaved(false)}>
               <Stack gap={4}>
                 {!adminStatus?.authenticated ? (
                   <div className="fb-settings-note text-xs text-fb-text-secondary">
@@ -569,11 +565,12 @@ export function SettingsDialog({
                   </div>
                 </Section>
 
-                <DialogFooter>
+                <div className="flex items-center gap-3">
+                  {saved ? <p role="status" className="text-sm text-fb-text-secondary">Endringene er lagret.</p> : null}
                   <Button type="submit" disabled={saving || !adminStatus?.authenticated}>
                     {saving ? "Lagrer ..." : adminStatus?.authenticated ? "Lagre" : "Admin kreves"}
                   </Button>
-                </DialogFooter>
+                </div>
               </Stack>
             </form>
           </TabsContent>
@@ -778,7 +775,7 @@ export function SettingsDialog({
             </Stack>
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </section>
   );
 }

@@ -2,100 +2,20 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Image, Images, Import, Map as MapIcon, Route, Settings2, Trees } from "lucide-react";
 
 import { PropertyHero3D } from "@/components/property-hero-3d";
-import { SettingsDialog } from "@/components/settings-dialog";
-import { Button } from "@/components/ui/button";
 import { MobileDock, Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
-import type { BaseMapStyle } from "@/lib/map-styles";
 import { cn } from "@/lib/utils";
-import type { AdminSessionStatus, ProfileResponse } from "@/types";
+import type { ProfileResponse } from "@/types";
 
-type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video";
-
-interface LogEntry {
-  id: string;
-  time: string;
-  level: "info" | "warn" | "error";
-  message: string;
-  requestId?: string | null;
-  details?: string;
-}
-
-interface BackendLogEntry {
-  timestamp: string;
-  level: string;
-  logger: string;
-  requestId?: string | null;
-  request_id?: string | null;
-  message: string;
-  raw: string;
-}
-
-interface SavePayload {
-  user: {
-    full_name?: string;
-    phone?: string;
-    email?: string;
-    address_line1?: string;
-    postal_code?: string;
-    city?: string;
-    municipality_code?: string;
-    municipality_name?: string;
-  };
-  property: {
-    komm?: string;
-    gnr?: number;
-    bnr?: number;
-    fnr?: number;
-    label?: string;
-  };
-  additional_properties: Array<{
-    id?: number;
-    komm: string;
-    gnr: number;
-    bnr: number;
-    fnr?: number;
-    label?: string;
-  }>;
-}
+type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video" | "settings";
 
 interface AppSidebarProps {
   profile: ProfileResponse | null;
-  adminStatus: AdminSessionStatus | null;
-  adminBusy: boolean;
   activeView: AppView;
-  statusText: string;
-  propertyStatus: string;
-  soilStatus: string;
-  showSoilLayer: boolean;
-  showPropertyLayer: boolean;
-  showOnlyManualQc: boolean;
-  showOnlyLowConfidence: boolean;
-  baseMapStyle: BaseMapStyle;
-  mapGrayscale: boolean;
-  mapVintage: boolean;
-  showZoomControls: boolean;
   isLoading: boolean;
   logoSpinActive?: boolean;
-  logs: LogEntry[];
-  onClearLogs: () => void;
-  backendLogs: BackendLogEntry[];
-  backendLogsLoading: boolean;
-  onFetchBackendLogs: () => void;
-  onClearBackendLogs: () => void;
-  onToggleSoilLayer: (next: boolean) => void;
-  onTogglePropertyLayer: (next: boolean) => void;
-  onToggleManualQcFilter: (next: boolean) => void;
-  onToggleLowConfidenceFilter: (next: boolean) => void;
-  onChangeBaseMapStyle: (style: BaseMapStyle) => void;
-  onChangeMapGrayscale: (next: boolean) => void;
-  onChangeMapVintage: (next: boolean) => void;
-  onChangeShowZoomControls: (next: boolean) => void;
   onChangeView: (view: AppView) => void;
   onOpenMapFilters?: () => void;
   onStartMediaImport?: () => void;
-  onSaveProfile: (payload: SavePayload) => Promise<void>;
-  onAdminLogin: (code: string) => Promise<void>;
-  onAdminLogout: () => Promise<void>;
 }
 
 function SidebarNavigation({
@@ -184,42 +104,12 @@ function SidebarNavigation({
 
 export function AppSidebar({
   profile,
-  adminStatus,
-  adminBusy,
   activeView,
-  statusText,
-  propertyStatus,
-  soilStatus,
-  showSoilLayer,
-  showPropertyLayer,
-  showOnlyManualQc,
-  showOnlyLowConfidence,
-  baseMapStyle,
-  mapGrayscale,
-  mapVintage,
-  showZoomControls,
   isLoading,
   logoSpinActive = false,
-  logs,
-  onClearLogs,
-  backendLogs,
-  backendLogsLoading,
-  onFetchBackendLogs,
-  onClearBackendLogs,
-  onToggleSoilLayer,
-  onTogglePropertyLayer,
-  onToggleManualQcFilter,
-  onToggleLowConfidenceFilter,
-  onChangeBaseMapStyle,
-  onChangeMapGrayscale,
-  onChangeMapVintage,
-  onChangeShowZoomControls,
   onChangeView,
   onOpenMapFilters,
   onStartMediaImport,
-  onSaveProfile,
-  onAdminLogin,
-  onAdminLogout,
 }: AppSidebarProps) {
   const isMobile = useIsMobile();
   const logoUrl = `${import.meta.env.BASE_URL}flyvendebonder-logo.svg`;
@@ -252,56 +142,16 @@ export function AppSidebar({
         {!isMobile && <div className="fb-sidebar-profile-hero" aria-hidden="true">
           <PropertyHero3D profile={profile} variant="sidebar" />
         </div>}
-        <SettingsDialog
-          profile={profile}
-          adminStatus={adminStatus}
-          adminBusy={adminBusy}
-          statusText={statusText}
-          propertyStatus={propertyStatus}
-          soilStatus={soilStatus}
-          showSoilLayer={showSoilLayer}
-          showPropertyLayer={showPropertyLayer}
-          showOnlyManualQc={showOnlyManualQc}
-          showOnlyLowConfidence={showOnlyLowConfidence}
-          baseMapStyle={baseMapStyle}
-          mapGrayscale={mapGrayscale}
-          mapVintage={mapVintage}
-          showZoomControls={showZoomControls}
-          logs={logs}
-          onClearLogs={onClearLogs}
-          backendLogs={backendLogs}
-          backendLogsLoading={backendLogsLoading}
-          onFetchBackendLogs={onFetchBackendLogs}
-          onClearBackendLogs={onClearBackendLogs}
-          onToggleSoilLayer={onToggleSoilLayer}
-          onTogglePropertyLayer={onTogglePropertyLayer}
-          onToggleManualQcFilter={onToggleManualQcFilter}
-          onToggleLowConfidenceFilter={onToggleLowConfidenceFilter}
-          onChangeBaseMapStyle={onChangeBaseMapStyle}
-          onChangeMapGrayscale={onChangeMapGrayscale}
-          onChangeMapVintage={onChangeMapVintage}
-          onChangeShowZoomControls={onChangeShowZoomControls}
-          onSaveProfile={onSaveProfile}
-          onAdminLogin={onAdminLogin}
-          onAdminLogout={onAdminLogout}
-          trigger={
-            <Button
-              type="button"
-              variant="ghost"
-              aria-label={isMobile ? "Innstillinger" : `Innstillinger – ${profile?.property?.label ?? "Meen gård"}`}
-              className="fb-sidebar-settings-trigger h-auto w-full overflow-visible rounded-2xl px-3.5 py-3 text-[14px] font-medium text-fb-text-primary [&>span]:w-full"
-            >
-              {isMobile ? <div className="flex w-full items-center gap-3"><Settings2 className="h-5 w-5" /><span>Innstillinger</span></div> : <div className="flex w-full flex-col justify-end gap-2">
-                <div className="fb-sidebar-settings-row flex w-full items-center justify-start gap-3">
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-fb-text-secondary">
-                    <Settings2 className="h-4 w-4 shrink-0" />
-                  </span>
-                  <span className="fb-sidebar-label">{profile?.property?.label ?? "Meen gård"}</span>
-                </div>
-              </div>}
-            </Button>
-          }
-        />
+        <SidebarMenuButton
+          active={activeView === "settings"}
+          closeOnClick
+          onClick={() => onChangeView("settings")}
+          aria-label="Innstillinger"
+          className="fb-sidebar-settings-trigger h-11 w-full px-3.5 text-[14px] font-medium"
+        >
+          <Settings2 className="h-5 w-5 shrink-0" />
+          <span className="fb-sidebar-label">Innstillinger</span>
+        </SidebarMenuButton>
       </SidebarFooter>
     </Sidebar>
   );

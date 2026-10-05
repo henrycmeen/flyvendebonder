@@ -31,6 +31,7 @@ import { useOperatingAreaTool } from "@/hooks/use-operating-area-tool";
 import { AlbumPage } from "@/components/album-page";
 import { OrthophotoPage } from "@/components/orthophoto-page";
 import { AppSidebar } from "@/components/app-sidebar";
+import { SettingsPage } from "@/components/settings-page";
 import { FilterPanel } from "@/components/filter-panel";
 import { readCaptureScope, writeCaptureScope } from "@/lib/capture-timeline";
 import { MapLayerPanel } from "@/components/map-layer-panel";
@@ -90,7 +91,7 @@ const LOG_LIMIT = 220;
 
 type SeasonFilter = ThemeSeasonFilter;
 type DayScope = "all" | "selected";
-type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video";
+type AppView = "map" | "planning" | "album" | "orthophotos" | "forest" | "import" | "video" | "settings";
 type UiTheme = "standard" | "satellite";
 const CONFIDENCE_FILTER_THRESHOLD = 0.72;
 const MAP_PHOTO_PAGE_LIMIT = 180;
@@ -108,6 +109,7 @@ const VIDEO_WORKFLOW_DISABLED_REASON =
 function resolveInitialView(rawView: string | null): AppView {
   if (rawView === "planning") return "planning";
   if (rawView === "album") return "album";
+  if (rawView === "settings") return "settings";
   if (rawView === "forest" || rawView === "skogbruk") return "forest";
   if (rawView === "import") {
     return BROWSER_MEDIA_IMPORT_ENABLED ? "import" : "map";
@@ -2546,7 +2548,7 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album" || activeView === "forest" || activeView === "import" || activeView === "video") {
+    if (activeView === "album" || activeView === "forest" || activeView === "import" || activeView === "video" || activeView === "settings") {
       next.set("view", activeView === "forest" ? "skogbruk" : activeView);
     } else {
       next.delete("view");
@@ -3389,55 +3391,12 @@ export default function App() {
         <div className="flex h-full overflow-hidden">
           <AppSidebar
             profile={profile}
-            adminStatus={adminSession}
-            adminBusy={isAdminSessionBusy}
             activeView={activeView}
-            statusText={statusText}
-            propertyStatus={propertyStatus}
-            soilStatus={soilStatus}
-            showSoilLayer={showSoilLayer}
-            showPropertyLayer={showPropertyLayer}
-            showOnlyManualQc={showOnlyManualQc}
-            showOnlyLowConfidence={showOnlyLowConfidence}
-            baseMapStyle={baseMapStyle}
-            mapGrayscale={mapGrayscale}
-            mapVintage={mapVintage}
-            showZoomControls={showZoomControls}
             isLoading={isLoading}
             logoSpinActive={albumScrollSpin || isMapPhotosLoading}
-            logs={logs}
-            onClearLogs={() => setLogs([])}
-            backendLogs={backendLogs}
-            backendLogsLoading={isBackendLogsLoading}
-            onClearBackendLogs={() => setBackendLogs([])}
-            onFetchBackendLogs={loadBackendLogs}
-            onToggleSoilLayer={handleToggleSoilLayer}
-            onChangeBaseMapStyle={(style) => {
-              baseMapTileErrorRef.current = null;
-              setBaseMapStyle(style);
-              addLog("info", "Bakgrunnskart endret", null, { style });
-            }}
-            onChangeMapGrayscale={(next) => {
-              setMapGrayscale(next);
-              addLog("info", next ? "Svart/hvitt aktivert" : "Svart/hvitt deaktivert");
-            }}
-            onChangeMapVintage={(next) => {
-              setMapVintage(next);
-              addLog("info", next ? "Vintage-kart aktivert" : "Vintage-kart deaktivert");
-            }}
-            onChangeShowZoomControls={(next) => {
-              setShowZoomControls(next);
-              addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
-            }}
             onChangeView={handleChangeView}
             onOpenMapFilters={() => setIsFilterExpanded((current) => !current)}
-            onTogglePropertyLayer={handleTogglePropertyLayer}
-            onSaveProfile={handleSaveProfile}
-            onAdminLogin={handleAdminLogin}
-            onAdminLogout={handleAdminLogout}
             onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED ? handleStartMediaImport : undefined}
-            onToggleManualQcFilter={handleToggleManualQcFilter}
-            onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
           />
 
           <SidebarInset className="bg-canvas md:p-3 md:pl-0">
@@ -3595,6 +3554,53 @@ export default function App() {
                   onDeleteMission={handleDeleteFlightMission}
                   onReloadMissions={() => loadFlightMissions({ silent: true })}
                   onReloadProfile={() => loadProfile()}
+                />
+              ) : activeView === "settings" ? (
+                <SettingsPage
+                  profile={profile}
+                  adminStatus={adminSession}
+                  adminBusy={isAdminSessionBusy}
+                  statusText={statusText}
+                  propertyStatus={propertyStatus}
+                  soilStatus={soilStatus}
+                  showSoilLayer={showSoilLayer}
+                  showPropertyLayer={showPropertyLayer}
+                  showOnlyManualQc={showOnlyManualQc}
+                  showOnlyLowConfidence={showOnlyLowConfidence}
+                  baseMapStyle={baseMapStyle}
+                  mapGrayscale={mapGrayscale}
+                  mapVintage={mapVintage}
+                  showZoomControls={showZoomControls}
+                  logs={logs}
+                  onClearLogs={() => setLogs([])}
+                  backendLogs={backendLogs}
+                  backendLogsLoading={isBackendLogsLoading}
+                  onClearBackendLogs={() => setBackendLogs([])}
+                  onFetchBackendLogs={loadBackendLogs}
+                  onToggleSoilLayer={handleToggleSoilLayer}
+                  onChangeBaseMapStyle={(style) => {
+                    baseMapTileErrorRef.current = null;
+                    setBaseMapStyle(style);
+                    addLog("info", "Bakgrunnskart endret", null, { style });
+                  }}
+                  onChangeMapGrayscale={(next) => {
+                    setMapGrayscale(next);
+                    addLog("info", next ? "Svart/hvitt aktivert" : "Svart/hvitt deaktivert");
+                  }}
+                  onChangeMapVintage={(next) => {
+                    setMapVintage(next);
+                    addLog("info", next ? "Vintage-kart aktivert" : "Vintage-kart deaktivert");
+                  }}
+                  onChangeShowZoomControls={(next) => {
+                    setShowZoomControls(next);
+                    addLog("info", next ? "Zoomknapper aktivert" : "Zoomknapper skjult");
+                  }}
+                  onTogglePropertyLayer={handleTogglePropertyLayer}
+                  onSaveProfile={handleSaveProfile}
+                  onAdminLogin={handleAdminLogin}
+                  onAdminLogout={handleAdminLogout}
+                  onToggleManualQcFilter={handleToggleManualQcFilter}
+                  onToggleLowConfidenceFilter={handleToggleLowConfidenceFilter}
                 />
               ) : activeView === "album" ? (
                 <AlbumPage
