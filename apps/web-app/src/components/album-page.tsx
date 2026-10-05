@@ -1,8 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Loader2, Play, Search } from "lucide-react";
+import { CalendarDays, Loader2, Search } from "lucide-react";
 
-import { CapturePlayer } from "@/components/capture-player";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResponsivePageControls } from "@/components/ui/responsive-page-controls";
@@ -147,8 +145,6 @@ export function AlbumPage({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const playerTriggerRef = useRef<HTMLButtonElement>(null);
-  const [playerOpen, setPlayerOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [qualityFilter, setQualityFilter] = useState<"all" | "review" | "checked">("all");
   const [groupBy, setGroupBy] = useState<"day" | "month">("day");
@@ -255,13 +251,6 @@ export function AlbumPage({
 
   return (
     <>
-    <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
-      <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); playerTriggerRef.current?.focus(); }} className="max-h-[94dvh] max-w-5xl gap-3 overflow-y-auto p-3 sm:p-5">
-        <DialogTitle className="pr-10">Opptak over tid</DialogTitle>
-        <DialogDescription>Bilder i bibliotekutvalget vises fra eldste til nyeste. Ulike kameravinkler er ikke justert til samme utsnitt.</DialogDescription>
-        {playerOpen ? <CapturePlayer photos={filteredPhotos} hasMore={hasMore} isLoadingMore={isLoadingMore} loadFailed={loadFailed} onLoadMore={onLoadMore} /> : null}
-      </DialogContent>
-    </Dialog>
     <div
       className="pointer-events-auto absolute inset-0 z-[620] overflow-y-auto"
       onScroll={() => {
@@ -276,7 +265,6 @@ export function AlbumPage({
                 <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary sm:text-2xl">Bibliotek</h1>
                 <span className="text-xs text-fb-text-secondary" role="status" title={hasMore ? "Flere bilder lastes når du blar videre" : "Alle bilder er lastet"}>{filteredPhotos.length.toLocaleString("nb-NO")} av {photos.length.toLocaleString("nb-NO")} lastet</span>
               </div>
-              <Button type="button" size="sm" variant="ghost" ref={playerTriggerRef} disabled={filteredPhotos.length === 0} onClick={() => setPlayerOpen(true)} aria-label="Vis opptak over tid"><Play className="h-4 w-4" /><span className="hidden sm:inline">Opptak over tid</span></Button>
             </header>
             <ResponsivePageControls active={hasActiveFilters}>
               <div className="fb-album-controls">
