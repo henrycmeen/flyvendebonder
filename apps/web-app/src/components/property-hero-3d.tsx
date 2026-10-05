@@ -4,14 +4,14 @@ import type { ProfileResponse } from "@/types";
 
 interface PropertyHero3DProps {
   profile: ProfileResponse | null;
-  variant?: "profile" | "sidebar";
+  variant?: "profile" | "sidebar" | "menu";
 }
 
 export function PropertyHero3D({ profile, variant = "profile" }: PropertyHero3DProps) {
   const activeProperty = profile?.property ?? null;
   const propertyName = activeProperty?.label?.trim() || "Meen gård";
   const heroUrl = `${import.meta.env.BASE_URL}meen-gard-profile.glb`;
-  const isSidebar = variant === "sidebar";
+  const isSidebar = variant !== "profile";
 
   return (
     <div
@@ -35,7 +35,7 @@ export function PropertyHero3D({ profile, variant = "profile" }: PropertyHero3DP
         exposure="1.02"
         environment-image="neutral"
         interaction-prompt="none"
-        {...(isSidebar ? { "auto-rotate": "", "rotation-per-second": "0.8deg", "auto-rotate-delay": "0" } : {})}
+        {...(variant === "sidebar" ? { "auto-rotate": "", "rotation-per-second": "0.8deg", "auto-rotate-delay": "0" } : {})}
         {...(isSidebar ? {} : { "camera-controls": "", "touch-action": "pan-y" })}
       />
     </div>

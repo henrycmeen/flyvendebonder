@@ -3,6 +3,7 @@
   --fb-surface-base: #fff;
   --fb-surface-ghost: #f5f5f5;
   --fb-border-subtle: #e5e5e5;
+  --fb-season-solid: #626262;
   width: calc(100vw - 24px);
   max-width: 720px;
   max-height: calc(100dvh - 32px);
