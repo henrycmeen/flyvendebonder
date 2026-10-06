@@ -246,3 +246,22 @@ Full validate-agent-worktree.sh --with-stack-smoke består etter rettelsen:
 369 backendtester, frontendtester, lint, build og isolert smoke 8840/5227.
 Logg /tmp/v3-viewer-validation.log; smoke-state under prosjektets eksterne
 runtime-caches/worktrees/v3-viewer-smoke-20261006. Ingen produksjonsendring.
+
+
+## UI-gjennomgang 6. oktober 2026
+
+Avgrenset layoutreparasjon etter brukerens skjermbilde av filtre over bibliotekbilder.
+
+- Bibliotek: tett hvit filterrad i vanlig dokumentflyt; gammel sticky-regel med ugyldig bakgrunnstoken fjernet. Mobile filtre ligger fortsatt i docken, Escape lukker og fokuserer sammendraget.
+- Planlegging: rullbar mobil/tablet-layout, bounded områdeliste og kart, responsiv inspektør. Header bruker flex i stedet for fast høydefradrag; alle sju verktøy beholder 44px bredde i rullbar rad.
+- Innstillinger: hele siden ruller, inkludert gårdsmodellen, fanene og skjemaet. Heroen kan ikke lenger kollapse skjemaets scrollregion.
+- Import: handlingsknapper kan brytes på smale skjermer. Kartlag: popover har begrenset høyde og intern rulling.
+- Tokenkontroll fant manglende success-farge; den bruker nå eksisterende emerald-farge.
+
+Kildegjennomgang omfattet navigasjon/dock, felles kontroller, planlegging, kartfiltre, innstillinger, import og skogbruk. Dormante TimelineBottom/ProfileCard er ikke aktive GUI-flater.
+
+Kontroller: full `validate-agent-worktree.sh --with-stack-smoke` PASS (369 backendtester, frontendtester, lint, build og isolert stack-smoke), logg `/tmp/v3-ui-audit-validation.log`. Etter siste fargealias: nytt frontendbuild PASS, `/tmp/v3-ui-token-build.log`. Uavhengig lesende diffreview uten blokkerende funn.
+
+Nettleser: 320/360/390px mobil, 844x390 liggende mobil, 1024/1280/1440/1536px desktop. Bibliotek og ortofoto, bildevisning, planlegging med valgt hovedteig, skogbruk, importens tomtilstand, innstillinger Profil/Kartlag, mobilmeny og kartfilter-toggling kontrollert. 360px: ingen horisontal dokumentoverflyt, eksportknapp nås ved rulling. 844x390: Lagre nås gjennom samlet siderulling. Kartpopover i 1280x480 holder seg innen viewport. Filopplasting, lagring av profil og destructive handlinger ble ikke utført. Ingen fysisk mobil/Safari-prøve eller produksjonsdeploy.
+
+Skjermbilder på kontrollmaskinen: `work/v3-context/ui-audit-library.png`, `ui-audit-library-mobile.png`, `ui-audit-planning-mobile.png`.

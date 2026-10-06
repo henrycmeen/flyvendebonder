@@ -231,7 +231,7 @@ export function MapLayerPanel({
       </div>
 
       {open ? (
-        <div className="fb-map-layer-panel pointer-events-auto w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
+        <div className="fb-map-layer-panel pointer-events-auto max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl bg-fb-surface-page p-3 shadow-fb-floating sm:w-72">
           <div className="mb-3 flex items-start justify-between gap-3 px-1">
             <div>
               <p className="fb-map-layer-panel__eyebrow text-[11px] uppercase tracking-[0.1em] text-fb-text-secondary">Kartfiltre</p>

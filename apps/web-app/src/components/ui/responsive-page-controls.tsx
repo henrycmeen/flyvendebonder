@@ -21,5 +21,5 @@ export function ResponsivePageControls({ children, label = "Filtrer og sorter", 
       </details>, target,
     );
   }
-  return <div className="fb-page-toolbar">{children}</div>;
+  return <div className="border-b border-fb-border-subtle bg-fb-surface-base py-2">{children}</div>;
 }

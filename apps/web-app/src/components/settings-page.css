@@ -9,13 +9,15 @@
   z-index: 620;
   min-width: 0;
   background: #fff;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   color: var(--fb-text-primary);
 }
 .fb-settings-layout {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
+  min-height: 100%;
   max-width: 860px;
   margin-inline: auto;
   padding: 28px 32px;
@@ -53,7 +55,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
 }
 
 .fb-settings-page .fb-settings-tabs {
@@ -103,8 +104,6 @@
 .fb-settings-page .fb-settings-body > [role="tabpanel"] {
   min-height: 0;
   flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   margin-top: 16px;
   padding: 4px;
 }

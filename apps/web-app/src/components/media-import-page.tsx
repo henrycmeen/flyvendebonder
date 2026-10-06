@@ -134,7 +134,7 @@ export function MediaImportPage({ receiptPanel, busy = false, errorMessage, succ
                   </ul>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs text-fb-text-secondary">Filene er valgt lokalt. Etter opplasting kontrollerer du dem før import til biblioteket.</p>
-                    <div className="flex gap-2"><Button type="button" variant="ghost" disabled={locked} onClick={() => { updateItems([]); setLocalNotice("Filutvalget er tømt."); setLocalError(""); }}>Tøm utvalg</Button><Button type="button" disabled={locked} onClick={() => void handleConfirmImport()}>{busy || submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Last opp til kontroll</Button></div>
+                    <div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" disabled={locked} onClick={() => { updateItems([]); setLocalNotice("Filutvalget er tømt."); setLocalError(""); }}>Tøm utvalg</Button><Button type="button" disabled={locked} onClick={() => void handleConfirmImport()}>{busy || submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Last opp til kontroll</Button></div>
                   </div>
                 </section>
               )}

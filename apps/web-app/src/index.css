@@ -44,6 +44,7 @@
   --fb-accent-bridge: #099197;
   --fb-accent-bridge-subtle: rgba(9, 145, 151, 0.14);
   --fb-accent-emerald: #7d9a68;
+  --fb-accent-success: var(--fb-accent-emerald);
   --fb-accent-emerald-subtle: rgba(125, 154, 104, 0.18);
   --fb-accent-sky: #97acc8;
   --fb-accent-sky-subtle: rgba(151, 172, 200, 0.18);
@@ -2034,7 +2035,6 @@ summary:focus-visible,
 }
 
 /* Keep page controls compact and let photographs carry the library. */
-.fb-page-toolbar { position: sticky; top: 0; z-index: 20; padding-block: 8px; background: var(--fb-surface-base); border-bottom: 1px solid var(--fb-border-subtle); }
 .fb-album-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .fb-album-controls > .relative { flex: 1 1 240px; }
 .fb-album-controls > .space-y-2 { flex-basis: 100%; }
