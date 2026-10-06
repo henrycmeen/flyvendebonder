@@ -1,6 +1,6 @@
 # V3: akseptansegrunnlag
 
-Kontrollert 5. oktober 2026. GitHub #339 er autoritativ plan; dette dokumentet
+Oppdatert 6. oktober 2026. GitHub #339 er autoritativ plan; dette dokumentet
 samler bevis og gjenstående porter, ikke en ny oppgavekø. Produksjonsleveranse
 eller full måloppnåelse er ikke bekreftet.
 
@@ -14,7 +14,7 @@ eller full måloppnåelse er ikke bekreftet.
 | Eksisterende feltobservasjoner | Faktisk eiendom og observasjonstid/offset brukes. Tom tilstand prøvd med previewdata, positiv periodefiltrering med merket fixture. Ukjent bildetilknytning er synlig. |
 | Ingen avlingsprognose | UI skiller visuell/RGB-prøve og værkontekst fra agronomisk konklusjon. Ingen avlingsscore eller regn-basert diagnose. |
 | Reviewbar neste versjon | Draft PR #341. Ny kildeleveranse består full lokal validate med 369 backendtester, frontendkontroller, build og isolert stack smoke. Uavhengig review av værtransport og ny rasterkilde fant ingen blokkere. CI for ny commit bekreftes separat. |
-| Faktisk bruk på mobil / felt | 390×844 er nettleserprøve. Henrys fysiske prøve og produktaksept gjenstår. |
+| Faktisk bruk på mobil / felt | 390×844 er nettleserprøve. Henry avviste den første fotoflyten: to datoer må vise omtrent samme sted. Stedsbasert rettelse er nettleserprøvd, men ny produktaksept gjenstår. |
 
 ## Eksisterende friksjon
 
@@ -41,3 +41,24 @@ ikke bevis for at laget fungerer i felt.
 4. Kontroller den regenererte vårkilden og værperioden i preview, og vurder om
    nærliggende stasjonsmålinger gir nyttig kontekst. Formuler deretter ett
    konkret neste analysebehov fra faktisk bruk.
+
+## Tilbakemelding og stedsbasert fotoflyt, 6. oktober
+
+Henrys prøve avviste dato-først-valget: det første bildet på hver dato innen
+samme eiendom gir ikke nødvendigvis samme motiv. Dette er en mislykket
+produktprøve, ikke aksept.
+
+Foto starter nå med et valgt utgangspunkt. Kandidater kommer fra samme
+numeriske eiendom på andre datoer, innen 30 meter og med kompatibel kjent
+kameravinkel. Beregnede målpunkter brukes bare for estimated/manual;
+point og ukjent modus er GPS-proxy og blandes ikke med målpunkter. Lav eller
+ukjent sikkerhet vises. Nærhet er et forslag, ikke registrering av utsnitt.
+Ugyldige gamle URL-par vises ikke som en sammenligning.
+
+De 120 innlastede previewbildene har 16 utgangspunkt med kandidat. Ingen
+kvalifisert par har begge datoer i 2026. Historiske sider i de fire parene
+med én 2026-dato gir 404 for både bilde og thumbnail; 2026-sidene gir 200.
+Dermed gjenstår positiv visuell vurdering av et fotografisk par når begge
+bildefiler er tilgjengelige. Dette begrenser previewbeviset; det beviser
+ikke at produksjon mangler disse filene. Ortofoto beholder sammenligning
+av geografisk overlapp. Ingen automatisk bilderegistrering eller avlingsscore.

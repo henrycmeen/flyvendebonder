@@ -193,3 +193,32 @@ Månedssummer var mars 0 (1 valgt døgn), april 83,5, mai 31,4, juni 94,6,
 juli 50,9 og august 0 (2 valgte døgn), totalt 260,4 mm.
 Dette er faktiske stasjonsmålinger og en nettleserprøve, ikke fysisk feltaksept.
 Se v3-weather-source.md for kilde, eksakte serier, lisens og aktivering.
+
+## Sted først i fotografisk sammenligning, 6. oktober 2026
+
+Endret etter Henrys avvisning av dato-først-flyten. Eksisterende frontendtest
+utvidet med nærhet, numerisk eiendom, ulike datoer, deterministisk rangering,
+view-target versus kamera-GPS, kjente vinkelavvik, nadir/yaw og confidence.
+Uavhengig read-only review fant tre P2 som er rettet: proxy-målpunkt,
+samme dato ved bytte av utgangspunkt og undefined scope i URL. Ny review
+fant ingen gjenværende blokkere.
+
+Full validate-agent-worktree.sh --with-stack-smoke består: backendtester,
+frontendtester, lint/build og isolert stack smoke på 8840/5227. Logg:
+/tmp/v3-place-validation.log på Mac mini; isolert smoke-state:
+/Volumes/Projects/Active/Flyvendebonder/runtime-caches/worktrees/v3-place-smoke-20261006.
+
+IAB desktop og 390x844 bekreftet at det gamle paret
+20260401122945-0085 / 20260403115935-0166 avvises som et ikke-kvalifisert par.
+Bytte til den andre datoens bilde velger en annen dato, lukking skriver
+ikke undefined scope, tilbake/frem gjenoppretter utgangspunktet, og mobil
+har bredde/scrollbredde 390/390. Ortofoto åpner fortsatt mars/august med
+synkroniserte utsnitt. Skjermbilder på kontrollmaskinen:
+work/v3-context/v3-place-desktop.png og v3-place-mobile.png.
+
+Faktisk metadata-par 20240803192809-0068 / 20250708104754-0001 har 6,67 m
+mellom estimated-målpunkter, rapportert confidence 0,8 og kompatibel retning;
+UI viser 7 m. Begge bildefiler gir imidlertid 404 i preview. Derfor er dette
+bevis for valg/rangering, ikke visuell motivaksept. Se akseptansedokumentet
+for begrensningen i historiske previewfiler. Henrys neste produktaksept og
+produksjonsvalg gjenstår.

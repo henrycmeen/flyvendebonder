@@ -20,3 +20,8 @@
 @media(max-width:640px) {.fb-comparison-panels {grid-template-columns:1fr;} .fb-comparison-controls {grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;} .fb-comparison-photo,.fb-comparison-empty,.fb-comparison-map {height:320px;} .fb-comparison-header {align-items:flex-start;} .fb-comparison-header h2 {font-size:1.1rem;} .fb-comparison-header button {max-width:9rem;text-align:right;font-size:.85rem;}}
 
 .fb-comparison-caption {font-size:.9rem;font-weight:500;margin-bottom:.5rem;}
+.fb-comparison-anchor-picker > p {font-weight:500;margin-bottom:.75rem;}
+.fb-comparison-anchor-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;max-height:55vh;overflow-y:auto;}
+.fb-comparison-anchor-grid button {text-align:left;min-width:0;}
+.fb-comparison-anchor-grid img {display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;background:#e7e9e3;}
+.fb-comparison-anchor-grid span {display:block;font-size:.75rem;margin-top:.35rem;color:var(--fb-text-secondary,#596054);}
