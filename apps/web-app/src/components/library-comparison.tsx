@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import L from "leaflet";
+import { LibraryNavigation } from "./library-navigation";
 import { ComparisonWeather } from "./comparison-weather";
 import { ComparisonObservations } from "./comparison-observations";
 import { overlappingBounds, rankPhotoComparisonCandidates, validBounds, type ComparisonImage } from "@/lib/library-comparison";
@@ -42,7 +43,7 @@ function PhotoPanel({ item }: { item: ComparisonImage | undefined }) {
   return <a href={item.imageUrl} target="_blank" rel="noreferrer" aria-label={`Åpne ${item.label} i full størrelse`} className="fb-comparison-photo"><img src={item.imageUrl} alt={`${item.label}, ${dateLabel(item.date)}`} onError={() => setFailed(true)} /></a>;
 }
 
-export function LibraryComparison({ images, kind, partial = false }: { images: ComparisonImage[]; kind: "photo" | "orthophoto"; partial?: boolean }) {
+export function LibraryComparison({ images, kind, partial = false, onChangeLibraryView, children }: { images: ComparisonImage[]; kind: "photo" | "orthophoto"; partial?: boolean; onChangeLibraryView: (view: "album" | "orthophotos") => void; children: ReactNode }) {
   const prefix = `compare_${kind}_`;
   const [selection, setSelection] = useState<{open:boolean;left:string;right:string;date:string;scope?:string}>(() => {
     const query = new URLSearchParams(window.location.search);
@@ -95,11 +96,17 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     const second = right ?? alternatives.find(item => item.canonicalSource) ?? alternatives[0];
     update({open:true, left:first?.id ?? "",right:second?.id ?? "",date:""});
   };
-  if (!selection.open) return <button type="button" className="fb-comparison-open" onClick={open} disabled={images.length === 0}>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</button>;
+  const libraryView = kind === "photo" ? "album" : "orthophotos";
+  const navigation = <LibraryNavigation active={selection.open ? "comparison" : libraryView} onChange={view => {
+    if (view === "comparison") { if (!selection.open) open(); return; }
+    update({...selection, open:false});
+    if (view !== libraryView) onChangeLibraryView(view);
+  }} />;
+  if (!selection.open) return <>{navigation}{children}</>;
   const overlap = left && right ? overlappingBounds(left,right) : null;
   const sync = kind === "orthophoto" && left && right && left.date !== right.date && left.imageUrl && right.imageUrl && overlap;
-  return <section className="fb-comparison" aria-label="Sammenlign to opptaksdatoer">
-    <header className="fb-comparison-header"><h2>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</h2><button type="button" onClick={() => update({...selection,open:false})}>Tilbake til biblioteket</button></header>
+  return <>{navigation}<section className="fb-comparison" aria-label="Sammenlign to opptaksdatoer">
+    <header className="fb-comparison-header"><h2>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</h2></header>
     {scopes.length > 1 && <label className="fb-comparison-scope">Eiendom<select value={scope ?? ""} onChange={event => {const items = images.filter(item => item.scope === event.target.value);if(kind === "photo") update({open:true,left:"",right:"",date:"",scope:event.target.value}); else update({open:true,left:items[0]?.id ?? "",right:items.find(item => item.date !== items[0]?.date)?.id ?? "",date:""});}}>{scopes.map(value => <option key={value}>{value}</option>)}</select></label>}
     {kind === "photo" ? <>
       {!left ? <div className="fb-comparison-anchor-picker">
@@ -124,8 +131,8 @@ export function LibraryComparison({ images, kind, partial = false }: { images: C
     {(kind !== "photo" || left) && (sync ? <ComparisonMaps key={`${left.id}/${right.id}`} left={left} right={right} /> : <div className="fb-comparison-panels">{[left,right].map((item,index) => <div key={item?.id ?? index}><p className="fb-comparison-caption">{item ? `${dateLabel(item.date)} · ${item.label}` : "Dato eller kilde mangler"}</p><PhotoPanel item={item} /></div>)}</div>)}
     <p className="fb-comparison-note">{kind === "photo" ? "Nærliggende opptak er forslag, ikke automatisk justerte bilder. Posisjon og kameravinkel garanterer ikke samme motiv." : sync ? "Webforhåndsvisninger · utsnittene følger hverandre. Dekning og lys kan variere; dette er en visuell sammenligning." : "Webforhåndsvisninger · velg to ulike datoer med geografisk overlapp for synkroniserte utsnitt."}</p>
     {(left || right) && <details className="fb-comparison-note"><summary>Kildeinformasjon</summary>{[left, right].map((item, index) => item && <div key={`${index}/${item.id}`}><p>{dateLabel(item.date)} · {item.source}</p>{item.limitations?.map(note => <p key={note}>{note}</p>)}{item.canonicalSource && <details><summary>Registrert originalraster</summary><p>{item.canonicalSource.crs} · {item.canonicalSource.widthPx} × {item.canonicalSource.heightPx} piksler</p><p className="break-all">SHA256: {item.canonicalSource.sha256}</p></details>}</div>)}</details>}
-    {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Lukk sammenligningen og last inn flere bilder fra biblioteket for flere datoer og kilder.</p>}
+    {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Velg Bilder og last inn flere opptak for flere datoer og kilder.</p>}
     {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
     {left && right && left.date !== right.date && <ComparisonObservations propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
-  </section>;
+  </section></>;
 }

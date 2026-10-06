@@ -1,6 +1,5 @@
 import { LibraryComparison } from "@/components/library-comparison";
 import { orthophotoComparisonImages } from "@/lib/library-comparison";
-import { LibraryNavigation } from "@/components/library-navigation";
 import { useMemo } from "react";
 import { ArrowUpRight, CalendarDays } from "lucide-react";
 
@@ -78,8 +77,7 @@ export function OrthophotoPage({ overlays, properties, onOpenInMap, onChangeLibr
         <PageShell maxWidth="wide" className="px-0">
           <div className="space-y-6 pb-4">
             <h1 className="text-xl font-semibold tracking-tight text-fb-text-primary">Bibliotek</h1>
-            <LibraryNavigation active="orthophotos" onChange={onChangeLibraryView} />
-            <LibraryComparison kind="orthophoto" images={orthophotoComparisonImages(overlays, properties)} />
+            <LibraryComparison kind="orthophoto" images={orthophotoComparisonImages(overlays, properties)} onChangeLibraryView={onChangeLibraryView}>
 
             {groups.map((group) => (
               <section key={group.key} className="space-y-4">
@@ -121,6 +119,7 @@ export function OrthophotoPage({ overlays, properties, onOpenInMap, onChangeLibr
                 </div>
               </section>
             ))}
+            </LibraryComparison>
           </div>
         </PageShell>
       </div>

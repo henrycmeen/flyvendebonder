@@ -269,3 +269,9 @@ Skjermbilder på kontrollmaskinen: `work/v3-context/ui-audit-library.png`, `ui-a
 Claude Opus, via claude-advisor, gjennomgikk den avgrensede UI-diffen. Ingen material defects i diffen; rådet om landscape-karthøyde førte til `min(24rem,50dvh)` og kart/inspektør-split fra 1400px. Tooltip er Radix Portal; områdeliste har egen min-h-0/scroll; PlanningMap har ResizeObserver/invalidateSize. Bakgrunnstoken kontrollert i levende DOM som hvit. Resterende touch-scroll på fysisk mobil er ikke verifisert.
 
 Oppfølging etter Claude: PlanningMap hadde også en intern 22rem minimumshøyde; denne er fjernet så parenten eier kartets størrelse. Fersk nettleserprøve 844x390 viser både kart og parent 234px og lastede Leaflet-tiles. 1440px har kart/detaljer ved siden av hverandre. tsc, fokusert ESLint på begge planning-komponenter og nytt produksjonsbuild PASS, `/tmp/v3-ui-claude-build.log`.
+
+## Bibliotekfane for sammenligning, 6. oktober 2026
+
+Sammenlign er nå tredje fane i Bibliotek, ved siden av Bilder og Ortofoto. Den viser en egen sammenligningsflate i stedet for å legge verktøyet over/foran grid og filtre. Bilder/Ortofoto returnerer til vanlig grid. Eksisterende comparison-URL-parametre og utvalg beholdes; fersk innlasting gjenoppretter aktiv fane. Mobilens bildefiltre avmonteres i sammenligning og kommer tilbake ved Bilder. Pagineringens IntersectionObserver kobles til aktuell sentinel ved retur til grid.
+
+Nettleserprøve: foto- og ortofotosammenligning, retur til grid, mobil390px uten horisontal overflyt og URL-innlasting med aktiv Sammenlign. Skjermbilde `work/v3-context/library-comparison-tab.png` på kontrollmaskinen. Full validering og stack-smoke: `/tmp/v3-library-tabs-validation.log`.

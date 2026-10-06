@@ -1,7 +1,6 @@
 import { LibraryComparison } from "@/components/library-comparison";
 import { photoComparisonImages } from "@/lib/library-comparison";
-import { LibraryNavigation } from "@/components/library-navigation";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -147,7 +146,7 @@ export function AlbumPage({
   onScrollActivity,
   onChangeLibraryView,
 }: AlbumPageProps) {
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [sentinelNode, setSentinelNode] = useState<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -220,7 +219,7 @@ export function AlbumPage({
 
   useEffect(() => {
     if (!hasMore || isLoading || isLoadingMore || loadFailed) return;
-    if (!sentinelRef.current) return;
+    if (!sentinelNode) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -231,11 +230,11 @@ export function AlbumPage({
       { rootMargin: "240px 0px" },
     );
 
-    observer.observe(sentinelRef.current);
+    observer.observe(sentinelNode);
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, isLoading, isLoadingMore, loadFailed, onLoadMore]);
+  }, [hasMore, isLoading, isLoadingMore, loadFailed, onLoadMore, sentinelNode]);
 
   const toggleQueryToken = (token: string) => {
     setSearchQuery((current) => {
@@ -271,8 +270,7 @@ export function AlbumPage({
                 <span className="text-xs text-fb-text-secondary" role="status" title={hasMore ? "Flere bilder lastes når du blar videre" : "Alle bilder er lastet"}>{filteredPhotos.length.toLocaleString("nb-NO")} av {photos.length.toLocaleString("nb-NO")} lastet</span>
               </div>
             </header>
-            <LibraryNavigation active="album" onChange={onChangeLibraryView} />
-            <LibraryComparison kind="photo" images={photoComparisonImages(photos)} partial={hasMore} />
+            <LibraryComparison kind="photo" images={photoComparisonImages(photos)} partial={hasMore} onChangeLibraryView={onChangeLibraryView}>
             <ResponsivePageControls active={hasActiveFilters}>
               <div className="fb-album-controls">
                 <div className="relative">
@@ -468,7 +466,7 @@ export function AlbumPage({
 
             <section className="pb-2 pt-1">
               <Divider className="mb-3" />
-              <div ref={sentinelRef} className="h-1 w-full" aria-hidden="true" />
+              <div ref={setSentinelNode} className="h-1 w-full" aria-hidden="true" />
 
               {isLoadingMore ? (
                 <div className="flex items-center justify-center gap-2 text-sm text-fb-text-secondary">
@@ -485,6 +483,7 @@ export function AlbumPage({
                 </div>
               ) : null}
             </section>
+            </LibraryComparison>
           </div>
         </PageShell>
       </div>
