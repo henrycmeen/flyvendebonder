@@ -2035,25 +2035,31 @@ summary:focus-visible,
 }
 
 /* Keep page controls compact and let photographs carry the library. */
-.fb-album-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.fb-album-controls > .relative { flex: 1 1 240px; }
-.fb-album-controls > .space-y-2 { flex-basis: 100%; }
-.fb-album-photo { position: relative; }
-.fb-album-photo:focus-visible { outline: 2px solid var(--fb-season-solid); outline-offset: 3px; }
-@media (max-width: 767px) {
-  .fb-page-controls-mobile > summary { display: flex; align-items: center; gap: 8px; padding: 12px 16px; min-height: 48px; cursor: pointer; font-size: 13px; font-weight: 500; list-style: none; }
-  .fb-page-controls-mobile > summary::-webkit-details-marker { display: none; }
-  .fb-page-controls-mobile > summary > svg:last-child { margin-left: auto; }
-  .fb-page-controls-mobile[open] > summary > svg:last-child { transform: rotate(180deg); }
-  .fb-page-controls-mobile > summary:focus-visible { outline: 2px solid var(--fb-season-solid); outline-offset: -4px; border-radius: 20px; }
-  .fb-page-controls-active { font-size: 10px; color: #8f3c17; background: rgba(223, 102, 42, 0.12); border-radius: 999px; padding: 2px 6px; }
-  .fb-page-controls-body { padding: 0 16px 14px; max-height: min(48dvh, calc(100dvh - 190px)); overflow-y: auto; overscroll-behavior: contain; }
-  .fb-page-controls-body .fb-album-controls { display: block; }
-  .fb-page-controls-body .fb-album-options { margin-top: 12px; flex-direction: column; align-items: stretch; }
-  .fb-page-controls-body label { justify-content: space-between; }
-  .fb-page-controls-body select { min-width: 150px; min-height: 44px; }
-  .fb-mobile-control-surface:has(.fb-page-controls-mobile) .fb-mobile-dock { border-top: 1px solid rgba(0, 0, 0, 0.06); }
-  .fb-app-content:not([data-view="map"]):has(.fb-page-controls-mobile) > .absolute.inset-0 { bottom: calc(8rem + env(safe-area-inset-bottom)); }
+.fb-album-controls {display:grid;grid-template-columns:minmax(12rem,1fr) auto;align-items:end;gap:16px;padding:12px 0;}
+.fb-album-controls > .space-y-2 {grid-column:1 / -1;}
+.fb-album-options {display:flex;flex-wrap:wrap;align-items:end;gap:12px;}
+.fb-album-field {display:grid;gap:6px;min-width:0;font-size:12px;line-height:16px;color:var(--fb-text-secondary);}
+.fb-album-field select {width:100%;}
+.fb-album-photo {position:relative;}
+.fb-album-photo:focus-visible {outline:2px solid var(--fb-season-solid);outline-offset:3px;}
+@media (max-width:1023px) {.fb-album-controls {grid-template-columns:1fr;} .fb-album-options {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media (max-width:767px) {
+  .fb-page-controls-trigger {width:100%;height:auto;min-height:52px;padding:12px 16px;border:0;border-radius:0;background:transparent;text-align:left;box-shadow:none;}
+  .fb-page-controls-trigger > span {display:flex;width:100%;min-width:0;align-items:center;gap:8px;}
+  .fb-page-controls-trigger > span > span:first-of-type {flex-shrink:0;}
+  .fb-page-controls-trigger > span > svg {flex-shrink:0;}
+  .fb-page-controls-trigger > span > svg:last-child {margin-left:auto;}
+  .fb-page-controls-trigger[data-state="open"] > span > svg:last-child {transform:rotate(180deg);}
+  .fb-page-controls-summary {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:400;color:var(--fb-text-secondary);}
+  .fb-page-controls-trigger:focus-visible {outline:2px solid var(--fb-focus-ring);outline-offset:-4px;border-radius:20px;}
+  .fb-page-controls-active {font-size:10px;color:var(--fb-text-secondary);background:var(--fb-surface-ghost);border-radius:4px;padding:2px 6px;}
+  .fb-page-controls-body {padding:0 16px 16px;max-height:min(48dvh,calc(100dvh - 190px));overflow-y:auto;overscroll-behavior:contain;}
+  .fb-page-controls-body[hidden] {display:none;}
+  .fb-page-controls-body .fb-album-controls {display:grid;grid-template-columns:1fr;padding:4px 0 0;gap:16px;}
+  .fb-page-controls-body .fb-album-options {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .fb-page-controls-body .fb-album-field:first-child {grid-column:1 / -1;}
+  .fb-mobile-control-surface:has(.fb-page-controls-mobile) .fb-mobile-dock {border-top:1px solid var(--fb-border-subtle);}
+  .fb-app-content:not([data-view="map"]):has(.fb-page-controls-mobile) > .absolute.inset-0 {bottom:calc(8rem + env(safe-area-inset-bottom));}
 }
 
 /* Quiet viewer controls share the same touch target as other icon actions. */

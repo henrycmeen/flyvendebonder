@@ -281,23 +281,23 @@ export function AlbumPage({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     placeholder="Søk i bilder…"
-                    className="rounded-xl border-transparent bg-fb-surface-ghost pl-9 shadow-none focus-visible:ring-1"
+                    className="h-11 rounded-lg border-fb-border-subtle bg-fb-surface-base pl-9 shadow-none"
                     aria-label="Søk i mediebibliotek"
                   />
                 </div>
 
-                <div className="fb-album-options flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Kvalitet
+                <div className="fb-album-options">
+                  <label className="fb-album-field">Kvalitet
                     <NativeSelect value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value as typeof qualityFilter)}>
                       <option value="all">Alle bilder</option><option value="review">Må vurderes</option><option value="checked">Uten manuell QC</option>
                     </NativeSelect>
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Sorter
+                  <label className="fb-album-field">Sorter
                     <NativeSelect value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
                       <option value="newest">Nyeste først</option><option value="oldest">Eldste først</option>
                     </NativeSelect>
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Grupper
+                  <label className="fb-album-field">Grupper
                     <NativeSelect value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}>
                       <option value="day">Opptaksdato</option><option value="month">Måned</option>
                     </NativeSelect>

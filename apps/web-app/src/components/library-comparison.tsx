@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import L from "leaflet";
 import { ResponsivePageControls } from "./ui/responsive-page-controls";
+import { NativeSelect } from "./ui/native-select";
 import { LibraryNavigation } from "./library-navigation";
 import { ComparisonWeather } from "./comparison-weather";
 import { ComparisonObservations } from "./comparison-observations";
 import { overlappingBounds, rankPhotoComparisonCandidates, validBounds, type ComparisonImage } from "@/lib/library-comparison";
 import "./library-comparison.css";
 
-function dateLabel(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" });
+function dateLabel(date: string, compact = false) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString("nb-NO", { day: compact ? "2-digit" : "numeric", month: compact ? "2-digit" : "long", year: "numeric" });
 }
 function ComparisonMaps({ left, right }: { left: ComparisonImage; right: ComparisonImage }) {
   const leftRef = useRef<HTMLDivElement>(null);
@@ -117,29 +118,29 @@ export function LibraryComparison({ images, kind, partial = false, onChangeLibra
     const second = right ?? alternatives.find(item => item.canonicalSource) ?? alternatives[0];
     update({open:true, left:first?.id ?? "",right:second?.id ?? "",date:""});
   };
-  const libraryView = kind === "photo" ? "album" : "orthophotos";
-  const navigation = <LibraryNavigation active={selection.open ? "comparison" : libraryView} onChange={view => {
+  const libraryView: "album" | "orthophotos" = kind === "photo" ? "album" : "orthophotos";
+  const navigationProps = { active: selection.open ? "comparison" as const : libraryView, onChange: (view: "album" | "orthophotos" | "comparison") => {
     if (view === "comparison") { if (!selection.open) open(); return; }
     update({...selection, open:false});
     if (view !== libraryView) onChangeLibraryView(view);
-  }} />;
-  if (!selection.open) return <>{navigation}{children}</>;
+  }};
+  if (!selection.open) return <LibraryNavigation {...navigationProps}>{children}</LibraryNavigation>;
   const overlap = left && right ? overlappingBounds(left,right) : null;
   const sync = kind === "orthophoto" && left && right && left.date !== right.date && left.imageUrl && right.imageUrl && overlap;
-  return <>{navigation}<section className="fb-comparison" aria-label="Sammenlign to opptaksdatoer">
-    <header className="fb-comparison-header"><h2>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</h2></header>
-    {(kind === "orthophoto" || left || scopes.length > 1) && <ResponsivePageControls label="Sammenligning">
+  return <LibraryNavigation {...navigationProps}><section className="fb-comparison" aria-label="Sammenlign to opptaksdatoer">
+    <header className="sr-only"><h2>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</h2></header>
+    {(kind === "orthophoto" || left || scopes.length > 1) && <ResponsivePageControls label="Velg opptak" summary={left && right ? `${dateLabel(left.date)} · ${dateLabel(right.date)}` : left ? dateLabel(left.date) : undefined}>
       <div className="fb-comparison-options">
-    {scopes.length > 1 && <label className="fb-comparison-scope">Eiendom<select value={scope ?? ""} onChange={event => {const items = images.filter(item => item.scope === event.target.value);if(kind === "photo") update({open:true,left:"",right:"",date:"",scope:event.target.value}); else update({open:true,left:items[0]?.id ?? "",right:items.find(item => item.date !== items[0]?.date)?.id ?? "",date:""});}}>{scopes.map(value => <option key={value}>{value}</option>)}</select></label>}
+    {scopes.length > 1 && <label className="fb-comparison-scope">Eiendom<NativeSelect value={scope ?? ""} onChange={event => {const items = images.filter(item => item.scope === event.target.value);if(kind === "photo") update({open:true,left:"",right:"",date:"",scope:event.target.value}); else update({open:true,left:items[0]?.id ?? "",right:items.find(item => item.date !== items[0]?.date)?.id ?? "",date:""});}}>{scopes.map(value => <option key={value}>{value}</option>)}</NativeSelect></label>}
         {kind === "photo" ? (left ? <div className="fb-comparison-panels fb-comparison-controls">
-        <div><label>Utgangspunkt<select value={left.id} onChange={event => {const anchor=images.find(item => item.id === event.target.value);if(anchor) choosePhoto(anchor);}}>{candidates.map(item => <option key={item.id} value={item.id}>{dateLabel(item.date)} · {item.label}</option>)}</select></label></div>
-        <div><label>Andre dato<select value={targetDate} onChange={event => choosePhoto(left,event.target.value)}><option value="">Velg dato</option>{dates.filter(date => date !== left.date).map(date => <option key={date} value={date}>{dateLabel(date)}</option>)}</select></label>
-          <label>Nærliggende bilde<select value={right?.id ?? ""} onChange={event => update({...selection,right:event.target.value})}><option value="">Velg bilde</option>{matches?.candidates.map(candidate => <option key={candidate.image.id} value={candidate.image.id}>{candidate.image.label} · {Math.round(candidate.distanceM)} m fra utgangspunktet</option>)}</select></label>
+        <fieldset className="fb-comparison-choice"><legend>Utgangspunkt</legend><label>Bilde<NativeSelect value={left.id} onChange={event => {const anchor=images.find(item => item.id === event.target.value);if(anchor) choosePhoto(anchor);}}>{candidates.map(item => <option key={item.id} value={item.id}>{dateLabel(item.date, true)} · {item.label}</option>)}</NativeSelect></label></fieldset>
+        <fieldset className="fb-comparison-choice"><legend>Sammenlign med</legend><label>Andre dato<NativeSelect value={targetDate} onChange={event => choosePhoto(left,event.target.value)}><option value="">Velg dato</option>{dates.filter(date => date !== left.date).map(date => <option key={date} value={date}>{dateLabel(date, true)}</option>)}</NativeSelect></label>
+          <label>Nærliggende bilde<NativeSelect value={right?.id ?? ""} onChange={event => update({...selection,right:event.target.value})}><option value="">Velg bilde</option>{matches?.candidates.map(candidate => <option key={candidate.image.id} value={candidate.image.id}>{candidate.image.label} · {Math.round(candidate.distanceM)} m fra utgangspunktet</option>)}</NativeSelect></label>
           {!right && matches?.candidates[0] && <button className="fb-comparison-open" type="button" onClick={() => choosePhoto(left)}>Bruk nærmeste bilde</button>}
-        </div>
+        </fieldset>
       </div> : null) : <div className="fb-comparison-panels fb-comparison-controls">{(["left","right"] as const).map((side,index) => {
       const item = side === "left" ? left : right;
-      return <div key={side}><label>{index === 0 ? "Første dato" : "Andre dato"}<select value={item?.date ?? ""} onChange={event => update({...selection,[side]:candidates.find(candidate => candidate.date === event.target.value)?.id ?? ""})}><option value="">Velg dato</option>{dates.map(date => <option key={date} value={date} disabled={date === (side === "left" ? right?.date : left?.date)}>{dateLabel(date)}</option>)}</select></label><label>Kilde<select value={item?.id ?? ""} onChange={event => update({...selection,[side]:event.target.value})}><option value="">Velg kilde</option>{candidates.filter(candidate => candidate.date === item?.date).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select></label>{!item && <p>Kilde mangler</p>}{kind === "orthophoto" && !validBounds(item?.bounds) && <p>Geografisk dekning ukjent</p>}</div>;
+      return <fieldset key={side} className="fb-comparison-choice"><legend>{index === 0 ? "Første opptak" : "Andre opptak"}</legend><label>{index === 0 ? "Første dato" : "Andre dato"}<NativeSelect value={item?.date ?? ""} onChange={event => update({...selection,[side]:candidates.find(candidate => candidate.date === event.target.value)?.id ?? ""})}><option value="">Velg dato</option>{dates.map(date => <option key={date} value={date} disabled={date === (side === "left" ? right?.date : left?.date)}>{dateLabel(date, true)}</option>)}</NativeSelect></label><label>Kilde<NativeSelect value={item?.id ?? ""} onChange={event => update({...selection,[side]:event.target.value})}><option value="">Velg kilde</option>{candidates.filter(candidate => candidate.date === item?.date).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</NativeSelect></label>{!item && <p>Kilde mangler</p>}{kind === "orthophoto" && !validBounds(item?.bounds) && <p>Geografisk dekning ukjent</p>}</fieldset>;
     })}</div>}
       </div>
     </ResponsivePageControls>}
@@ -152,7 +153,7 @@ export function LibraryComparison({ images, kind, partial = false, onChangeLibra
       </div>}
 
       {left && !right && <p role="status" className="fb-comparison-note">{matches?.status === "unknown-location" ? "Posisjonsgrunnlaget mangler for denne sammenligningen. Velg en annen dato eller et annet bilde." : matches?.candidates.length ? "De tidligere valgte bildene viser ikke omtrent samme sted. Velg et nærliggende bilde." : "Ingen nærliggende opptak med tilsvarende kameravinkel er funnet på denne datoen blant de innlastede bildene. Velg en annen dato eller et annet utgangspunkt."}</p>}
-      {placeMatch && <p className="fb-comparison-note">{Math.round(placeMatch.distanceM)} m mellom {placeMatch.positionType === "view-target" ? "beregnede motivposisjoner" : "kameraposisjoner"}. {placeMatch.directionStatus === "unknown" ? "Kameraretning er ukjent; kontroller at motivene stemmer." : "Kameravinklene er omtrent like; kontroller at motivene stemmer."} {placeMatch.positionType === "view-target" && placeMatch.targetConfidenceStatus !== "reported" && (placeMatch.targetConfidenceStatus === "low" ? "Beregnet motivposisjon har lav sikkerhet." : "Sikkerheten i beregnet motivposisjon er ukjent.")}</p>}
+      {placeMatch && <details className="fb-comparison-note"><summary>Bildematch · {Math.round(placeMatch.distanceM)} m mellom posisjonene</summary><p>{Math.round(placeMatch.distanceM)} m mellom {placeMatch.positionType === "view-target" ? "beregnede motivposisjoner" : "kameraposisjoner"}. {placeMatch.directionStatus === "unknown" ? "Kameraretning er ukjent; kontroller at motivene stemmer." : "Kameravinklene er omtrent like; kontroller at motivene stemmer."} {placeMatch.positionType === "view-target" && placeMatch.targetConfidenceStatus !== "reported" && (placeMatch.targetConfidenceStatus === "low" ? "Beregnet motivposisjon har lav sikkerhet." : "Sikkerheten i beregnet motivposisjon er ukjent.")}</p></details>}
     </>}
     {(kind !== "photo" || left) && (sync ? <ComparisonMaps key={`${left.id}/${right.id}`} left={left} right={right} /> : <div className="fb-comparison-panels">{[left,right].map((item,index) => <div key={item?.id ?? index}><p className="fb-comparison-caption">{item ? `${dateLabel(item.date)} · ${item.label}` : "Dato eller kilde mangler"}</p><PhotoPanel item={item} /></div>)}</div>)}
     <p className="fb-comparison-note">{kind === "photo" ? "Nærliggende opptak er forslag, ikke automatisk justerte bilder. Posisjon og kameravinkel garanterer ikke samme motiv." : sync ? "Webforhåndsvisninger · utsnittene følger hverandre. Dekning og lys kan variere; dette er en visuell sammenligning." : "Webforhåndsvisninger · velg to ulike datoer med geografisk overlapp for synkroniserte utsnitt."}</p>
@@ -160,5 +161,5 @@ export function LibraryComparison({ images, kind, partial = false, onChangeLibra
     {partial && <p role="status" className="fb-comparison-note">Bare innlastede bilder er valgbare. Velg Bilder og last inn flere opptak for flere datoer og kilder.</p>}
     {left && right && left.date !== right.date && <ComparisonWeather key={`${left.date}/${right.date}`} propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
     {left && right && left.date !== right.date && <ComparisonObservations propertyId={left.propertyId != null && left.propertyId === right.propertyId ? left.propertyId : null} leftDate={left.date} rightDate={right.date} />}
-  </section></>;
+  </section></LibraryNavigation>;
 }

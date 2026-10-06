@@ -293,3 +293,15 @@ Corrected three independent UI defects: comparison maps now depend on source URL
 Browser evidence: zoomed orthophoto layer dimensions stayed 1175×608 and 1676×1801 across desktop→390 px mobile transition. Viewer closed-details grid used 1424 px single column, then two columns with details; mobile remained a 374 px single column. Mobile routes checked: library, comparison, settings profile/map/admin, planning, forest and import; no horizontal document overflow in checked states. Screenshot: controller work/v3-context/comparison-dock-polished.png. Local missing historical thumbnails are preview-data errors, not claimed repaired.
 
 Full required validation and isolated stack smoke passed: /tmp/v3-ui-stability-validation.log. No production deployment.
+
+### Shadcn-inspired library controls — 6 October 2026
+
+Reference reviewed: official shadcn Radix Tabs and Native Select documentation, including the rendered Native Select page. Existing React/Radix components were reused; no dependency or framework change.
+
+Library navigation now uses controlled Radix Tabs with manually activated keyboard navigation and a labelled active panel. Inactive hover cannot look selected, and the library tabs switch without colour/background interpolation. Library filters and comparison choices use the same 44 px native select component. Visible labels align the first and second choices; date options use compact Norwegian dates so the year remains visible at 320 px. Image captions retain full dates.
+
+Mobile page controls use a controlled, labelled disclosure inside the existing dock surface. Closing preserves mounted controls and current selections; Escape returns focus to the trigger. The closed comparison row summarises chosen dates. Comparison fields use two restrained columns, and photo matching details are expandable. Redundant comparison heading is visually hidden; results remain in the page. Removed obsolete comparison styling and separate nested card backgrounds.
+
+Browser checks on preview 5200: 1280 px desktop image grid and inline filters; 390 px dock filters and orthophoto/photo comparison; 320 px comparison with document width equal to viewport. ArrowRight on Bilder kept it selected until Enter activated Ortofoto. A quality selection survived Escape/close/reopen and reset correctly. Changing the first orthophoto date updated the caption and remained selected after closing. Both comparison types and return to the image grid were checked. Controller screenshot: work/v3-context/shadcn-library-mobile.png.
+
+Full required validation including isolated stack smoke passed: /tmp/v3-shadcn-validation.log. Final frontend lint/build after text and hover refinements: /tmp/v3-shadcn-final-frontend.log. Existing large-chunk build warning remains. Browser viewport checks are not a physical iPhone/Safari performance test. Preview only; no production deployment.
