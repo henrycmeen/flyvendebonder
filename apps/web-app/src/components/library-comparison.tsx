@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import L from "leaflet";
+import { ResponsivePageControls } from "./ui/responsive-page-controls";
 import { LibraryNavigation } from "./library-navigation";
 import { ComparisonWeather } from "./comparison-weather";
 import { ComparisonObservations } from "./comparison-observations";
@@ -107,26 +108,31 @@ export function LibraryComparison({ images, kind, partial = false, onChangeLibra
   const sync = kind === "orthophoto" && left && right && left.date !== right.date && left.imageUrl && right.imageUrl && overlap;
   return <>{navigation}<section className="fb-comparison" aria-label="Sammenlign to opptaksdatoer">
     <header className="fb-comparison-header"><h2>{kind === "photo" ? "Sammenlign samme sted" : "Sammenlign to datoer"}</h2></header>
+    {(kind === "orthophoto" || left || scopes.length > 1) && <ResponsivePageControls label="Sammenligning">
+      <div className="fb-comparison-options">
     {scopes.length > 1 && <label className="fb-comparison-scope">Eiendom<select value={scope ?? ""} onChange={event => {const items = images.filter(item => item.scope === event.target.value);if(kind === "photo") update({open:true,left:"",right:"",date:"",scope:event.target.value}); else update({open:true,left:items[0]?.id ?? "",right:items.find(item => item.date !== items[0]?.date)?.id ?? "",date:""});}}>{scopes.map(value => <option key={value}>{value}</option>)}</select></label>}
-    {kind === "photo" ? <>
-      {!left ? <div className="fb-comparison-anchor-picker">
-        <p>Velg et bilde som utgangspunkt</p>
-        <div className="fb-comparison-anchor-grid">{candidates.map(item => <button key={item.id} type="button" onClick={() => choosePhoto(item, "")} aria-label={`Sammenlign fra ${item.label}, ${dateLabel(item.date)}`}>
-          {item.thumbnailUrl && <img src={item.thumbnailUrl} alt="" loading="lazy" />}<span>{dateLabel(item.date)} · {item.label}</span>
-        </button>)}</div>
-      </div> : <div className="fb-comparison-panels fb-comparison-controls">
+        {kind === "photo" ? (left ? <div className="fb-comparison-panels fb-comparison-controls">
         <div><label>Utgangspunkt<select value={left.id} onChange={event => {const anchor=images.find(item => item.id === event.target.value);if(anchor) choosePhoto(anchor);}}>{candidates.map(item => <option key={item.id} value={item.id}>{dateLabel(item.date)} · {item.label}</option>)}</select></label></div>
         <div><label>Andre dato<select value={targetDate} onChange={event => choosePhoto(left,event.target.value)}><option value="">Velg dato</option>{dates.filter(date => date !== left.date).map(date => <option key={date} value={date}>{dateLabel(date)}</option>)}</select></label>
           <label>Nærliggende bilde<select value={right?.id ?? ""} onChange={event => update({...selection,right:event.target.value})}><option value="">Velg bilde</option>{matches?.candidates.map(candidate => <option key={candidate.image.id} value={candidate.image.id}>{candidate.image.label} · {Math.round(candidate.distanceM)} m fra utgangspunktet</option>)}</select></label>
           {!right && matches?.candidates[0] && <button className="fb-comparison-open" type="button" onClick={() => choosePhoto(left)}>Bruk nærmeste bilde</button>}
         </div>
-      </div>}
-      {left && !right && <p role="status" className="fb-comparison-note">{matches?.status === "unknown-location" ? "Posisjonsgrunnlaget mangler for denne sammenligningen. Velg en annen dato eller et annet bilde." : matches?.candidates.length ? "De tidligere valgte bildene viser ikke omtrent samme sted. Velg et nærliggende bilde." : "Ingen nærliggende opptak med tilsvarende kameravinkel er funnet på denne datoen blant de innlastede bildene. Velg en annen dato eller et annet utgangspunkt."}</p>}
-      {placeMatch && <p className="fb-comparison-note">{Math.round(placeMatch.distanceM)} m mellom {placeMatch.positionType === "view-target" ? "beregnede motivposisjoner" : "kameraposisjoner"}. {placeMatch.directionStatus === "unknown" ? "Kameraretning er ukjent; kontroller at motivene stemmer." : "Kameravinklene er omtrent like; kontroller at motivene stemmer."} {placeMatch.positionType === "view-target" && placeMatch.targetConfidenceStatus !== "reported" && (placeMatch.targetConfidenceStatus === "low" ? "Beregnet motivposisjon har lav sikkerhet." : "Sikkerheten i beregnet motivposisjon er ukjent.")}</p>}
-    </> : <>    <div className="fb-comparison-panels fb-comparison-controls">{(["left","right"] as const).map((side,index) => {
+      </div> : null) : <div className="fb-comparison-panels fb-comparison-controls">{(["left","right"] as const).map((side,index) => {
       const item = side === "left" ? left : right;
       return <div key={side}><label>{index === 0 ? "Første dato" : "Andre dato"}<select value={item?.date ?? ""} onChange={event => update({...selection,[side]:candidates.find(candidate => candidate.date === event.target.value)?.id ?? ""})}><option value="">Velg dato</option>{dates.map(date => <option key={date} value={date} disabled={date === (side === "left" ? right?.date : left?.date)}>{dateLabel(date)}</option>)}</select></label><label>Kilde<select value={item?.id ?? ""} onChange={event => update({...selection,[side]:event.target.value})}><option value="">Velg kilde</option>{candidates.filter(candidate => candidate.date === item?.date).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select></label>{!item && <p>Kilde mangler</p>}{kind === "orthophoto" && !validBounds(item?.bounds) && <p>Geografisk dekning ukjent</p>}</div>;
-    })}</div>
+    })}</div>}
+      </div>
+    </ResponsivePageControls>}
+    {kind === "photo" && <>
+      {!left && <div className="fb-comparison-anchor-picker">
+        <p>Velg et bilde som utgangspunkt</p>
+        <div className="fb-comparison-anchor-grid">{candidates.map(item => <button key={item.id} type="button" onClick={() => choosePhoto(item, "")} aria-label={`Sammenlign fra ${item.label}, ${dateLabel(item.date)}`}>
+          {item.thumbnailUrl && <img src={item.thumbnailUrl} alt="" loading="lazy" />}<span>{dateLabel(item.date)} · {item.label}</span>
+        </button>)}</div>
+      </div>}
+
+      {left && !right && <p role="status" className="fb-comparison-note">{matches?.status === "unknown-location" ? "Posisjonsgrunnlaget mangler for denne sammenligningen. Velg en annen dato eller et annet bilde." : matches?.candidates.length ? "De tidligere valgte bildene viser ikke omtrent samme sted. Velg et nærliggende bilde." : "Ingen nærliggende opptak med tilsvarende kameravinkel er funnet på denne datoen blant de innlastede bildene. Velg en annen dato eller et annet utgangspunkt."}</p>}
+      {placeMatch && <p className="fb-comparison-note">{Math.round(placeMatch.distanceM)} m mellom {placeMatch.positionType === "view-target" ? "beregnede motivposisjoner" : "kameraposisjoner"}. {placeMatch.directionStatus === "unknown" ? "Kameraretning er ukjent; kontroller at motivene stemmer." : "Kameravinklene er omtrent like; kontroller at motivene stemmer."} {placeMatch.positionType === "view-target" && placeMatch.targetConfidenceStatus !== "reported" && (placeMatch.targetConfidenceStatus === "low" ? "Beregnet motivposisjon har lav sikkerhet." : "Sikkerheten i beregnet motivposisjon er ukjent.")}</p>}
     </>}
     {(kind !== "photo" || left) && (sync ? <ComparisonMaps key={`${left.id}/${right.id}`} left={left} right={right} /> : <div className="fb-comparison-panels">{[left,right].map((item,index) => <div key={item?.id ?? index}><p className="fb-comparison-caption">{item ? `${dateLabel(item.date)} · ${item.label}` : "Dato eller kilde mangler"}</p><PhotoPanel item={item} /></div>)}</div>)}
     <p className="fb-comparison-note">{kind === "photo" ? "Nærliggende opptak er forslag, ikke automatisk justerte bilder. Posisjon og kameravinkel garanterer ikke samme motiv." : sync ? "Webforhåndsvisninger · utsnittene følger hverandre. Dekning og lys kan variere; dette er en visuell sammenligning." : "Webforhåndsvisninger · velg to ulike datoer med geografisk overlapp for synkroniserte utsnitt."}</p>

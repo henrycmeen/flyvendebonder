@@ -275,3 +275,11 @@ Oppfølging etter Claude: PlanningMap hadde også en intern 22rem minimumshøyde
 Sammenlign er nå tredje fane i Bibliotek, ved siden av Bilder og Ortofoto. Den viser en egen sammenligningsflate i stedet for å legge verktøyet over/foran grid og filtre. Bilder/Ortofoto returnerer til vanlig grid. Eksisterende comparison-URL-parametre og utvalg beholdes; fersk innlasting gjenoppretter aktiv fane. Mobilens bildefiltre avmonteres i sammenligning og kommer tilbake ved Bilder. Pagineringens IntersectionObserver kobles til aktuell sentinel ved retur til grid.
 
 Nettleserprøve: foto- og ortofotosammenligning, retur til grid, mobil390px uten horisontal overflyt og URL-innlasting med aktiv Sammenlign. Skjermbilde `work/v3-context/library-comparison-tab.png` på kontrollmaskinen. Full validering og stack-smoke: `/tmp/v3-library-tabs-validation.log`.
+
+### Comparison options in the mobile dock — 6 October 2026
+
+Comparison date, source, property and nearby-photo choices now reuse ResponsivePageControls above the mobile navigation. Desktop choices stay inline. Initial photo selection remains in the image grid; comparison results and context remain in the page.
+
+Browser checks: photo anchor selection; orthophoto date/source changes; dock toggle and Escape; 320 px mobile without horizontal overflow and 44 px select targets; 390 px mobile; 1440 px desktop inline controls; return between library tabs. Screenshot: controller work/v3-context/comparison-dock-mobile.png.
+
+Required validation including isolated stack smoke passed: /tmp/v3-comparison-dock-validation.log (369 backend tests, frontend tests, lint and production build). Preview only; no production deployment.

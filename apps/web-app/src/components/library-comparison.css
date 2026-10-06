@@ -4,8 +4,8 @@
 .fb-comparison-header h2 {font-size:1.35rem;font-weight:600;}
 .fb-comparison-header button {text-decoration:underline;text-underline-offset:4px;}
 .fb-comparison-panels {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;}
-.fb-comparison label {display:block;font-size:.85rem;font-weight:500;}
-.fb-comparison select {display:block;width:100%;padding:.65rem .5rem;margin:.25rem 0 .65rem;background:var(--fb-surface-base,white);border-bottom:1px solid #a5aaa3;border-radius:0;}
+.fb-comparison label,.fb-comparison-options label {display:block;font-size:.85rem;font-weight:500;}
+.fb-comparison select,.fb-comparison-options select {display:block;width:100%;min-width:0;min-height:44px;padding:.65rem .5rem;margin:.25rem 0 .65rem;background:var(--fb-surface-base,white);border-bottom:1px solid #a5aaa3;border-radius:0;}
 .fb-comparison-scope {max-width:24rem;margin-bottom:.75rem;}
 .fb-comparison-controls {margin-bottom:1rem;}
 .fb-comparison-controls p,.fb-comparison-note {font-size:.8rem;color:var(--fb-text-secondary,#596054);line-height:1.6;}
@@ -25,3 +25,7 @@
 .fb-comparison-anchor-grid button {text-align:left;min-width:0;}
 .fb-comparison-anchor-grid img {display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;background:#e7e9e3;}
 .fb-comparison-anchor-grid span {display:block;font-size:.75rem;margin-top:.35rem;color:var(--fb-text-secondary,#596054);}
+
+.fb-comparison-options {min-width:0;}
+.fb-comparison-options .fb-comparison-controls > div {min-width:0;}
+@media(max-width:640px) {.fb-comparison-options .fb-comparison-controls {margin-bottom:0;} .fb-comparison-options > .fb-comparison-note {margin-top:0;}}
