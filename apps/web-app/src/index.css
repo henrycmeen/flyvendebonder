@@ -921,7 +921,7 @@ body {
 
 .photo-viewer-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 328px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .photo-viewer-image-pane {
@@ -2141,4 +2141,8 @@ summary:focus-visible,
 }
 @media (prefers-reduced-motion: reduce) {
   .fb-filter-choice { transition: none; }
+}
+
+@media (min-width: 861px) {
+  .photo-viewer-layout.has-details { grid-template-columns: minmax(0, 1fr) 328px; }
 }

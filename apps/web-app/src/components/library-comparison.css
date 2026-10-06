@@ -29,3 +29,21 @@
 .fb-comparison-options {min-width:0;}
 .fb-comparison-options .fb-comparison-controls > div {min-width:0;}
 @media(max-width:640px) {.fb-comparison-options .fb-comparison-controls {margin-bottom:0;} .fb-comparison-options > .fb-comparison-note {margin-top:0;}}
+
+/* Keep selection quiet and tactile, without animating the layout or raster maps. */
+.fb-comparison-options .fb-comparison-controls {gap:16px;}
+.fb-comparison-options label {color:var(--fb-text-secondary,#596054);font-size:12px;line-height:1.4;}
+.fb-comparison-options select {border:1px solid var(--fb-border-subtle,#e5e7eb);border-radius:12px;background:var(--fb-surface-base,#fff);color:var(--fb-text-primary,#202b30);font-size:14px;font-weight:500;padding:10px 12px;margin:6px 0 14px;min-height:44px;text-overflow:ellipsis;}
+.fb-comparison-options select:focus-visible {outline:2px solid var(--fb-focus-ring,#64748b);outline-offset:2px;}
+@media(max-width:767px) {
+  .fb-mobile-control-surface:has(.fb-comparison-options) {background:rgba(255,255,255,.97);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 24px rgba(0,0,0,.10);}
+  .fb-page-controls-mobile:has(.fb-comparison-options) > summary {padding:14px 18px;font-size:14px;}
+  .fb-page-controls-mobile:has(.fb-comparison-options) .fb-page-controls-body {padding:0 12px 12px;}
+  .fb-page-controls-mobile:has(.fb-comparison-options)[open] .fb-comparison-options {animation:fb-comparison-options-enter 120ms ease-out;}
+  .fb-comparison-options .fb-comparison-controls {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;}
+  .fb-comparison-options .fb-comparison-controls > div {padding:12px 10px 2px;background:rgba(0,0,0,.025);border-radius:16px;}
+  .fb-comparison-options select {min-width:0;font-size:13px;padding:10px 8px;background:#fff;}
+  .fb-comparison-options .fb-comparison-scope {padding:0 6px;}
+}
+@keyframes fb-comparison-options-enter {from {opacity:.65;transform:translateY(4px);} to {opacity:1;transform:translateY(0);}}
+@media(prefers-reduced-motion:reduce) {.fb-page-controls-mobile:has(.fb-comparison-options)[open] .fb-comparison-options {animation:none;}}

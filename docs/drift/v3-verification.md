@@ -283,3 +283,13 @@ Comparison date, source, property and nearby-photo choices now reuse ResponsiveP
 Browser checks: photo anchor selection; orthophoto date/source changes; dock toggle and Escape; 320 px mobile without horizontal overflow and 44 px select targets; 390 px mobile; 1440 px desktop inline controls; return between library tabs. Screenshot: controller work/v3-context/comparison-dock-mobile.png.
 
 Required validation including isolated stack smoke passed: /tmp/v3-comparison-dock-validation.log (369 backend tests, frontend tests, lint and production build). Preview only; no production deployment.
+
+### UI stability and comparison polish — 6 October 2026
+
+Comparison options have quieter grouped date/source fields, 44 px rounded controls and a near-opaque dock with reduced blur. Only a short opacity/transform entrance animates, with reduced-motion support; map/layout dimensions are not animated.
+
+Corrected three independent UI defects: comparison maps now depend on source URL/bounds primitives rather than freshly allocated image objects; desktop viewer only reserves the metadata column when details are visible; sidebar pointer hover and keyboard focus are tracked separately.
+
+Browser evidence: zoomed orthophoto layer dimensions stayed 1175×608 and 1676×1801 across desktop→390 px mobile transition. Viewer closed-details grid used 1424 px single column, then two columns with details; mobile remained a 374 px single column. Mobile routes checked: library, comparison, settings profile/map/admin, planning, forest and import; no horizontal document overflow in checked states. Screenshot: controller work/v3-context/comparison-dock-polished.png. Local missing historical thumbnails are preview-data errors, not claimed repaired.
+
+Full required validation and isolated stack smoke passed: /tmp/v3-ui-stability-validation.log. No production deployment.

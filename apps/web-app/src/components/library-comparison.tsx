@@ -14,16 +14,36 @@ function ComparisonMaps({ left, right }: { left: ComparisonImage; right: Compari
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string[]>([]);
+  const overlap = overlappingBounds(left, right);
+  const leftId = left.id;
+  const rightId = right.id;
+  const leftUrl = left.imageUrl;
+  const rightUrl = right.imageUrl;
+  const leftSouth = left.bounds?.south;
+  const leftWest = left.bounds?.west;
+  const leftNorth = left.bounds?.north;
+  const leftEast = left.bounds?.east;
+  const rightSouth = right.bounds?.south;
+  const rightWest = right.bounds?.west;
+  const rightNorth = right.bounds?.north;
+  const rightEast = right.bounds?.east;
+  const overlapSouth = overlap?.south;
+  const overlapWest = overlap?.west;
+  const overlapNorth = overlap?.north;
+  const overlapEast = overlap?.east;
   useEffect(() => {
-    const overlap = overlappingBounds(left, right);
-    if (!leftRef.current || !rightRef.current || !overlap) return;
+    if (!leftRef.current || !rightRef.current || !leftUrl || !rightUrl ||
+      leftSouth == null || leftWest == null || leftNorth == null || leftEast == null ||
+      rightSouth == null || rightWest == null || rightNorth == null || rightEast == null ||
+      overlapSouth == null || overlapWest == null || overlapNorth == null || overlapEast == null) return;
     const maps = [leftRef.current, rightRef.current].map(container => L.map(container, { attributionControl: false, zoomControl: false, scrollWheelZoom: true, maxZoom: 22 }));
-    const images = [left, right];
-    const layers = images.map((item, i) => {
-      const bounds = item.bounds!;
-      return L.imageOverlay(item.imageUrl!, [[bounds.south, bounds.west], [bounds.north, bounds.east]], { opacity: 1 }).on("error", () => setFailed(current => [...current, item.id])).addTo(maps[i]);
-    });
-    const bounds = L.latLngBounds([[overlap.south, overlap.west], [overlap.north, overlap.east]]);
+    const sources = [
+      { id: leftId, url: leftUrl, bounds: L.latLngBounds([[leftSouth, leftWest], [leftNorth, leftEast]]) },
+      { id: rightId, url: rightUrl, bounds: L.latLngBounds([[rightSouth, rightWest], [rightNorth, rightEast]]) },
+    ];
+    const layers = sources.map((item, i) => L.imageOverlay(item.url, item.bounds, { opacity: 1 })
+      .on("error", () => setFailed(current => current.includes(item.id) ? current : [...current, item.id])).addTo(maps[i]));
+    const bounds = L.latLngBounds([[overlapSouth, overlapWest], [overlapNorth, overlapEast]]);
     maps.forEach(map => map.fitBounds(bounds, { animate: false }));
     let syncing = false;
     maps.forEach((map, i) => map.on("move zoom", () => {
@@ -35,7 +55,7 @@ function ComparisonMaps({ left, right }: { left: ComparisonImage; right: Compari
     const observer = new ResizeObserver(() => maps.forEach(map => map.invalidateSize({pan:false})));
     observer.observe(leftRef.current); observer.observe(rightRef.current);
     return () => { observer.disconnect(); layers.forEach(layer => layer.off()); maps.forEach(map => map.remove()); };
-  }, [left, right]);
+  }, [leftId, rightId, leftUrl, rightUrl, leftSouth, leftWest, leftNorth, leftEast, rightSouth, rightWest, rightNorth, rightEast, overlapSouth, overlapWest, overlapNorth, overlapEast]);
   return <div className="fb-comparison-panels">{[left, right].map((item,i) => <div key={item.id} className="fb-comparison-map-wrap"><p className="fb-comparison-caption">{dateLabel(item.date)} · {item.label}</p><div ref={i === 0 ? leftRef : rightRef} className="fb-comparison-map" aria-label={`Ortofoto ${dateLabel(item.date)}. Panorering og zoom følger det andre bildet.`} />{failed.includes(item.id) && <p role="alert" className="fb-comparison-error">Bildet kunne ikke lastes. Velg en annen kilde.</p>}</div>)}</div>;
 }
 function PhotoPanel({ item }: { item: ComparisonImage | undefined }) {

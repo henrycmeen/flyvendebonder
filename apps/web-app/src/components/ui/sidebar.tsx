@@ -59,7 +59,8 @@ function useSidebar() {
 function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
-  const effectiveCollapsed = collapsedDesktop && !desktopHovered;
+  const [desktopFocused, setDesktopFocused] = React.useState(false);
+  const effectiveCollapsed = collapsedDesktop && !desktopHovered && !desktopFocused;
   const content = (
     <div
       className={cn(
@@ -93,13 +94,13 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
       data-collapsed={effectiveCollapsed ? "true" : "false"}
       onMouseEnter={() => setDesktopHovered(true)}
       onMouseLeave={() => setDesktopHovered(false)}
-      onFocusCapture={() => setDesktopHovered(true)}
+      onFocusCapture={() => setDesktopFocused(true)}
       onBlurCapture={(event) => {
         const nextTarget = event.relatedTarget;
         if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
           return;
         }
-        setDesktopHovered(false);
+        setDesktopFocused(false);
       }}
       className={cn(
         "fb-sidebar relative z-20 hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none md:block",
