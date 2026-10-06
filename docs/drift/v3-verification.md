@@ -222,3 +222,27 @@ UI viser 7 m. Begge bildefiler gir imidlertid 404 i preview. Derfor er dette
 bevis for valg/rangering, ikke visuell motivaksept. Se akseptansedokumentet
 for begrensningen i historiske previewfiler. Henrys neste produktaksept og
 produksjonsvalg gjenstår.
+
+## Bildevisning desktop/mobil, 6. oktober 2026
+
+Bildet har nå egen viewportflate med fast toppverktøylinje (dato, detaljer,
+redigering, lukk) og kompakt bildestripe i egen rad. Bildetrykk lukker ikke
+visningen. Detaljer starter lukket ved hver åpning og vises på siden på
+bred skjerm, nederst på smal skjerm. Redigering holder detaljene åpne.
+Dialogsemantikk, innledende lukkefokus, Tab-fangst og fokusretur er prøvd.
+Eksisterende ArrowLeft/Right og Escape brukes fortsatt.
+
+IAB på desktop og 390x844: bildebytte, åpne/skjule detaljer, åpne/avslutte
+redigering uten dataskriving, lukking, ny åpning og tastatur er prøvd.
+Utvidede detaljer ved 320x740, 768x900, 1024x768 og 1440x900: ingen
+horisontal overflyt; lukk har 44x44 trefflate og ligger innen viewport.
+Bildet bruker contain og beskjæres ikke. Det lille Leaflet-kartet monteres
+først når detaljer vises (0 kart skjult, 1 kart synlig med positiv størrelse),
+etter ett rettet P2 fra uavhengig review. Ny review fant ingen blokkere.
+Skjermbilder på kontrollmaskinen: work/v3-context/v3-viewer-desktop.png og
+v3-viewer-mobile.png. Dette er nettleserprøve, ikke fysisk mobilaksept.
+
+Full validate-agent-worktree.sh --with-stack-smoke består etter rettelsen:
+369 backendtester, frontendtester, lint, build og isolert smoke 8840/5227.
+Logg /tmp/v3-viewer-validation.log; smoke-state under prosjektets eksterne
+runtime-caches/worktrees/v3-viewer-smoke-20261006. Ingen produksjonsendring.
