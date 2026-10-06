@@ -840,7 +840,7 @@ export function PlanningMap({
     <div
       ref={mapElementRef}
       data-map-mode={mapCursorMode}
-      className="fb-planning-map h-full min-h-[22rem] w-full rounded-[28px]"
+      className="fb-planning-map h-full min-h-0 w-full rounded-[28px]"
     />
   );
 }

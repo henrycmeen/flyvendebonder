@@ -1978,8 +1978,8 @@ export function PlanningPage({
           </div>
         </div>
 
-        <div className="flex flex-col gap-0 2xl:grid 2xl:min-h-[24rem] 2xl:flex-1 2xl:grid-cols-[minmax(0,1fr),22rem]">
-          <div className="relative h-[min(60dvh,32rem)] min-h-[24rem] shrink-0 2xl:h-auto">
+        <div className="flex flex-col gap-0 min-[1400px]:grid min-[1400px]:min-h-[24rem] min-[1400px]:flex-1 min-[1400px]:grid-cols-[minmax(0,1fr),22rem]">
+          <div className="relative h-[min(60dvh,32rem)] min-h-[min(24rem,50dvh)] shrink-0 min-[1400px]:h-auto">
             <div className="absolute left-3 top-3 z-[700] flex max-w-[calc(100%_-_1.5rem)] gap-2 overflow-x-auto rounded-2xl bg-fb-surface-page/92 p-2 backdrop-blur [&>button]:shrink-0">
               <HoverActionButton
                 type="button"
@@ -2153,7 +2153,7 @@ export function PlanningPage({
             />
           </div>
 
-          <div className="min-w-0 border-t border-fb-border-subtle/60 px-4 py-4 2xl:min-h-0 2xl:overflow-y-auto 2xl:border-l 2xl:border-t-0">
+          <div className="min-w-0 border-t border-fb-border-subtle/60 px-4 py-4 min-[1400px]:min-h-0 min-[1400px]:overflow-y-auto min-[1400px]:border-l min-[1400px]:border-t-0">
             {selectedUnit ? (
               <div className="space-y-5">
                 <div className="space-y-1">
