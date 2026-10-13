@@ -272,14 +272,18 @@ export function AlbumPage({
             </header>
             <LibraryComparison kind="photo" images={photoComparisonImages(photos)} partial={hasMore} onChangeLibraryView={onChangeLibraryView}>
             <ResponsivePageControls active={hasActiveFilters}>
-              <div className="fb-album-controls">
+              <div
+                className="fb-album-controls"
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setIsSearchFocused(false);
+                }}
+              >
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
                   <Input
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
                     placeholder="Søk i bilder…"
                     className="h-11 rounded-lg border-fb-border-subtle bg-fb-surface-base pl-9 shadow-none"
                     aria-label="Søk i mediebibliotek"

@@ -634,11 +634,6 @@ body {
     -webkit-backdrop-filter: blur(14px) saturate(1.03);
   }
 
-  .timeline-bottom {
-    bottom: max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem));
-    width: min(92vw, 26rem);
-    border-radius: 22px;
-  }
 }
 
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-brand {
@@ -760,127 +755,6 @@ body {
 .fb-sidebar[data-collapsed="true"] .fb-sidebar-footer {
   padding-left: 1rem;
   padding-right: 1rem;
-}
-
-.timeline-bottom {
-  position: fixed;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
-  border-color: rgba(35, 48, 56, 0.1);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
-}
-
-.timeline-bottom::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: none;
-}
-
-.timeline-bottom--satellite {
-  background: rgba(28, 20, 14, 0.34);
-  backdrop-filter: blur(14px) saturate(1.02);
-  -webkit-backdrop-filter: blur(14px) saturate(1.02);
-  border-color: rgba(25, 16, 10, 0.28);
-  box-shadow: 0 1px 0 rgba(255, 241, 220, 0.08) inset;
-}
-
-.timeline-bottom--satellite::before {
-  background: none;
-}
-
-.timeline-chip {
-  color: var(--fb-chip-text);
-  border-color: var(--fb-chip-border);
-  background: var(--fb-chip-bg);
-  transition:
-    background-color var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    color var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    border-color var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    box-shadow var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    transform var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    filter var(--fb-motion-duration-micro) var(--fb-motion-easing-standard);
-}
-
-.timeline-chip:not(.timeline-chip--active):hover {
-  background: var(--fb-chip-hover-bg);
-  box-shadow: 0 1px 0 rgba(255, 252, 247, 0.58) inset;
-  transform: scale(1.01);
-}
-
-.timeline-chip:active {
-  transform: scale(0.98);
-  transition-timing-function: var(--fb-motion-easing-accelerate);
-}
-
-.timeline-chip:focus-visible {
-  outline: 2px solid var(--fb-focus-ring);
-  outline-offset: 2px;
-}
-
-.timeline-chip:disabled {
-  cursor: not-allowed;
-}
-
-.timeline-chip__icon {
-  transition:
-    transform var(--fb-motion-duration-small) var(--fb-motion-easing-standard),
-    opacity var(--fb-motion-duration-small) var(--fb-motion-easing-standard),
-    filter var(--fb-motion-duration-small) var(--fb-motion-easing-standard);
-  transform-origin: 50% 50%;
-}
-
-.timeline-chip:hover .timeline-chip__icon {
-  transform: scale(1.03);
-}
-
-.timeline-chip--summer:hover .timeline-chip__icon,
-.timeline-chip--summer:focus-visible .timeline-chip__icon {
-  transform: scale(1.04);
-  filter: drop-shadow(0 0 4px var(--fb-map-season-summer-soft));
-}
-
-.timeline-chip--summer.timeline-chip--active .timeline-chip__icon {
-  filter: drop-shadow(0 0 4px var(--fb-pin-season-soft, var(--fb-map-season-summer-soft)));
-}
-
-.timeline-chip--satellite {
-  border-color: var(--fb-chip-satellite-border);
-  background: var(--fb-chip-satellite-bg);
-  color: var(--fb-chip-satellite-text);
-}
-
-.timeline-chip--active {
-  border-color: var(--fb-chip-active-border);
-  background: var(--fb-chip-active-bg);
-  color: var(--fb-chip-active-text);
-  box-shadow: var(--fb-chip-active-shadow);
-}
-
-.timeline-chip--active:hover {
-  filter: brightness(1.06);
-}
-
-.timeline-dot {
-  background: var(--fb-timeline-dot);
-  transition:
-    background-color var(--fb-motion-duration-micro) var(--fb-motion-easing-standard),
-    transform var(--fb-motion-duration-micro) var(--fb-motion-easing-standard);
-}
-
-.timeline-dot:active {
-  transform: scale(0.98);
-  transition-timing-function: var(--fb-motion-easing-accelerate);
-}
-
-.timeline-dot--satellite {
-  background: var(--fb-timeline-dot-satellite);
-}
-
-.timeline-dot--active {
-  background: var(--fb-timeline-dot-active);
 }
 
 .map-vintage-overlay {
@@ -1721,10 +1595,7 @@ summary:focus-visible,
     animation: none;
   }
 
-  .logo-hover-spin:hover img,
-  .timeline-chip,
-  .timeline-chip__icon,
-  .timeline-dot {
+  .logo-hover-spin:hover img {
     transform: none !important;
   }
 

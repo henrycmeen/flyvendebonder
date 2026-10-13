@@ -2588,7 +2588,8 @@ export function PlanningPage({
                           step="1"
                           value={parameters[key]}
                           onChange={(event) => {
-                            const nextValue = Number(event.target.value) || parameters[key];
+                            const nextValue = event.currentTarget.valueAsNumber;
+                            if (!Number.isFinite(nextValue)) return;
                             setParameters((current) => ({
                               ...(key === "altitude_m"
                                 ? syncParametersWithSuggestedSpacing(
