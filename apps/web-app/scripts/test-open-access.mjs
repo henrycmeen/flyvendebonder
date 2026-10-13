@@ -22,7 +22,15 @@ assert.ok(pendingCheckIndex < loginGateIndex, "Neutral loading must render befor
 
 const authRejectedHandler = app.match(/const handleAuthRejected[\s\S]*?window\.addEventListener\(AUTH_REJECTED_EVENT/)?.[0] ?? "";
 assert.match(authRejectedHandler, /adminSession\?\.open_access/, "Auth rejection must handle open mode separately");
-assert.match(authRejectedHandler, /\/api\/v1\/admin\/session/, "Open mode must revalidate server access after an auth rejection");
+assert.match(authRejectedHandler, /await loadAdminSession\(/, "Open mode must revalidate server access after an auth rejection");
+const loadAdminSession = app.match(/const loadAdminSession = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";
+assert.match(loadAdminSession, /\/api\/v1\/admin\/session/, "Session recovery must query the authoritative server access mode");
+assert.match(loadAdminSession, /notifyAuthFailure:\s*false/, "Session revalidation must not emit recursive auth events");
+assert.match(loadAdminSession, /await loadProfile\([\s\S]*?notifyAuthFailure:\s*false/, "Session recovery must reload the private profile without recursive auth events");
+const loadProfile = app.match(/const loadProfile = useCallback[\s\S]*?\n  }, \[addLog, trackRequest\]\);/)?.[0] ?? "";
+assert.match(loadProfile, /notifyAuthFailure:\s*options\?\.notifyAuthFailure/, "Profile loading must pass through the caller's auth-event policy");
+assert.match(authRejectedHandler, /await loadTimeline\(/, "Confirmed open access must restore the cleared timeline even when authentication remains true");
+assert.match(authRejectedHandler, /epoch !== privateStateEpochRef\.current/, "Open-mode recovery must not apply a superseded session response");
 assert.match(authRejectedHandler, /notifyAuthFailure:\s*false/, "Open-mode revalidation must not emit recursive auth events");
 
 const confirmedSessionFailure = app.match(/if \(confirmedSession\)[\s\S]*?return lockedSession;/)?.[0] ?? "";

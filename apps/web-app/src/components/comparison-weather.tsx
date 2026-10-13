@@ -56,6 +56,7 @@ function RainSeries({days, start, end}: {days: WeatherDay[]; start: string; end:
 export function ComparisonWeather({ propertyId, leftDate, rightDate }: {propertyId: number | null; leftDate: string; rightDate: string}) {
   const [state, setState] = useState<{key: string; data: SeasonWeather | null; failed: boolean} | null>(null);
   const [selection, setSelection] = useState<PeriodSelection | null>(null);
+  const [requestAttempt, setRequestAttempt] = useState(0);
   const [draft, setDraft] = useState<PeriodSelection | null>(null);
   const [submissionError, setSubmissionError] = useState<{captureKey: string; message: string} | null>(null);
   const [captureStart, captureEnd] = [leftDate, rightDate].sort();
@@ -68,7 +69,7 @@ export function ComparisonWeather({ propertyId, leftDate, rightDate }: {property
   const activeError = weatherPeriodError(start, end, today);
   const draftError = weatherPeriodError(edited.start, edited.end, today);
   const formError = submissionError?.captureKey === captureKey ? submissionError.message : draftError;
-  const key = `${propertyId}/${start}/${end}`;
+  const key = `${propertyId}/${start}/${end}/${requestAttempt}`;
   useEffect(() => {
     if (propertyId == null || activeError) return;
     const controller = new AbortController();
@@ -87,7 +88,7 @@ export function ComparisonWeather({ propertyId, leftDate, rightDate }: {property
   const latestAvailableDate = availableDates[availableDates.length - 1];
   const rain = data?.precipitation;
   const temperature = data?.temperature;
-  const choose = (start: string, end: string) => {const next = {captureKey, start, end}; setSelection(next); setDraft(next); setSubmissionError(null);};
+  const choose = (start: string, end: string) => {const next = {captureKey, start, end}; setSelection(next); setDraft(next); setSubmissionError(null); setRequestAttempt(current => current + 1);};
   return <section className="fb-comparison-note min-w-0" aria-label="Værkontekst for opptakene">
     <details><summary>Velg værperiode · {start} – {end}</summary>
       <div className="my-2 flex flex-wrap gap-3"><button type="button" className="underline" onClick={() => choose(captureStart, captureEnd)}>Mellom opptakene</button><button type="button" className="underline" onClick={() => choose(`${captureEnd.slice(0, 4)}-01-01`, captureEnd)}>Året til siste opptak</button><button type="button" className="underline" onClick={() => choose(yearToDate.start, yearToDate.end)}>År til dato · {today} UTC</button></div>
