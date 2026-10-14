@@ -6,6 +6,11 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+import rasterio
+from rasterio.enums import ColorInterp
+from rasterio.errors import RasterioError
+from rasterio.warp import transform
+from rasterio.windows import Window
 from PIL import Image, UnidentifiedImageError
 
 from ..config import DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT, LOCAL_ORTHOPHOTO_OVERLAY_ROOT, get_settings
@@ -13,6 +18,14 @@ from ..config import DEPLOYED_ORTHOPHOTO_OVERLAY_ROOT, LOCAL_ORTHOPHOTO_OVERLAY_
 ORTHOPHOTO_SAMPLE_SIZE_PX = 21
 ALPHA_VALID_THRESHOLD = 16
 EPSILON = 0.0001
+
+# Version the full sampling/statistics contract, not radiometric calibration.
+# Native: WGS84 -> native CRS -> inverse affine, containing-pixel window,
+# uint8 RGB with band masks/alpha, then shared RGB statistics and indices.
+NATIVE_ALGORITHM_VERSION = "native-crs-affine-rgb-v1"
+# Preview: linear WGS84 bounds -> preview pixels, rounded containing-pixel
+# window, Pillow RGBA/alpha, then the same uncalibrated RGB statistics.
+PREVIEW_ALGORITHM_VERSION = "preview-wgs84-rgb-v1"
 
 
 class OrthophotoSamplingError(Exception):
@@ -137,12 +150,17 @@ def _resolve_bounds(metadata: dict[str, Any]) -> dict[str, float]:
     return {"south": south, "west": west, "north": north, "east": east}
 
 
-def _resolve_source(metadata: dict[str, Any], overlay_root: Path) -> tuple[Path, str]:
+def _resolve_source(metadata: dict[str, Any], overlay_root: Path, *, allow_preview: bool) -> tuple[Path, str]:
     source_file = _as_str(metadata.get("source_file"))
     if source_file:
         source_path = Path(source_file).expanduser()
+        if not source_path.is_absolute():
+            source_path = overlay_root / source_path
         if source_path.is_file():
             return source_path, "canonical"
+
+    if not allow_preview:
+        raise OrthophotoSourceUnavailable("Kanonisk GeoTIFF er ikke tilgjengelig. Forhåndsvisning krever eksplisitt valg.")
 
     overlay = _as_record(metadata.get("overlay"))
     asset_file = _as_str(overlay.get("assetFile"))
@@ -163,31 +181,6 @@ def _resolve_source(metadata: dict[str, Any], overlay_root: Path) -> tuple[Path,
     raise OrthophotoSourceUnavailable("Ortofoto-raster er ikke tilgjengelig.")
 
 
-def _source_dimensions(metadata: dict[str, Any], source_kind: str, image_width: int, image_height: int) -> tuple[int, int]:
-    if source_kind == "canonical":
-        width = int(_as_float(metadata.get("width_px")) or image_width)
-        height = int(_as_float(metadata.get("height_px")) or image_height)
-        return width, height
-    width = int(_as_float(metadata.get("preview_width_px")) or image_width)
-    height = int(_as_float(metadata.get("preview_height_px")) or image_height)
-    return width, height
-
-
-def _gsd_m_per_px(metadata: dict[str, Any], width_px: int, height_px: int) -> dict[str, float] | None:
-    utm_bounds = _as_record(metadata.get("utm_bounds"))
-    westing = _as_float(utm_bounds.get("westing"))
-    easting = _as_float(utm_bounds.get("easting"))
-    southing = _as_float(utm_bounds.get("southing"))
-    northing = _as_float(utm_bounds.get("northing"))
-    if None in {westing, easting, southing, northing} or width_px <= 0 or height_px <= 0:
-        return None
-    assert westing is not None and easting is not None and southing is not None and northing is not None
-    return {
-        "x": _round(abs(easting - westing) / width_px, 4),
-        "y": _round(abs(northing - southing) / height_px, 4),
-    }
-
-
 def _image_pixel(lat: float, lng: float, bounds: dict[str, float], image_width: int, image_height: int) -> dict[str, float]:
     if lat < bounds["south"] or lat > bounds["north"] or lng < bounds["west"] or lng > bounds["east"]:
         raise OrthophotoPointOutsideBounds("Punktet ligger utenfor ortofotoets bounds.")
@@ -203,8 +196,9 @@ def _image_pixel(lat: float, lng: float, bounds: dict[str, float], image_width: 
 
 def _crop_box(center: dict[str, float], image_width: int, image_height: int, sample_size_px: int) -> tuple[int, int, int, int, bool]:
     half = sample_size_px // 2
-    center_x = round(center["x"])
-    center_y = round(center["y"])
+    # Pixel coordinates refer to pixel corners; floor selects the containing pixel.
+    center_x = math.floor(center["x"])
+    center_y = math.floor(center["y"])
     requested_left = center_x - half
     requested_top = center_y - half
     requested_right = requested_left + sample_size_px
@@ -338,6 +332,62 @@ def _analyze_pixels(pixels: list[tuple[int, int, int, int]], width: int, height:
     }
 
 
+def _sample_canonical(source_path: Path, lat: float, lng: float, sample_size_px: int) -> tuple:
+    """Read a native-resolution RGB window using the raster's own CRS and masks."""
+    try:
+        with rasterio.open(source_path) as dataset:
+            if (dataset.crs is None or dataset.transform.is_identity
+                    or dataset.transform.determinant == 0):
+                raise OrthophotoSourceUnavailable("Kanonisk raster mangler CRS eller geotransform.")
+            bands = [dataset.colorinterp.index(color) + 1 for color in
+                     (ColorInterp.red, ColorInterp.green, ColorInterp.blue)
+                     if color in dataset.colorinterp]
+            if len(bands) != 3 or any(dataset.dtypes[index - 1] != "uint8" for index in bands):
+                raise OrthophotoSourceUnavailable("Fargeprøver krever eksplisitte RGB-bånd med 8-bit verdier.")
+            xs, ys = transform("EPSG:4326", dataset.crs, [lng], [lat])
+            col, row = ~dataset.transform * (xs[0], ys[0])
+            if not math.isfinite(col) or not math.isfinite(row):
+                raise OrthophotoPointOutsideBounds("Punktet kan ikke projiseres til ortofotoets raster.")
+            if not (0 <= col < dataset.width and 0 <= row < dataset.height):
+                raise OrthophotoPointOutsideBounds("Punktet ligger utenfor ortofotoets raster.")
+            image_pixel = {"x": _round(col), "y": _round(row),
+                           "ratio_x": _round(col / dataset.width, 6),
+                           "ratio_y": _round(row / dataset.height, 6)}
+            # Do not round coordinates before choosing the containing pixel.
+            left, top, right, bottom, clipped = _crop_box(
+                {"x": col, "y": row}, dataset.width, dataset.height, sample_size_px)
+            window = Window(left, top, right - left, bottom - top)
+            rgb = dataset.read(bands, window=window)
+            masks = dataset.read_masks(bands, window=window)
+            alpha_band = next((index + 1 for index, color in enumerate(dataset.colorinterp)
+                               if color == ColorInterp.alpha), None)
+            alpha = dataset.read(alpha_band, window=window) if alpha_band else None
+            pixels = []
+            for y in range(bottom - top):
+                for x in range(right - left):
+                    valid = all(masks[band, y, x] > 0 for band in range(3))
+                    opacity = int(alpha[y, x]) if alpha is not None else 255
+                    pixels.append(tuple(int(rgb[band, y, x]) for band in range(3)) +
+                                  (opacity if valid else 0,))
+            affine = dataset.transform
+            gsd = None
+            if dataset.crs.is_projected and dataset.crs.linear_units == "metre":
+                gsd = {"x": _round(math.hypot(affine.a, affine.d), 4),
+                       "y": _round(math.hypot(affine.b, affine.e), 4)}
+            provenance = {"algorithm_version": NATIVE_ALGORITHM_VERSION,
+                          "crs": dataset.crs.to_string(),
+                          "transform": list(affine)[:6],
+                          "coordinate_mapping": "crs_affine",
+                          "quantitative_eligible": True,
+                          "fallback_reason": None,
+                          "nodata_policy": "rgb_band_masks_and_alpha",
+                          "nodata_values": [_as_float(value) for value in dataset.nodatavals],
+                          "gsd_m_per_px": gsd}
+            return dataset.width, dataset.height, image_pixel, left, top, right, bottom, clipped, pixels, provenance
+    except RasterioError as exc:
+        raise OrthophotoSourceUnavailable("Kanonisk GeoTIFF kan ikke leses eller projiseres.") from exc
+
+
 def sample_orthophoto_color(
     overlay_id: str,
     *,
@@ -345,6 +395,7 @@ def sample_orthophoto_color(
     lng: float,
     sample_size_px: int = ORTHOPHOTO_SAMPLE_SIZE_PX,
     overlay_root: Path | None = None,
+    allow_preview: bool = False,
 ) -> dict[str, Any]:
     if sample_size_px < 3 or sample_size_px > 101:
         raise OrthophotoSamplingError("Prøveflaten må være mellom 3 og 101 piksler.")
@@ -357,22 +408,32 @@ def sample_orthophoto_color(
         _candidate_overlay_roots(root, include_defaults=overlay_root is None),
     )
     overlay = _as_record(metadata.get("overlay"))
-    bounds = _resolve_bounds(metadata)
-    source_path, source_kind = _resolve_source(metadata, root)
-
-    try:
-        with Image.open(source_path) as image:
-            image_width, image_height = image.size
-            image_pixel = _image_pixel(lat, lng, bounds, image_width, image_height)
-            left, top, right, bottom, clipped = _crop_box(image_pixel, image_width, image_height, sample_size_px)
-            crop = image.crop((left, top, right, bottom)).convert("RGBA")
-            pixels = list(crop.getdata())
-    except UnidentifiedImageError as exc:
-        raise OrthophotoSourceUnavailable("Ortofoto-raster kan ikke leses.") from exc
-    except OSError as exc:
-        raise OrthophotoSourceUnavailable("Ortofoto-raster kan ikke åpnes.") from exc
-
-    source_width_px, source_height_px = _source_dimensions(metadata, source_kind, image_width, image_height)
+    if not math.isfinite(lat) or not math.isfinite(lng) or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise OrthophotoSamplingError("Punktet må ha gyldige WGS84-koordinater.")
+    source_path, source_kind = _resolve_source(metadata, root, allow_preview=allow_preview)
+    if source_kind == "canonical":
+        (image_width, image_height, image_pixel, left, top, right, bottom,
+         clipped, pixels, provenance) = _sample_canonical(source_path, lat, lng, sample_size_px)
+    else:
+        bounds = _resolve_bounds(metadata)
+        try:
+            with Image.open(source_path) as image:
+                image_width, image_height = image.size
+                image_pixel = _image_pixel(lat, lng, bounds, image_width, image_height)
+                left, top, right, bottom, clipped = _crop_box(image_pixel, image_width, image_height, sample_size_px)
+                pixels = list(image.crop((left, top, right, bottom)).convert("RGBA").getdata())
+        except (UnidentifiedImageError, OSError) as exc:
+            raise OrthophotoSourceUnavailable("Forhåndsvisning kan ikke leses.") from exc
+        provenance = {"algorithm_version": PREVIEW_ALGORITHM_VERSION,
+                      "crs": None, "transform": None,
+                      "coordinate_mapping": "approximate_wgs84_bounds",
+                      "quantitative_eligible": False,
+                      "fallback_reason": "canonical_source_unavailable",
+                      "nodata_policy": "preview_alpha_only", "nodata_values": [],
+                      "gsd_m_per_px": None}
+    analysis = _analyze_pixels(pixels, right - left, bottom - top, sample_size_px, clipped)
+    if source_kind == "preview":
+        analysis["quality_flags"].append("approximate_preview_not_quantitative")
     return {
         "overlay": {
             "id": overlay.get("id") or overlay_id,
@@ -383,13 +444,13 @@ def sample_orthophoto_color(
         "source": {
             "kind": source_kind,
             "path_basename": source_path.name,
-            "width_px": source_width_px,
-            "height_px": source_height_px,
-            "canonical_width_px": int(_as_float(metadata.get("width_px")) or source_width_px),
-            "canonical_height_px": int(_as_float(metadata.get("height_px")) or source_height_px),
-            "gsd_m_per_px": _gsd_m_per_px(metadata, source_width_px, source_height_px),
+            "width_px": image_width,
+            "height_px": image_height,
+            "canonical_width_px": image_width if source_kind == "canonical" else int(_as_float(metadata.get("width_px")) or image_width),
+            "canonical_height_px": image_height if source_kind == "canonical" else int(_as_float(metadata.get("height_px")) or image_height),
+            **provenance,
         },
         "point": {"lat": lat, "lng": lng},
         "image_pixel": image_pixel,
-        "analysis": _analyze_pixels(pixels, right - left, bottom - top, sample_size_px, clipped),
+        "analysis": analysis,
     }

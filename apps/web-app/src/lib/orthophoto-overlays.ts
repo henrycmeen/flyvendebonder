@@ -27,6 +27,13 @@ export interface OrthophotoOverlayDefinition {
   };
   opacity?: number;
   tileLayer?: OrthophotoTileLayerDefinition;
+  limitations?: string[];
+  canonicalSource?: {
+    sha256: string;
+    crs: string;
+    widthPx: number;
+    heightPx: number;
+  };
 }
 
 // Generert av scripts/sync-orthophoto-overlays.py
@@ -197,6 +204,52 @@ export const DEV_ORTHOPHOTO_OVERLAYS: OrthophotoOverlayDefinition[] = [
       canonicalHeightPx: 6631,
       tileCount: 1000,
       qualityScale: 1.0,
+    },
+  },
+  {
+    id: "jorde-4-20260331-regenerated-v3",
+    label: "Jorde 4 · 31. mars · regenerert",
+    propertyReference: "4003-70/17/0",
+    capturedDate: "2026-03-31",
+    bounds: {
+      west: 9.664575639019116,
+      south: 59.17217886201817,
+      east: 9.67700752181098,
+      north: 59.17549213079299
+    },
+    opacity: 0.82,
+    limitations: [
+      "Regenerert fra 20 vårbilder; 19 bilder er rekonstruert og ett er utelatt. Ny filidentitet erstatter ikke den tapte original-TIFF-en.",
+      "RGB er ikke radiometrisk kalibrert; skygger og mosaikkskjøter kan påvirke prøvene.",
+      "Gyldig pikseloverlapp beviser ikke geometrisk registrering mellom opptaksdatoene."
+    ],
+    canonicalSource: {
+      sha256: "b944200b9ee949aaf4c8eb01269abd4206b3c2d1eb87c4271441022f04a12492",
+      crs: "EPSG:32632",
+      widthPx: 14142,
+      heightPx: 7238
+    },
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/jorde-4-20260331-regenerated-v3.webp`,
+  },
+  {
+    id: "august-r13-5cm-orthophoto",
+    label: "Augusteksport · 5 cm · r13",
+    propertyReference: "4003-70/17/0",
+    imageUrl: `${import.meta.env.BASE_URL}dev-overlays/august-r13-5cm-orthophoto.webp`,
+    capturedDate: "2026-08-02",
+    bounds: {
+      south: 59.166543258040925,
+      west: 9.65930647862715,
+      north: 59.17644739581762,
+      east: 9.677295255299503,
+    },
+    opacity: 0.82,
+    limitations: ["Dette er en best-effort mosaikk fra opptaksruten, ikke en planlagt oppmålingsflyvning.", "Transparente hull finnes i mosaikken.", "Synlige toneforskjeller og harde skjøter finnes mellom reparasjonsfliser.", "Teknisk georeferering og 5 cm pikselstørrelse dokumenterer ikke sømløs eller oppmålingsmessig kvalitet."],
+    canonicalSource: {
+      sha256: "2a0d323e232e3fa93c28eea86ac724a0bb020351c034950812621c80267b2a54",
+      crs: "EPSG:32632",
+      widthPx: 20358,
+      heightPx: 21862,
     },
   },
 ];

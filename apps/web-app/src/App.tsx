@@ -1,6 +1,6 @@
 import { PageControlsContext } from "@/hooks/use-page-controls";
 import { useIsMobile } from "@/hooks/use-is-mobile";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { AUTH_REJECTED_EVENT, apiDelete, apiGet, apiPatch, apiPost, ApiError, clearApiCache } from "@/lib/api";
@@ -28,21 +28,15 @@ import { selectVisibleOrthophotoOverlays } from "@/lib/orthophoto-overlay-select
 import { monthToSeason, type SeasonFilter as ThemeSeasonFilter } from "@/lib/season-theme";
 import { useMapPreferences } from "@/hooks/use-map-preferences";
 import { useOperatingAreaTool } from "@/hooks/use-operating-area-tool";
-import { AlbumPage } from "@/components/album-page";
-import { OrthophotoPage } from "@/components/orthophoto-page";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SettingsPage } from "@/components/settings-page";
 import { FilterPanel } from "@/components/filter-panel";
 import { readCaptureScope, writeCaptureScope } from "@/lib/capture-timeline";
 import { MapLayerPanel } from "@/components/map-layer-panel";
 import { ImportReceipts } from "@/components/import-receipts";
-import { MediaImportPage, type MediaImportSelection } from "@/components/media-import-page";
+import type { MediaImportSelection } from "@/components/media-import-page";
 import { MapCanvas } from "@/components/map-canvas";
 import { OperatingAreaInspector } from "@/components/operating-area-inspector";
-import { PlanningPage } from "@/components/planning-page";
 import { PhotoInspector } from "@/components/photo-inspector";
-import { SkogbrukPage } from "@/components/skogbruk-page";
-import { VideoPage } from "@/components/video-page";
 import { Button } from "@/components/ui/button";
 import { MobileDock, SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type {
@@ -67,6 +61,14 @@ import type {
   TimelineResponse,
   VideoMapReviewPayload,
 } from "@/types";
+
+const AlbumPage = lazy(() => import("@/components/album-page").then((module) => ({ default: module.AlbumPage })));
+const OrthophotoPage = lazy(() => import("@/components/orthophoto-page").then((module) => ({ default: module.OrthophotoPage })));
+const SettingsPage = lazy(() => import("@/components/settings-page").then((module) => ({ default: module.SettingsPage })));
+const PlanningPage = lazy(() => import("@/components/planning-page").then((module) => ({ default: module.PlanningPage })));
+const SkogbrukPage = lazy(() => import("@/components/skogbruk-page").then((module) => ({ default: module.SkogbrukPage })));
+const VideoPage = lazy(() => import("@/components/video-page").then((module) => ({ default: module.VideoPage })));
+const MediaImportPage = lazy(() => import("@/components/media-import-page").then((module) => ({ default: module.MediaImportPage })));
 
 interface LogEntry {
   id: string;
@@ -502,6 +504,9 @@ export default function App() {
   const baseMapTileErrorRef = useRef<BaseMapStyle | null>(null);
   const albumScrollSpinTimeoutRef = useRef<number | null>(null);
   const bootstrapAbortRef = useRef<AbortController | null>(null);
+  const privateStateEpochRef = useRef(0);
+  const flightMissionLoadSeqRef = useRef(0);
+  const flightMissionAbortRef = useRef<AbortController | null>(null);
   const profileAbortRef = useRef<AbortController | null>(null);
   const adminSessionAbortRef = useRef<AbortController | null>(null);
   const timelineAbortRef = useRef<AbortController | null>(null);
@@ -836,7 +841,7 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  const loadProfile = useCallback(async (options?: { signal?: AbortSignal }): Promise<ProfileResponse> => {
+  const loadProfile = useCallback(async (options?: { signal?: AbortSignal; notifyAuthFailure?: boolean }): Promise<ProfileResponse> => {
     const seq = ++profileLoadSeqRef.current;
     const requestController = options?.signal
       ? null
@@ -852,6 +857,7 @@ export default function App() {
         signal: requestController?.signal ?? options?.signal,
         cache: false,
         dedupe: false,
+        notifyAuthFailure: options?.notifyAuthFailure,
       });
 
       if (seq !== profileLoadSeqRef.current) return data;
@@ -863,6 +869,17 @@ export default function App() {
   }, [addLog, trackRequest]);
 
   const clearPrivateApplicationState = useCallback(() => {
+    privateStateEpochRef.current += 1;
+    setIsAdminSessionBusy(false);
+    adminSessionLoadSeqRef.current += 1;
+    flightMissionLoadSeqRef.current += 1;
+    flightMissionAbortRef.current?.abort();
+    flightMissionAbortRef.current = null;
+    metadataSaveTokensRef.current.clear();
+    setMetadataBusyPhotoId(null);
+    setAnalysisBusyPhotoId(null);
+    setFlightMissionExportBusyId(null);
+    setFlightMissionDeleteBusyId(null);
     mediaImportEpochRef.current += 1;
     mediaReceiptLoadSeqRef.current += 1;
     mediaImportOperationRef.current = false;
@@ -922,8 +939,9 @@ export default function App() {
 
   const logoutAdminAndClearPrivateState = useCallback(async () => {
     clearPrivateApplicationState();
+    const epoch = privateStateEpochRef.current;
     const response = await apiPost<AdminSessionStatus>("/api/v1/admin/logout");
-    setAdminSession(response.data);
+    if (epoch === privateStateEpochRef.current) setAdminSession(response.data);
     return response;
   }, [clearPrivateApplicationState]);
 
@@ -957,7 +975,7 @@ export default function App() {
     if (activeView !== "map") deactivateOperatingAreaTool();
   }, [activeView, deactivateOperatingAreaTool]);
 
-  const loadTimeline = useCallback(async (options?: { signal?: AbortSignal }): Promise<TimelineResponse> => {
+  const loadTimeline = useCallback(async (options?: { signal?: AbortSignal; notifyAuthFailure?: boolean }): Promise<TimelineResponse> => {
     const seq = ++timelineLoadSeqRef.current;
     const requestController = options?.signal
       ? null
@@ -971,6 +989,7 @@ export default function App() {
     return trackRequest(async () => {
       const { data, requestId } = await apiGet<TimelineResponse>("/api/v1/timeline/dates", {
         signal: requestController?.signal ?? options?.signal,
+        notifyAuthFailure: options?.notifyAuthFailure,
       });
 
       if (seq !== timelineLoadSeqRef.current) return data;
@@ -983,6 +1002,13 @@ export default function App() {
 
   const loadFlightMissions = useCallback(
     async (options?: { signal?: AbortSignal; silent?: boolean }) => {
+      const seq = ++flightMissionLoadSeqRef.current;
+      const epoch = privateStateEpochRef.current;
+      flightMissionAbortRef.current?.abort();
+      const controller = new AbortController();
+      flightMissionAbortRef.current = controller;
+      const signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
+      const current = () => seq === flightMissionLoadSeqRef.current && epoch === privateStateEpochRef.current && !signal.aborted;
       if (activeProperties.length === 0) {
         setFlightMissions([]);
         setFlightMissionStatus("Ingen aktive eiendommer valgt for flyoppdrag.");
@@ -994,7 +1020,7 @@ export default function App() {
           Promise.all(
             activeProperties.map((property) =>
               apiGet<FlightMissionListResponse>(`/api/v1/flight-missions?property_id=${property.id}`, {
-                signal: options?.signal,
+                signal,
                 cache: false,
                 dedupe: false,
               }),
@@ -1002,6 +1028,7 @@ export default function App() {
           ),
         );
 
+        if (!current()) return null;
         const nextMissions = sortFlightMissions(
           responses.flatMap((response) => (Array.isArray(response.data?.missions) ? response.data.missions : [])),
         );
@@ -1019,6 +1046,7 @@ export default function App() {
         }
         return nextMissions;
       } catch (error) {
+        if (!current()) return null;
         const apiError = error as ApiError;
         if (isRequestAborted(apiError)) return null;
         setFlightMissions([]);
@@ -1048,6 +1076,7 @@ export default function App() {
           signal: requestController?.signal ?? options?.signal,
           cache: false,
           dedupe: false,
+          notifyAuthFailure: false,
         }),
       );
       confirmedSession = data;
@@ -1058,7 +1087,7 @@ export default function App() {
         setAdminSession(data);
         clearPrivateApplicationState();
       } else {
-        await loadProfile({ signal: requestController?.signal ?? options?.signal });
+        await loadProfile({ signal: requestController?.signal ?? options?.signal, notifyAuthFailure: false });
         if (seq !== adminSessionLoadSeqRef.current) return data;
         setAdminSession(data);
       }
@@ -1405,6 +1434,7 @@ export default function App() {
       if (analysisBusyPhotoId === photoId) return;
       if (!ensureAdminAccess(action === "approve" ? "godkjenning av posisjon" : "analyseberegning")) return;
 
+      const epoch = privateStateEpochRef.current;
       setAnalysisBusyPhotoId(photoId);
       try {
         const endpoint =
@@ -1416,6 +1446,7 @@ export default function App() {
           apiPost<PhotoAnalysisActionResponse>(endpoint),
         );
 
+        if (epoch !== privateStateEpochRef.current) return;
         updatePhotoAnalysisState(photoId, data.analysis);
         addLog(
           "info",
@@ -1425,6 +1456,7 @@ export default function App() {
         );
         setStatusText("Bildeanalyse oppdatert");
       } catch (error) {
+        if (epoch !== privateStateEpochRef.current) return;
         const apiError = error as ApiError;
         addLog(
           "error",
@@ -1434,7 +1466,7 @@ export default function App() {
         );
         setStatusText(action === "approve" ? "Kunne ikke godkjenne analyse." : "Kunne ikke oppdatere analyse.");
       } finally {
-        setAnalysisBusyPhotoId(null);
+        if (epoch === privateStateEpochRef.current) setAnalysisBusyPhotoId(null);
       }
     },
     [addLog, analysisBusyPhotoId, ensureAdminAccess, trackRequest, updatePhotoAnalysisState],
@@ -1771,31 +1803,26 @@ export default function App() {
   useEffect(() => {
     const handleAuthRejected = (event: Event) => {
       const status = event instanceof CustomEvent ? Number(event.detail?.status) : 401;
+      if (status === 403) {
+        setStatusText("Handlingen ble avvist. Du mangler tilgang til denne handlingen.");
+        addLog("warn", "Handling avvist uten å avslutte sesjonen", null, { status });
+        return;
+      }
       if (adminSession?.open_access) {
         clearPrivateApplicationState();
-        setStatusText(
-          status === 403
-            ? "Handlingen ble avvist. Sjekker fortsatt åpen tilgang …"
-            : "Gårdsdata kunne ikke lastes. Sjekker fortsatt åpen tilgang …",
-        );
-        void apiGet<AdminSessionStatus>("/api/v1/admin/session", {
-          cache: false,
-          dedupe: false,
-          notifyAuthFailure: false,
-        })
-          .then(({ data }) => {
-            setAdminSession(data);
-            setStatusText(
-              data.open_access && data.authenticated
-                ? "Åpen tilgang er aktiv, men forespørselen ble avvist."
-                : "Tilgangsmodus er endret. Logg inn for å åpne gårdsdata.",
-            );
-          })
-          .catch((error) => {
-            const apiError = error as ApiError;
-            setStatusText("Kunne ikke kontrollere tilgangsmodus. Prøv igjen.");
-            addLog("warn", "Kunne ikke kontrollere tilgangsmodus", apiError.requestId, apiError.detail);
-          });
+        const epoch = privateStateEpochRef.current;
+        setStatusText("Sjekker tilgang og laster gårdsdata på nytt …");
+        void (async () => {
+          const session = await loadAdminSession({ silent: true });
+          if (epoch !== privateStateEpochRef.current || !session?.authenticated) return;
+          await loadTimeline({ notifyAuthFailure: false });
+          if (epoch === privateStateEpochRef.current) setStatusText("Gårdsdata lastet på nytt.");
+        })().catch((error) => {
+          if (epoch !== privateStateEpochRef.current) return;
+          const apiError = error as ApiError;
+          setStatusText("Kunne ikke laste gårdsdata på nytt. Prøv igjen.");
+          addLog("warn", "Kunne ikke gjenopprette åpen tilgang", apiError.requestId, apiError.detail);
+        });
         return;
       }
       clearPrivateApplicationState();
@@ -1816,7 +1843,7 @@ export default function App() {
     return () => {
       window.removeEventListener(AUTH_REJECTED_EVENT, handleAuthRejected);
     };
-  }, [addLog, adminSession?.open_access, clearPrivateApplicationState]);
+  }, [addLog, adminSession?.open_access, clearPrivateApplicationState, loadAdminSession, loadTimeline]);
 
   useEffect(() => {
     if (!adminSession?.authenticated) return;
@@ -2550,7 +2577,7 @@ export default function App() {
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
 
-    if (activeView === "album" || activeView === "orthophotos" || activeView === "forest" || activeView === "import" || activeView === "video" || activeView === "settings") {
+    if (activeView === "planning" || activeView === "album" || activeView === "orthophotos" || activeView === "forest" || activeView === "import" || activeView === "video" || activeView === "settings") {
       next.set("view", activeView === "forest" ? "skogbruk" : activeView);
     } else {
       next.delete("view");
@@ -2628,14 +2655,17 @@ export default function App() {
     }>;
   }) => {
     if (!ensureAdminAccess("profilendringer")) return;
+    const epoch = privateStateEpochRef.current;
 
     const { data, requestId } = await trackRequest(() =>
       apiPatch<ProfileResponse>("/api/v1/profile/current", payload),
     );
+    if (epoch !== privateStateEpochRef.current) return;
     setProfile(data);
     addLog("info", "Profil oppdatert", requestId, { userId: data.user.id });
 
     const timelineData = await loadTimeline();
+    if (epoch !== privateStateEpochRef.current) return;
     if (selectedDate) {
       const idx = timelineData.dates.findIndex((entry) => entry.date === selectedDate);
       if (idx >= 0) setSelectedIndex(idx);
@@ -2653,6 +2683,7 @@ export default function App() {
     async (missionId: number) => {
       if (!ensureAdminAccess("eksport av flyoppdrag")) return;
 
+      const epoch = privateStateEpochRef.current;
       setFlightMissionExportBusyId(missionId);
       try {
         const response = await trackRequest(() =>
@@ -2665,6 +2696,7 @@ export default function App() {
           }),
         );
 
+        if (epoch !== privateStateEpochRef.current) return;
         if (!response.ok) {
           const payload = await readResponsePayload(response);
           throw new ApiError({
@@ -2676,6 +2708,7 @@ export default function App() {
         }
 
         const blob = await response.blob();
+        if (epoch !== privateStateEpochRef.current) return;
         const exportFormat = response.headers.get("X-Flyvendebonder-Export-Format");
         const filename = filenameFromDisposition(
           response.headers.get("Content-Disposition"),
@@ -2700,11 +2733,12 @@ export default function App() {
           exportFormat,
         });
       } catch (error) {
+        if (epoch !== privateStateEpochRef.current) return;
         const apiError = error as ApiError;
         setFlightMissionStatus(`Kunne ikke eksportere flyoppdrag: ${apiError.message}`);
         addLog("error", "Kunne ikke eksportere flyoppdrag", apiError.requestId, apiError.detail);
       } finally {
-        setFlightMissionExportBusyId(null);
+        if (epoch === privateStateEpochRef.current) setFlightMissionExportBusyId(null);
       }
     },
     [addLog, ensureAdminAccess, flightMissions, trackRequest],
@@ -2717,19 +2751,22 @@ export default function App() {
       const confirmed = window.confirm(`Slette ${mission?.name ?? `oppdrag ${missionId}`} permanent?`);
       if (!confirmed) return;
 
+      const epoch = privateStateEpochRef.current;
       setFlightMissionDeleteBusyId(missionId);
       try {
         const { requestId } = await trackRequest(() => apiDelete(`/api/v1/flight-missions/${missionId}`));
+        if (epoch !== privateStateEpochRef.current) return;
         setFlightMissions((current) => current.filter((item) => item.id !== missionId));
         setActiveFlightMissionId((current) => (current === missionId ? null : current));
         setFlightMissionStatus(`Slettet ${mission?.name ?? `oppdrag ${missionId}`}.`);
         addLog("info", "Flyoppdrag slettet", requestId, { missionId });
       } catch (error) {
+        if (epoch !== privateStateEpochRef.current) return;
         const apiError = error as ApiError;
         setFlightMissionStatus(`Kunne ikke slette flyoppdrag: ${apiError.message}`);
         addLog("error", "Kunne ikke slette flyoppdrag", apiError.requestId, apiError.detail);
       } finally {
-        setFlightMissionDeleteBusyId(null);
+        if (epoch === privateStateEpochRef.current) setFlightMissionDeleteBusyId(null);
       }
     },
     [addLog, ensureAdminAccess, flightMissions, trackRequest],
@@ -2749,8 +2786,9 @@ export default function App() {
   }, [flightMissions]);
 
   const handleAdminLogin = useCallback(async (code: string) => {
-    setIsAdminSessionBusy(true);
     clearPrivateApplicationState();
+    setIsAdminSessionBusy(true);
+    let epoch = privateStateEpochRef.current;
     setAdminSession((current) =>
       current
         ? {
@@ -2762,9 +2800,11 @@ export default function App() {
     );
     try {
       const { data, requestId } = await trackRequest(() =>
-        apiPost<AdminSessionStatus>("/api/v1/admin/login", { code }),
+        apiPost<AdminSessionStatus>("/api/v1/admin/login", { code }, { notifyAuthFailure: false }),
       );
-      await loadProfile();
+      if (epoch !== privateStateEpochRef.current) return;
+      await loadProfile({ notifyAuthFailure: false });
+      if (epoch !== privateStateEpochRef.current) return;
       setAdminSession(data);
       setAdminLoginCode("");
       addLog("info", "Admin-tilgang aktivert", requestId, {
@@ -2772,8 +2812,10 @@ export default function App() {
       });
       setStatusText("Admin-tilgang aktiv.");
     } catch (error) {
+      if (epoch !== privateStateEpochRef.current) return;
       const apiError = error as ApiError;
       clearPrivateApplicationState();
+      epoch = privateStateEpochRef.current;
       setAdminSession({
         configured: true,
         open_access: false,
@@ -2781,33 +2823,41 @@ export default function App() {
         expires_at: null,
       });
       try {
-        await logoutAdminAndClearPrivateState();
+        const logout = logoutAdminAndClearPrivateState();
+        epoch = privateStateEpochRef.current;
+        await logout;
       } catch (logoutError) {
+        if (epoch !== privateStateEpochRef.current) return;
         const logoutApiError = logoutError as ApiError;
         addLog("warn", "Kunne ikke rydde delvis admin-innlogging", logoutApiError.requestId, logoutApiError.detail);
       }
+      if (epoch !== privateStateEpochRef.current) return;
       addLog("error", "Admin-innlogging feilet", apiError.requestId, apiError.detail);
       setStatusText(`Admin-innlogging feilet: ${apiError.message}`);
       throw apiError;
     } finally {
-      setIsAdminSessionBusy(false);
+      if (epoch === privateStateEpochRef.current) setIsAdminSessionBusy(false);
     }
   }, [addLog, clearPrivateApplicationState, loadProfile, logoutAdminAndClearPrivateState, trackRequest]);
 
   const handleAdminLogout = useCallback(async () => {
+    const logout = logoutAdminAndClearPrivateState();
     setIsAdminSessionBusy(true);
+    const epoch = privateStateEpochRef.current;
     try {
-      const { requestId } = await trackRequest(logoutAdminAndClearPrivateState);
+      const { requestId } = await trackRequest(() => logout);
+      if (epoch !== privateStateEpochRef.current) return;
       setActiveView((current) => (current === "import" || current === "video" ? "map" : current));
       addLog("info", "Admin-tilgang slått av", requestId);
       setStatusText("Admin-tilgang slått av.");
     } catch (error) {
+      if (epoch !== privateStateEpochRef.current) return;
       const apiError = error as ApiError;
       addLog("error", "Kunne ikke logge ut admin", apiError.requestId, apiError.detail);
       setStatusText(`Kunne ikke logge ut admin: ${apiError.message}`);
       throw apiError;
     } finally {
-      setIsAdminSessionBusy(false);
+      if (epoch === privateStateEpochRef.current) setIsAdminSessionBusy(false);
     }
   }, [addLog, logoutAdminAndClearPrivateState, trackRequest]);
 
@@ -3014,6 +3064,7 @@ export default function App() {
       return;
     }
 
+    const epoch = privateStateEpochRef.current;
     const reviewState = payload.decision === "place_on_map" ? "placed" : payload.decision === "keep" ? "kept" : "discarded";
     const reviewResponse = await trackRequest(() =>
       fetch(`/api/v1/video-jobs/${encodeURIComponent(payload.jobId)}/review`, {
@@ -3031,6 +3082,7 @@ export default function App() {
       }),
     );
     const reviewPayload = await readResponsePayload(reviewResponse);
+    if (epoch !== privateStateEpochRef.current) return;
     if (!reviewResponse.ok) {
       throw new Error(responseErrorText(reviewPayload, reviewResponse));
     }
@@ -3546,7 +3598,9 @@ export default function App() {
                   onDropMissingVideoArtifact={handleDropMissingVideoArtifact}
                   />
                 </>
-              ) : activeView === "planning" ? (
+              ) : (
+                <Suspense fallback={<div className="p-6 text-sm text-fb-text-secondary" role="status">Laster visning …</div>}>
+                {activeView === "planning" ? (
                 <PlanningPage
                   properties={activeProperties}
                   canEdit={isAdminAuthenticated}
@@ -3627,6 +3681,7 @@ export default function App() {
                 />
               ) : activeView === "orthophotos" ? (
                 <OrthophotoPage
+                  properties={profile ? [...(profile.property ? [profile.property] : []), ...profile.additional_properties] : []}
                   onChangeLibraryView={handleChangeView}
                   overlays={activeOrthophotoOverlays}
                   onOpenInMap={(overlayId) => {
@@ -3688,6 +3743,8 @@ export default function App() {
                   onRestoreArchivedJobs={handleRestoreArchivedVideoJobs}
                   onStartMediaImport={BROWSER_MEDIA_IMPORT_ENABLED && isAdminAuthenticated ? handleStartMediaImport : undefined}
                 />
+              )}
+                </Suspense>
               )}
 
               {showMapHoverPreview && hoverPreviewPhoto && hoverPreviewImageUrl ? (

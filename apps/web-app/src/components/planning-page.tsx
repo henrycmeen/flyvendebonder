@@ -1680,8 +1680,8 @@ export function PlanningPage({
   }, []);
 
   return (
-    <div className="grid h-full min-h-0 gap-3 p-3 md:grid-cols-[21rem,minmax(0,1fr)] md:p-4">
-      <aside className="flex min-h-0 flex-col overflow-hidden bg-fb-surface-page">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 md:p-4 xl:grid xl:grid-cols-[18rem,minmax(0,1fr)] xl:overflow-hidden">
+      <aside className="flex max-h-[20rem] min-h-0 shrink-0 flex-col overflow-hidden bg-fb-surface-page xl:max-h-none">
         <div className="relative px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <p className="pt-1 text-sm font-semibold text-fb-text-primary">Områder</p>
@@ -1897,8 +1897,8 @@ export function PlanningPage({
         </div>
       </aside>
 
-      <section className="min-h-0 overflow-hidden bg-fb-surface-page">
-        <div className="px-5 py-4">
+      <section className="flex min-w-0 shrink-0 flex-col overflow-visible bg-fb-surface-page xl:min-h-0 xl:overflow-y-auto">
+        <div className="shrink-0 px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               {selectedUnit && previewStatus ? <p className="mt-1 text-sm text-fb-text-secondary">{previewStatus}</p> : null}
@@ -1978,9 +1978,9 @@ export function PlanningPage({
           </div>
         </div>
 
-        <div className="grid h-[calc(100%-5.5rem)] min-h-0 gap-0 lg:grid-cols-[minmax(0,1fr),22rem]">
-          <div className="relative min-h-[24rem]">
-            <div className="absolute left-3 top-3 z-[700] flex gap-2 rounded-2xl bg-fb-surface-page/92 p-2 backdrop-blur">
+        <div className="flex flex-col gap-0 min-[1400px]:grid min-[1400px]:min-h-[24rem] min-[1400px]:flex-1 min-[1400px]:grid-cols-[minmax(0,1fr),22rem]">
+          <div className="relative h-[min(60dvh,32rem)] min-h-[min(24rem,50dvh)] shrink-0 min-[1400px]:h-auto">
+            <div className="absolute left-3 top-3 z-[700] flex max-w-[calc(100%_-_1.5rem)] gap-2 overflow-x-auto rounded-2xl bg-fb-surface-page/92 p-2 backdrop-blur [&>button]:shrink-0">
               <HoverActionButton
                 type="button"
                 size="icon"
@@ -2079,7 +2079,7 @@ export function PlanningPage({
               </HoverActionButton>
             </div>
             {resolveMode ? (
-              <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
+              <div className="absolute left-3 top-[4.7rem] z-[690] w-[calc(100%_-_1.5rem)] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
                 <p className="text-xs font-medium text-fb-text-primary">Nytt område er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
                   Klikk lenger inn i området du vil hente inn. Hvis ingenting treffer, får du beskjed og kan prøve på nytt.
@@ -2087,7 +2087,7 @@ export function PlanningPage({
               </div>
             ) : null}
             {launchMode ? (
-              <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
+              <div className="absolute left-3 top-[4.7rem] z-[690] w-[calc(100%_-_1.5rem)] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
                 <p className="text-xs font-medium text-fb-text-primary">Startpunkt er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
                   Klikk i kartet der du vil at drona skal starte oppdraget.
@@ -2095,7 +2095,7 @@ export function PlanningPage({
               </div>
             ) : null}
             {landingMode ? (
-              <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
+              <div className="absolute left-3 top-[4.7rem] z-[690] w-[calc(100%_-_1.5rem)] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
                 <p className="text-xs font-medium text-fb-text-primary">Landingspunkt er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
                   Klikk i kartet der du vil at drona skal avslutte oppdraget.
@@ -2103,7 +2103,7 @@ export function PlanningPage({
               </div>
             ) : null}
             {noGoMode ? (
-              <div className="absolute left-3 top-[4.7rem] z-[690] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
+              <div className="absolute left-3 top-[4.7rem] z-[690] w-[calc(100%_-_1.5rem)] max-w-sm rounded-2xl bg-fb-surface-page/96 px-3 py-2 backdrop-blur">
                 <p className="text-xs font-medium text-fb-text-primary">Hinder er aktivt</p>
                 <p className="mt-1 text-xs leading-5 text-fb-text-secondary">
                   Klikk i kartet for å legge inn en rektangulær no-go sone. Dra i håndtakene for å flytte eller justere den.
@@ -2153,7 +2153,7 @@ export function PlanningPage({
             />
           </div>
 
-          <div className="min-h-0 overflow-y-auto border-l border-fb-border-subtle/60 px-4 py-4">
+          <div className="min-w-0 border-t border-fb-border-subtle/60 px-4 py-4 min-[1400px]:min-h-0 min-[1400px]:overflow-y-auto min-[1400px]:border-l min-[1400px]:border-t-0">
             {selectedUnit ? (
               <div className="space-y-5">
                 <div className="space-y-1">
@@ -2588,7 +2588,8 @@ export function PlanningPage({
                           step="1"
                           value={parameters[key]}
                           onChange={(event) => {
-                            const nextValue = Number(event.target.value) || parameters[key];
+                            const nextValue = event.currentTarget.valueAsNumber;
+                            if (!Number.isFinite(nextValue)) return;
                             setParameters((current) => ({
                               ...(key === "altitude_m"
                                 ? syncParametersWithSuggestedSpacing(

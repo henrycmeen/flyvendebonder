@@ -59,6 +59,7 @@ export const AUTH_REJECTED_EVENT = "flyvendebonder:auth-rejected";
 
 const inFlightMap = new Map<string, Promise<ApiResponse<unknown>>>();
 const cacheMap = new Map<string, { expiresAt: number; payload: ApiResponse<unknown> }>();
+let cacheGeneration = 0;
 
 function buildQueryString(query?: Record<string, QueryValue>): string {
   if (!query) return "";
@@ -103,7 +104,8 @@ async function parseResponse<T>(response: Response): Promise<T | null> {
       return (text as unknown as T) ?? null;
     }
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     return null;
   }
 }
@@ -219,9 +221,6 @@ function combineSignal(
       if (!merged.signal.aborted) {
         merged.abort();
       }
-      if (providedSignal.aborted && !merged.signal.aborted) {
-        forwardAbort();
-      }
     },
     didTimeout: () => timedOut,
   };
@@ -242,7 +241,9 @@ function summarizeUrl(url: string): string {
 }
 
 export function clearApiCache(): void {
+  cacheGeneration += 1;
   cacheMap.clear();
+  inFlightMap.clear();
 }
 
 function notifyAuthRejected(status: number): void {
@@ -285,148 +286,150 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
     }
   }
 
+  const requestGeneration = cacheGeneration;
   const performRequest = async (): Promise<ApiResponse<T>> => {
-    const { signal, cleanup, didTimeout } = combineSignal(options.signal, timeoutMs);
-    try {
-      let attempt = 0;
-      let lastError: Error | null = null;
-      while (attempt <= maxRetries) {
-        const attemptStartedAt = performance.now();
-        try {
-          const response = await fetch(url, {
-            method,
-            body: method === "GET" ? undefined : sanitizeRequestBody(options.body),
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-              ...(options.headers || {}),
-            },
-            credentials: options.credentials ?? "same-origin",
-            cache: shouldCache ? "default" : "no-store",
-            signal,
-          });
+    let attempt = 0;
+    let lastError: Error | null = null;
+    while (attempt <= maxRetries) {
+      const { signal, cleanup, didTimeout } = combineSignal(options.signal, timeoutMs);
+      const attemptStartedAt = performance.now();
+      try {
+        const response = await fetch(url, {
+          method,
+          body: method === "GET" ? undefined : sanitizeRequestBody(options.body),
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...(options.headers || {}),
+          },
+          credentials: options.credentials ?? "same-origin",
+          cache: shouldCache ? "default" : "no-store",
+          signal,
+        });
 
-          const requestId = response.headers.get("X-Request-ID");
-          const parsed = await parseResponse<T>(response);
-          const durationMs = Math.round(performance.now() - attemptStartedAt);
+        const requestId = response.headers.get("X-Request-ID");
+        const parsed = await parseResponse<T>(response);
+        const durationMs = Math.round(performance.now() - attemptStartedAt);
 
-          if (response.ok) {
-            if (durationMs >= SLOW_REQUEST_WARN_MS) {
-              logToClient("warn", `Treg API-respons: ${method} ${summarizeUrl(url)}`, requestId, {
-                durationMs,
-                status: response.status,
-                retryAttempt: attempt,
-              });
-            }
-            const envelope: ApiResponse<T> = {
-              data: parsed as T,
-              requestId,
-              response,
-            };
-            if (shouldCache && parsed !== null) {
-              cacheMap.set(cacheKey, {
-                expiresAt: Date.now() + cacheTtlMs,
-                payload: envelope as ApiResponse<unknown>,
-              });
-            }
-            return envelope;
-          }
-
-          const apiError = await parseApiError(response, parsed);
-          if (options.notifyAuthFailure !== false && responseRejectsAuthentication(response.status, apiError.detail)) {
-            notifyAuthRejected(response.status);
-          }
-          if (RETRIABLE_STATUS.has(response.status) && attempt < maxRetries) {
-            logToClient("warn", `API retry: ${method} ${summarizeUrl(url)}`, apiError.requestId, {
+        if (response.ok) {
+          if (durationMs >= SLOW_REQUEST_WARN_MS) {
+            logToClient("warn", `Treg API-respons: ${method} ${summarizeUrl(url)}`, requestId, {
               durationMs,
               status: response.status,
-              retryAttempt: attempt + 1,
-              maxRetries,
+              retryAttempt: attempt,
             });
-            lastError = apiError;
-            await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
-            attempt += 1;
-            continue;
           }
-
-          throw apiError;
-        } catch (error) {
-          if (error instanceof ApiError) {
-            throw error;
-          }
-
-          if (error instanceof DOMException && error.name === "AbortError") {
-            const timeoutAbort = didTimeout();
-            const durationMs = Math.round(performance.now() - attemptStartedAt);
-            const abortError = new ApiError({
-              message: timeoutAbort ? "Request timeout" : "Request avbrutt",
-              status: timeoutAbort ? 408 : 0,
-              requestId: null,
-              detail: error.message,
+          const envelope: ApiResponse<T> = {
+            data: parsed as T,
+            requestId,
+            response,
+          };
+          if (shouldCache && parsed !== null && requestGeneration === cacheGeneration) {
+            cacheMap.set(cacheKey, {
+              expiresAt: Date.now() + cacheTtlMs,
+              payload: envelope as ApiResponse<unknown>,
             });
-            if (timeoutAbort && attempt < maxRetries) {
-              logToClient("warn", `API timeout, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
-                durationMs,
-                timeoutMs,
-                retryAttempt: attempt + 1,
-                maxRetries,
-              });
-              lastError = abortError;
-              await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
-              attempt += 1;
-              continue;
-            }
-            if (timeoutAbort) {
-              logToClient("error", `API timeout: ${method} ${summarizeUrl(url)}`, null, {
-                durationMs,
-                timeoutMs,
-                retryAttempt: attempt,
-              });
-            }
-            throw abortError;
           }
+          return envelope;
+        }
 
-          const fallback = error instanceof Error ? error : new Error(String(error));
-          const durationMs = Math.round(performance.now() - attemptStartedAt);
-          if (attempt < maxRetries) {
-            logToClient("warn", `Nettverksfeil, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
-              durationMs,
-              retryAttempt: attempt + 1,
-              maxRetries,
-              message: fallback.message,
-            });
-            lastError = fallback;
-            await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
-            attempt += 1;
-            continue;
-          }
-
-          logToClient("error", `Nettverksfeil: ${method} ${summarizeUrl(url)}`, null, {
+        const apiError = await parseApiError(response, parsed);
+        if (requestGeneration === cacheGeneration && options.notifyAuthFailure !== false && responseRejectsAuthentication(response.status, apiError.detail)) {
+          notifyAuthRejected(response.status);
+        }
+        if (RETRIABLE_STATUS.has(response.status) && attempt < maxRetries) {
+          logToClient("warn", `API retry: ${method} ${summarizeUrl(url)}`, apiError.requestId, {
             durationMs,
+            status: response.status,
+            retryAttempt: attempt + 1,
+            maxRetries,
+          });
+          lastError = apiError;
+          cleanup();
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
+          attempt += 1;
+          continue;
+        }
+
+        throw apiError;
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
+          const timeoutAbort = didTimeout();
+          const durationMs = Math.round(performance.now() - attemptStartedAt);
+          const abortError = new ApiError({
+            message: timeoutAbort ? "Request timeout" : "Request avbrutt",
+            status: timeoutAbort ? 408 : 0,
+            requestId: null,
+            detail: error.message,
+          });
+          if (timeoutAbort && attempt < maxRetries) {
+            logToClient("warn", `API timeout, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
+              durationMs,
+              timeoutMs,
+              retryAttempt: attempt + 1,
+              maxRetries,
+            });
+            lastError = abortError;
+            cleanup();
+            await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
+            attempt += 1;
+            continue;
+          }
+          if (timeoutAbort) {
+            logToClient("error", `API timeout: ${method} ${summarizeUrl(url)}`, null, {
+              durationMs,
+              timeoutMs,
+              retryAttempt: attempt,
+            });
+          }
+          throw abortError;
+        }
+
+        const fallback = error instanceof Error ? error : new Error(String(error));
+        const durationMs = Math.round(performance.now() - attemptStartedAt);
+        if (attempt < maxRetries) {
+          logToClient("warn", `Nettverksfeil, prøver igjen: ${method} ${summarizeUrl(url)}`, null, {
+            durationMs,
+            retryAttempt: attempt + 1,
+            maxRetries,
             message: fallback.message,
           });
-          throw new ApiError({
-            message: fallback.message || "Nettverksfeil",
-            status: 0,
-            requestId: null,
-            detail: fallback.message,
-            cause: fallback,
-          });
+          lastError = fallback;
+          cleanup();
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs(attempt, retryDelayMs)));
+          attempt += 1;
+          continue;
         }
-      }
 
-      if (lastError instanceof ApiError) {
-        throw lastError;
+        logToClient("error", `Nettverksfeil: ${method} ${summarizeUrl(url)}`, null, {
+          durationMs,
+          message: fallback.message,
+        });
+        throw new ApiError({
+          message: fallback.message || "Nettverksfeil",
+          status: 0,
+          requestId: null,
+          detail: fallback.message,
+          cause: fallback,
+        });
+      } finally {
+        cleanup();
       }
-      throw new ApiError({
-        message: "Request feilet",
-        status: 0,
-        requestId: null,
-        detail: "Ukjent feil",
-      });
-    } finally {
-      cleanup();
     }
+
+    if (lastError instanceof ApiError) {
+      throw lastError;
+    }
+    throw new ApiError({
+      message: "Request feilet",
+      status: 0,
+      requestId: null,
+      detail: "Ukjent feil",
+    });
   };
 
   const promise = performRequest();
@@ -434,10 +437,10 @@ export function requestJson<T>(path: string, options: ApiRequestOptions = {}): P
     inFlightMap.set(cacheKey, promise as Promise<ApiResponse<unknown>>);
     void promise.then(
       () => {
-        inFlightMap.delete(cacheKey);
+        if (inFlightMap.get(cacheKey) === promise) inFlightMap.delete(cacheKey);
       },
       () => {
-        inFlightMap.delete(cacheKey);
+        if (inFlightMap.get(cacheKey) === promise) inFlightMap.delete(cacheKey);
       },
     );
   }

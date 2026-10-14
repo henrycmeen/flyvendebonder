@@ -167,7 +167,7 @@ echo "Starting backend on $BACKEND_URL ..."
   ADMIN_ACCESS_CODE="$ADMIN_ACCESS_CODE" \
   ADMIN_SESSION_SECRET="$ADMIN_SESSION_SECRET" \
   PYTHONUNBUFFERED=1 \
-  "$BACKEND_PYTHON" server.py
+  exec "$BACKEND_PYTHON" server.py
 ) >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
@@ -176,7 +176,7 @@ wait_for_url "$BACKEND_URL/api/v1/health" "Backend"
 echo "Starting frontend preview on $APP_URL ..."
 (
   cd "$WEB_DIR"
-  npm run preview -- --host 127.0.0.1 --port "$APP_PORT"
+  exec "$WEB_DIR/node_modules/.bin/vite" preview --host 127.0.0.1 --port "$APP_PORT"
 ) >"$WEB_LOG" 2>&1 &
 WEB_PID=$!
 

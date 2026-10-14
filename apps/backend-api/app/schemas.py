@@ -154,6 +154,7 @@ class OrthophotoSampleOverlayOut(BaseModel):
 
 
 class OrthophotoSampleSourceOut(BaseModel):
+    algorithm_version: Literal["native-crs-affine-rgb-v1", "preview-wgs84-rgb-v1"]
     kind: Literal["canonical", "preview"]
     path_basename: str
     width_px: int
@@ -161,6 +162,13 @@ class OrthophotoSampleSourceOut(BaseModel):
     canonical_width_px: int
     canonical_height_px: int
     gsd_m_per_px: dict[str, float] | None = None
+    crs: str | None = None
+    transform: list[float] | None = None
+    coordinate_mapping: Literal["crs_affine", "approximate_wgs84_bounds"]
+    quantitative_eligible: bool
+    fallback_reason: str | None = None
+    nodata_policy: str
+    nodata_values: list[float | None] = Field(default_factory=list)
 
 
 class OrthophotoImagePixelOut(BaseModel):

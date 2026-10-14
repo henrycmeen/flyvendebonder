@@ -1,16 +1,39 @@
-import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
-export function LibraryNavigation({ active, onChange }: {
-  active: "album" | "orthophotos";
-  onChange: (view: "album" | "orthophotos") => void;
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const libraryViews = [
+  { view: "album", label: "Bilder" },
+  { view: "orthophotos", label: "Ortofoto" },
+  { view: "comparison", label: "Sammenlign" },
+] as const;
+
+type LibraryView = (typeof libraryViews)[number]["view"];
+
+export function LibraryNavigation({ active, onChange, children }: {
+  active: LibraryView;
+  onChange: (view: LibraryView) => void;
+  children: ReactNode;
 }) {
   return (
-    <nav aria-label="Bibliotekinnhold" className="flex gap-1 border-b border-fb-border-subtle pb-2">
-      {([{ view: "album", label: "Bilder" }, { view: "orthophotos", label: "Ortofoto" }] as const).map(({ view, label }) => (
-        <Button key={view} variant="ghost" aria-current={active === view ? "page" : undefined}
-          className={active === view ? "rounded-lg bg-fb-surface-ghost text-fb-text-primary" : "rounded-lg text-fb-text-secondary"}
-          onClick={() => onChange(view)}>{label}</Button>
-      ))}
-    </nav>
+    <Tabs
+      value={active}
+      activationMode="manual"
+      onValueChange={(value) => {
+        const selected = libraryViews.find(({ view }) => view === value);
+        if (selected) onChange(selected.view);
+      }}
+    >
+      <TabsList aria-label="Bibliotekinnhold" className="flex w-full sm:inline-flex sm:w-auto">
+        {libraryViews.map(({ view, label }) => (
+          <TabsTrigger key={view} value={view} className="min-w-0 flex-1 sm:flex-none transition-none data-[state=inactive]:hover:!bg-transparent">
+            {label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      <TabsContent value={active}>
+        {children}
+      </TabsContent>
+    </Tabs>
   );
 }

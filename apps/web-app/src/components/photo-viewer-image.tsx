@@ -6,53 +6,34 @@ import { Button } from "@/components/ui/button";
 interface PhotoViewerImageProps {
   src: string;
   alt: string;
-  onClose: () => void;
 }
 
 interface ImageAttemptProps extends PhotoViewerImageProps {
   onRetry: () => void;
 }
 
-function ImageAttempt({ src, alt, onClose, onRetry }: ImageAttemptProps) {
+function ImageAttempt({ src, alt, onRetry }: ImageAttemptProps) {
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
   const imageRef = useRef<HTMLImageElement>(null);
 
   return (
-    <>
-      {status === "loaded" ? (
-        <div
-          aria-hidden="true"
-          className="photo-viewer-backdrop pointer-events-none absolute inset-0 h-full w-full bg-cover bg-center"
-          style={{ backgroundImage: `url(${JSON.stringify(src)})` }}
-        />
-      ) : null}
-
       <div className="photo-viewer-image-wrap relative h-full w-full">
-        <button
-          type="button"
-          className={`h-full w-full border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fb-focus ${status === "loaded" ? "cursor-zoom-out" : "invisible"}`}
-          onClick={onClose}
-          disabled={status !== "loaded"}
-          aria-label={`Lukk bildevisning: ${alt}`}
-          title="Trykk for å lukke fullskjerm"
-        >
-          <img
-            ref={imageRef}
-            src={src}
-            alt={alt}
-            decoding="async"
-            className="photo-viewer-image h-full w-full object-contain"
-            onLoad={(event) => {
-              if (event.currentTarget !== imageRef.current) return;
-              const loaded = event.currentTarget.naturalWidth > 0;
-              setStatus((current) => current === "loading" ? (loaded ? "loaded" : "error") : current);
-            }}
-            onError={(event) => {
-              if (event.currentTarget !== imageRef.current) return;
-              setStatus("error");
-            }}
-          />
-        </button>
+        <img
+          ref={imageRef}
+          src={src}
+          alt={alt}
+          decoding="async"
+          className={`photo-viewer-image h-full w-full object-contain ${status === "loaded" ? "" : "invisible"}`}
+          onLoad={(event) => {
+            if (event.currentTarget !== imageRef.current) return;
+            const loaded = event.currentTarget.naturalWidth > 0;
+            setStatus((current) => current === "loading" ? (loaded ? "loaded" : "error") : current);
+          }}
+          onError={(event) => {
+            if (event.currentTarget !== imageRef.current) return;
+            setStatus("error");
+          }}
+        />
 
         {status === "loading" ? (
           <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center text-fb-text-secondary">
@@ -79,7 +60,6 @@ function ImageAttempt({ src, alt, onClose, onRetry }: ImageAttemptProps) {
           </div>
         ) : null}
       </div>
-    </>
   );
 }
 

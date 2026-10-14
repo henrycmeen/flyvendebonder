@@ -1,5 +1,6 @@
-import { LibraryNavigation } from "@/components/library-navigation";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { LibraryComparison } from "@/components/library-comparison";
+import { photoComparisonImages } from "@/lib/library-comparison";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -145,7 +146,7 @@ export function AlbumPage({
   onScrollActivity,
   onChangeLibraryView,
 }: AlbumPageProps) {
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [sentinelNode, setSentinelNode] = useState<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -218,7 +219,7 @@ export function AlbumPage({
 
   useEffect(() => {
     if (!hasMore || isLoading || isLoadingMore || loadFailed) return;
-    if (!sentinelRef.current) return;
+    if (!sentinelNode) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -229,11 +230,11 @@ export function AlbumPage({
       { rootMargin: "240px 0px" },
     );
 
-    observer.observe(sentinelRef.current);
+    observer.observe(sentinelNode);
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, isLoading, isLoadingMore, loadFailed, onLoadMore]);
+  }, [hasMore, isLoading, isLoadingMore, loadFailed, onLoadMore, sentinelNode]);
 
   const toggleQueryToken = (token: string) => {
     setSearchQuery((current) => {
@@ -269,34 +270,38 @@ export function AlbumPage({
                 <span className="text-xs text-fb-text-secondary" role="status" title={hasMore ? "Flere bilder lastes når du blar videre" : "Alle bilder er lastet"}>{filteredPhotos.length.toLocaleString("nb-NO")} av {photos.length.toLocaleString("nb-NO")} lastet</span>
               </div>
             </header>
-            <LibraryNavigation active="album" onChange={onChangeLibraryView} />
+            <LibraryComparison kind="photo" images={photoComparisonImages(photos)} partial={hasMore} onChangeLibraryView={onChangeLibraryView}>
             <ResponsivePageControls active={hasActiveFilters}>
-              <div className="fb-album-controls">
+              <div
+                className="fb-album-controls"
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setIsSearchFocused(false);
+                }}
+              >
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fb-text-muted" />
                   <Input
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
                     placeholder="Søk i bilder…"
-                    className="rounded-xl border-transparent bg-fb-surface-ghost pl-9 shadow-none focus-visible:ring-1"
+                    className="h-11 rounded-lg border-fb-border-subtle bg-fb-surface-base pl-9 shadow-none"
                     aria-label="Søk i mediebibliotek"
                   />
                 </div>
 
-                <div className="fb-album-options flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Kvalitet
+                <div className="fb-album-options">
+                  <label className="fb-album-field">Kvalitet
                     <NativeSelect value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value as typeof qualityFilter)}>
                       <option value="all">Alle bilder</option><option value="review">Må vurderes</option><option value="checked">Uten manuell QC</option>
                     </NativeSelect>
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Sorter
+                  <label className="fb-album-field">Sorter
                     <NativeSelect value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
                       <option value="newest">Nyeste først</option><option value="oldest">Eldste først</option>
                     </NativeSelect>
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-fb-text-secondary">Grupper
+                  <label className="fb-album-field">Grupper
                     <NativeSelect value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}>
                       <option value="day">Opptaksdato</option><option value="month">Måned</option>
                     </NativeSelect>
@@ -465,7 +470,7 @@ export function AlbumPage({
 
             <section className="pb-2 pt-1">
               <Divider className="mb-3" />
-              <div ref={sentinelRef} className="h-1 w-full" aria-hidden="true" />
+              <div ref={setSentinelNode} className="h-1 w-full" aria-hidden="true" />
 
               {isLoadingMore ? (
                 <div className="flex items-center justify-center gap-2 text-sm text-fb-text-secondary">
@@ -482,6 +487,7 @@ export function AlbumPage({
                 </div>
               ) : null}
             </section>
+            </LibraryComparison>
           </div>
         </PageShell>
       </div>

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { SidebarVisibilityContext } from "@/components/ui/sidebar-visibility";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Images, Map as MapIcon, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,8 @@ function useSidebar() {
 function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLElement> & { mobileDock?: React.ReactNode }) {
   const { isMobile, openMobile, setOpenMobile, collapsedDesktop, mobileTriggerRef } = useSidebar();
   const [desktopHovered, setDesktopHovered] = React.useState(false);
-  const effectiveCollapsed = collapsedDesktop && !desktopHovered;
+  const [desktopFocused, setDesktopFocused] = React.useState(false);
+  const effectiveCollapsed = collapsedDesktop && !desktopHovered && !desktopFocused;
   const content = (
     <div
       className={cn(
@@ -66,7 +68,9 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
         className,
       )}
     >
-      {children}
+      <SidebarVisibilityContext.Provider value={isMobile ? openMobile : !effectiveCollapsed}>
+        {children}
+      </SidebarVisibilityContext.Provider>
     </div>
   );
 
@@ -90,13 +94,13 @@ function Sidebar({ className, children, mobileDock }: React.HTMLAttributes<HTMLE
       data-collapsed={effectiveCollapsed ? "true" : "false"}
       onMouseEnter={() => setDesktopHovered(true)}
       onMouseLeave={() => setDesktopHovered(false)}
-      onFocusCapture={() => setDesktopHovered(true)}
+      onFocusCapture={() => setDesktopFocused(true)}
       onBlurCapture={(event) => {
         const nextTarget = event.relatedTarget;
         if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
           return;
         }
-        setDesktopHovered(false);
+        setDesktopFocused(false);
       }}
       className={cn(
         "fb-sidebar relative z-20 hidden h-screen shrink-0 transition-[width] duration-[var(--fb-motion-duration-medium)] ease-[var(--fb-motion-easing-standard)] motion-reduce:transition-none md:block",

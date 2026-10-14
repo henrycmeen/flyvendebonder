@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Pencil, RefreshCw } from "lucide-react";
 
 import {
@@ -22,7 +22,7 @@ import { PhotoMapInset } from "@/components/photo-map-inset";
 import { PhotoViewerImage } from "@/components/photo-viewer-image";
 import { Button } from "@/components/ui/button";
 import { CloseButton } from "@/components/ui/close-button";
-import { useIsMobile } from "@/hooks/use-is-mobile";
+import "./photo-inspector.css";
 import type { PhotoFeature } from "@/types";
 
 type PhotoAnalysisAction = "approve" | "recompute";
@@ -142,8 +142,7 @@ function PhotoStrip({
   );
 }
 
-export function PhotoInspector({
-  open,
+function PhotoInspectorContent({
   selectedPhoto,
   selectedPhotoId,
   selectedPhotoImageUrl,
@@ -185,8 +184,35 @@ export function PhotoInspector({
   onCancelMetadataEdit,
   onSavePhotoMetadata,
 }: PhotoInspectorProps) {
-  const isMobile = useIsMobile();
-  if (!open) return null;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsVisible = detailsOpen || metadataEditMode;
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    overlay?.querySelector<HTMLButtonElement>('[aria-label="Lukk bildevisning"]')?.focus();
+    const trapTab = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !overlay) return;
+      const controls = Array.from(overlay.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]'))
+        .filter((control) => control.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", trapTab);
+    return () => {
+      document.removeEventListener("keydown", trapTab);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
   const visibleTags = editablePhotoTags(metadataTagsDraft);
   const systemTags = (selectedPhoto?.tags ?? []).filter(isSystemPhotoTag);
   const reservedTagDraft = isSystemPhotoTag(metadataTagDraft);
@@ -204,7 +230,11 @@ export function PhotoInspector({
 
   return (
     <div
-      className="photo-viewer-overlay fixed inset-0 z-[1300]"
+      className="photo-viewer-overlay photo-viewer-refresh fixed inset-0 z-[1300]"
+      ref={overlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bildevisning"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -213,7 +243,22 @@ export function PhotoInspector({
     >
       <div className="photo-viewer-shell h-full w-full p-2 sm:p-4">
         <div className="photo-viewer-stage pointer-events-auto h-full w-full overflow-hidden rounded-[22px] border border-fb-border-subtle/45">
-          <div className="photo-viewer-layout h-full">
+          <header className="photo-viewer-toolbar">
+            <h2>{selectedPhoto ? new Date(selectedPhoto.captured_at).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" }) : "Laster bilde …"}</h2>
+            <div className="photo-viewer-toolbar-actions">
+              <Button type="button" variant="ghost" size="sm" aria-expanded={detailsVisible} aria-controls="photo-viewer-details-panel" disabled={!selectedPhoto || metadataEditMode} onClick={() => setDetailsOpen((value) => !value)}>
+                {detailsVisible ? "Skjul detaljer" : "Detaljer"}
+              </Button>
+              <Button type="button" variant={metadataEditMode ? "default" : "ghost"} size="icon" aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"} aria-pressed={metadataEditMode} disabled={!selectedPhoto || !isAdminAuthenticated} onClick={() => {
+                if (!metadataEditMode) setDetailsOpen(true);
+                onSetMetadataEditMode((value) => !value);
+              }}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <CloseButton onClick={onClose} label="Lukk bildevisning" />
+            </div>
+          </header>
+          <div className={`photo-viewer-layout h-full ${detailsVisible ? "has-details" : ""}`}>
             {selectedPhoto ? (
               <>
                 <div className="photo-viewer-image-pane relative">
@@ -221,7 +266,6 @@ export function PhotoInspector({
                     <PhotoViewerImage
                       src={selectedPhotoImageUrl}
                       alt={selectedPhoto.title || "Foto"}
-                      onClose={onClose}
                     />
                   ) : (
                     <div className="photo-viewer-image-wrap relative flex h-full w-full items-center justify-center bg-fb-surface-ghost text-center text-fb-text-secondary">
@@ -238,31 +282,7 @@ export function PhotoInspector({
                   {strip}
                 </div>
 
-                <aside className="photo-viewer-meta-column">
-                  <div className="photo-viewer-meta-header">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 pr-1">
-                        <h2 className="text-base font-semibold text-fb-text-primary">{new Date(selectedPhoto.captured_at).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" }) || "Foto"}</h2>
-                      </div>
-                      <div className="photo-viewer-meta-actions">
-                        <Button
-                          variant={metadataEditMode ? "default" : "ghost"}
-                          size="icon"
-                          className="h-11 w-11 shrink-0 rounded-xl"
-                          onClick={() => onSetMetadataEditMode((value) => !value)}
-                          aria-label={metadataEditMode ? "Avslutt redigering" : "Rediger metadata"}
-                          aria-pressed={metadataEditMode}
-                          disabled={!isAdminAuthenticated}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <CloseButton onClick={onClose} label="Lukk bildevisning" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <details className="photo-viewer-details" open={!isMobile || metadataEditMode}>
-                    <summary>Detaljer og analyse</summary>
+                <aside id="photo-viewer-details-panel" aria-label="Detaljer og analyse" className="photo-viewer-meta-column" hidden={!detailsVisible}>
                   <div className="photo-viewer-meta-body">
                     <div className="space-y-2.5">
                       <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
@@ -604,14 +624,16 @@ export function PhotoInspector({
                       <div className="rounded-xl border border-fb-border-subtle bg-fb-surface-ghost p-2 text-fb-text-primary">
                         <p className="text-[11px] uppercase tracking-[0.08em] text-fb-text-secondary">Kartutsnitt</p>
                         <div className="mt-1">
-                          <PhotoMapInset
-                            photo={selectedPhoto}
-                            baseMapStyle={baseMapStyle}
-                            editable={metadataEditMode}
-                            manualTarget={activeInsetManualTarget}
-                            manualTargetCleared={metadataEditMode && selectedPhotoManualViewTarget != null && metadataManualViewTargetDraft == null}
-                            onManualTargetChange={onSetMetadataManualViewTargetDraft}
-                          />
+                          {detailsVisible ? (
+                            <PhotoMapInset
+                              photo={selectedPhoto}
+                              baseMapStyle={baseMapStyle}
+                              editable={metadataEditMode}
+                              manualTarget={activeInsetManualTarget}
+                              manualTargetCleared={metadataEditMode && selectedPhotoManualViewTarget != null && metadataManualViewTargetDraft == null}
+                              onManualTargetChange={onSetMetadataManualViewTargetDraft}
+                            />
+                          ) : null}
                         </div>
                       </div>
 
@@ -724,14 +746,11 @@ export function PhotoInspector({
                       </div>
                     </div>
                   </div>
-                  </details>
                 </aside>
               </>
             ) : (
               <>
                 <div className="photo-viewer-image-pane relative">
-                  {strip}
-
                   <div className="photo-viewer-image-wrap relative flex h-full w-full items-center justify-center text-center">
                     <div>
                       <p className="mb-2 text-sm text-fb-text-primary/80">Finner valgt bilde ...</p>
@@ -740,21 +759,8 @@ export function PhotoInspector({
                       </p>
                     </div>
                   </div>
+                  {strip}
                 </div>
-
-                <aside className="photo-viewer-meta-column">
-                  <div className="photo-viewer-meta-header">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 pr-1">
-                        <h2 className="text-base font-semibold text-fb-text-primary">Laster metadata ...</h2>
-                      </div>
-                      <div className="photo-viewer-meta-actions">
-                        <CloseButton onClick={onClose} label="Lukk bildevisning" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="photo-viewer-meta-body" />
-                </aside>
               </>
             )}
           </div>
@@ -762,4 +768,9 @@ export function PhotoInspector({
       </div>
     </div>
   );
+}
+
+// Unmount local panel state when the viewer closes, so each visit starts with the image.
+export function PhotoInspector(props: PhotoInspectorProps) {
+  return props.open ? <PhotoInspectorContent {...props} /> : null;
 }

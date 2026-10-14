@@ -22,21 +22,22 @@ assert.match(api, /notifyAuthRejected\(response\.status\)/, "Auth rejection must
 assert.match(api, /function notifyAuthRejected[\s\S]*clearApiCache\(\)/, "Auth rejection must clear cached private reads");
 
 const loginHandler = app.match(/const handleAdminLogin = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";
-assert.match(loginHandler, /await loadProfile\(\)/, "Admin login must reload the unredacted profile");
+assert.match(loginHandler, /await loadProfile\(/, "Admin login must reload the unredacted profile");
 assert.ok(
-  loginHandler.indexOf("await loadProfile()") < loginHandler.indexOf("setAdminSession(data)"),
+  loginHandler.indexOf("await loadProfile(") >= 0 &&
+    loginHandler.indexOf("await loadProfile(") < loginHandler.indexOf("setAdminSession(data)"),
   "Admin login must not unlock editing until the private profile is loaded",
 );
 assert.match(
   loginHandler,
-  /catch[\s\S]*clearPrivateApplicationState\(\)[\s\S]*authenticated:\s*false[\s\S]*await logoutAdminAndClearPrivateState\(\)/,
+  /catch[\s\S]*clearPrivateApplicationState\(\)[\s\S]*authenticated:\s*false[\s\S]*const logout = logoutAdminAndClearPrivateState\(\)[\s\S]*await logout/,
   "A partial login failure must clear PII and keep admin editing locked",
 );
 
 const logoutHandler = app.match(/const handleAdminLogout = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";
 assert.match(
   logoutHandler,
-  /await trackRequest\(logoutAdminAndClearPrivateState\)/,
+  /const logout = logoutAdminAndClearPrivateState\(\)[\s\S]*await trackRequest\(\(\) => logout\)/,
   "Admin logout must clear the cookie and private application state",
 );
 
@@ -49,7 +50,9 @@ for (const privateStateSetter of ["setProfile", "setTimeline", "setPhotoPool", "
 }
 
 const logoutAndClearPrivate = app.match(/const logoutAdminAndClearPrivateState = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";
+assert.match(logoutAndClearPrivate, /clearPrivateApplicationState\(\)/, "Logout must clear private state before requesting server logout");
 assert.match(logoutAndClearPrivate, /\/api\/v1\/admin\/logout/, "Logout must clear the server session");
+assert.ok(logoutAndClearPrivate.indexOf("clearPrivateApplicationState()") < logoutAndClearPrivate.indexOf('"/api/v1/admin/logout"'), "Private state must clear before awaiting logout");
 assert.doesNotMatch(logoutAndClearPrivate, /loadProfile\(/, "Logout must not request a private profile anonymously");
 
 const loadAdminSession = app.match(/const loadAdminSession = useCallback[\s\S]*?\n  }, \[[^\]]+\]\);/)?.[0] ?? "";

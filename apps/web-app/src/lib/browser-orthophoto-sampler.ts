@@ -128,7 +128,7 @@ export function orthophotoBackendSampleToOutcome(
     },
     source: {
       kind: "backend_orthophoto",
-      label: "Backend/ortofoto",
+      label: sample.source.kind === "canonical" ? "Originalraster" : "Omtrentlig forhåndsvisning",
       detail: `${sourceKindLabel}: ${sample.source.path_basename}`,
       sourceKind: sample.source.kind,
       gsdMPerPx: sample.source.gsd_m_per_px,
@@ -314,9 +314,9 @@ export function sampleOrthophotoColorAtLatLng({
         imagePixel,
         source: {
           kind: "browser_overlay",
-          label: "Web-overlay",
-          detail: "Piksler lest fra bildet som vises i nettleseren",
-          sourceKind: candidate.overlay.tileLayer?.sourceKind,
+          label: "Omtrentlig forhåndsvisning",
+          detail: "Piksler lest fra webbildet; plassering og RGB er omtrentlig, uten kanonisk rasterprøve",
+          sourceKind: "preview",
           sourceWidthPx: image.naturalWidth,
           sourceHeightPx: image.naturalHeight,
         },

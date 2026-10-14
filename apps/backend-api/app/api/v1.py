@@ -1940,6 +1940,7 @@ def get_orthophoto_color_sample(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     sample_size_px: int = Query(21, ge=3, le=101),
+    allow_preview: bool = Query(False),
     _user: User = Depends(_request_owner_user),
 ) -> dict:
     try:
@@ -1948,6 +1949,7 @@ def get_orthophoto_color_sample(
             lat=lat,
             lng=lng,
             sample_size_px=sample_size_px,
+            allow_preview=allow_preview,
         )
     except OrthophotoNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1959,6 +1961,29 @@ def get_orthophoto_color_sample(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except OrthophotoSamplingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/weather/season")
+def get_weather_season(
+    response: Response,
+    start: date_type = Query(...),
+    end: date_type = Query(...),
+    property_id: int | None = Query(None, ge=1),
+    user: User = Depends(_request_owner_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from ..services.weather_context import property_weather
+
+    property_obj = _require_active_property(db, user.id, property_id)
+    if end > datetime.now(timezone.utc).date():
+        raise HTTPException(status_code=422, detail="Historisk vær kan ikke hentes for framtidige datoer")
+    try:
+        reference = f"{property_obj.komm}-{property_obj.gnr}/{property_obj.bnr}/{property_obj.fnr}"
+        result = property_weather(start, end, reference, get_settings())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return {"property_id": property_obj.id, **result}
 
 
 @router.get("/logs", response_model=BackendLogsResponse)
