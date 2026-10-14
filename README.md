@@ -1,5 +1,21 @@
 # Flyvendebønder monorepo
 
+Flyvendebønder er en plattform under utvikling for å samle dronebilder,
+kart, feltobservasjoner og planlegging i en forståelig arbeidsflate for bønder.
+Målet er en felles, åpen plattform tilpasset norske forhold, der bønder,
+utviklere og fagmiljøer kan bidra til retningen.
+
+Prosjektet utvikles i samarbeid med Meen gård i Skien/Grenland. Vi har kjørt
+pilot i 2026 og arbeider nå med å gjøre systemet enklere å kjøre, teste og
+videreutvikle sammen med andre bønder.
+
+Prosjektets egen kode er [MIT-lisensiert](LICENSE). Bilder, gårdsdata og
+tredjepartsinnhold følger [egne rettighetsregler](DATA_RIGHTS.md).
+Vi er tidlig i utviklingen og dokumenterer ikke bred utbredelse ennå.
+Se [bidragsveiledningen](CONTRIBUTING.md), [sikkerhet](SECURITY.md) og
+[styring og retning](GOVERNANCE.md). Videoprosesseringen har foreløpig
+placeholder-resultater; funksjoner må vurderes etter dokumenterte kontroller.
+
 ## Struktur
 - `apps/root-redirect/`: statisk redirect fra hovedsiden (`/`) til appen (`/app/`)
 - `apps/info-site/`: produksjonskilde for infosiden (`/info/`)
